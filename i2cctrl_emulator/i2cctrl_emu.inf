@@ -1,0 +1,61 @@
+; i2cctrl_emu.inf
+; INF file for I2C Controller Emulator (ASUS X509FA 9DE9)
+; Target OS: Windows XP / Windows Server 2003
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+DriverVer   = 12/08/2025,1.0.0.0
+
+[Manufacturer]
+%ManufacturerName% = Standard,NTx86,NTamd64
+
+[Standard.NTx86]
+%I2CCTRL_EMU.DeviceDesc% = I2CCTRL_EMU_Install, ROOT\I2CCTRL_EMU
+
+[Standard.NTamd64]
+%I2CCTRL_EMU.DeviceDesc% = I2CCTRL_EMU_Install, ROOT\I2CCTRL_EMU
+
+; -----------------------------------------------------------------------
+; Installation section
+; -----------------------------------------------------------------------
+[I2CCTRL_EMU_Install]
+CopyFiles = Drivers_Copy
+AddReg    = Emu_AddReg
+
+[Drivers_Copy]
+i2cctrl_emu.sys
+
+[Emu_AddReg]
+; Registry parameters for emulator
+HKR,Parameters,"HidAddr",0x00010001,0x00000015
+HKR,Parameters,"Verbose",0x00010001,0x00000001
+
+; -----------------------------------------------------------------------
+; Service installation
+; -----------------------------------------------------------------------
+[I2CCTRL_EMU_Install.Services]
+AddService = i2cctrl_emu, 0x00000002, I2CCTRL_EMU_Service_Inst
+
+[I2CCTRL_EMU_Service_Inst]
+DisplayName    = %I2CCTRL_EMU.SvcName%
+ServiceType    = 1 ; SERVICE_KERNEL_DRIVER
+StartType      = 0 ; SERVICE_DEMAND_BOOT
+ErrorControl   = 1 ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\i2cctrl_emu.sys
+
+; -----------------------------------------------------------------------
+; Destination directories
+; -----------------------------------------------------------------------
+[DestinationDirs]
+Drivers_Copy = 12
+
+; -----------------------------------------------------------------------
+; Strings
+; -----------------------------------------------------------------------
+[Strings]
+ManufacturerName      = "UsefulAGKHelper"
+I2CCTRL_EMU.DeviceDesc= "I2C Controller Emulator (ASUS X509FA 9DE9)"
+I2CCTRL_EMU.SvcName   = "I2CCTRL_EMU"
