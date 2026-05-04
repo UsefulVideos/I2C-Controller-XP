@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<VisualStudioProject
+    ProjectType="Visual C++"
+    Version="9,00"
+    Name="i2chid_helper"
+    ProjectGUID="{0E28E491-F54D-4F1B-ADEA-534ACAEBB599}"
+    RootNamespace="i2chid_helper"
+    Keyword="Win32Proj"
+    TargetFrameworkVersion="196613"
+    >
+    <Platforms>
+        <Platform Name="Win32"/>
+    </Platforms>
+    <ToolFiles/>
+    <Configurations>
+        <Configuration
+            Name="Debug|Win32"
+            OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+            IntermediateDirectory="$(ConfigurationName)"
+            ConfigurationType="2"
+            CharacterSet="1">
+            <Tool Name="VCPreBuildEventTool"/>
+            <Tool Name="VCCustomBuildTool"/>
+            <Tool Name="VCXMLDataGeneratorTool"/>
+            <Tool Name="VCWebServiceProxyGeneratorTool"/>
+            <Tool Name="VCMIDLTool"/>
+            <Tool
+                Name="VCCLCompilerTool"
+                Optimization="0"
+                PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;I2CHID_HELPER_EXPORTS"
+                MinimalRebuild="true"
+                BasicRuntimeChecks="3"
+                RuntimeLibrary="3"
+                UsePrecompiledHeader="0"
+                WarningLevel="3"
+                DebugInformationFormat="4"/>
+            <Tool Name="VCManagedResourceCompilerTool"/>
+            <Tool Name="VCResourceCompilerTool"/>
+            <Tool Name="VCPreLinkEventTool"/>
+            <Tool
+                Name="VCLinkerTool"
+                OutputFile="$(OutDir)\$(ProjectName).cpl"
+                LinkIncremental="2"
+                ModuleDefinitionFile="i2chid_helper.def"
+                GenerateManifest="true"
+                ManifestFile="$(IntDir)\$(TargetFileName).manifest"
+                GenerateDebugInformation="true"
+                SubSystem="2"
+                TargetMachine="1"/>
+            <Tool Name="VCALinkTool"/>
+            <Tool
+                Name="VCManifestTool"
+                OutputManifestFile="$(IntDir)\$(TargetFileName).manifest"
+                ManifestResourceFile="$(IntDir)\$(TargetFileName).manifest.res"
+                EmbedManifest="true"/>
+            <Tool Name="VCXDCMakeTool"/>
+            <Tool Name="VCBscMakeTool"/>
+            <Tool Name="VCFxCopTool"/>
+            <Tool Name="VCAppVerifierTool"/>
+            <Tool Name="VCPostBuildEventTool"/>
+        </Configuration>
+        <Configuration
+            Name="Release|Win32"
+            OutputDirectory="$(SolutionDir)$(ConfigurationName)"
+            IntermediateDirectory="$(ConfigurationName)"
+            ConfigurationType="2"
+            CharacterSet="1"
+            WholeProgramOptimization="1">
+            <Tool Name="VCPreBuildEventTool"/>
+            <Tool Name="VCCustomBuildTool"/>
+            <Tool Name="VCXMLDataGeneratorTool"/>
+            <Tool Name="VCWebServiceProxyGeneratorTool"/>
+            <Tool Name="VCMIDLTool"/>
+            <Tool
+                Name="VCCLCompilerTool"
+                Optimization="2"
+                EnableIntrinsicFunctions="true"
+                PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;I2CHID_HELPER_EXPORTS"
+                RuntimeLibrary="2"
+                EnableFunctionLevelLinking="true"
+                UsePrecompiledHeader="0"
+                WarningLevel="3"
+                DebugInformationFormat="3"/>
+            <Tool Name="VCManagedResourceCompilerTool"/>
+            <Tool Name="VCResourceCompilerTool"/>
+            <Tool Name="VCPreLinkEventTool"/>
+            <Tool
+                Name="VCLinkerTool"
+                AdditionalDependencies="comctl32.lib"
+                OutputFile="$(OutDir)\$(ProjectName).cpl"
+                LinkIncremental="1"
+                GenerateManifest="true"
+                ManifestFile="$(IntDir)\$(TargetFileName).manifest"
+                GenerateDebugInformation="true"
+                SubSystem="2"
+                OptimizeReferences="2"
+                EnableCOMDATFolding="2"
+                TargetMachine="1"/>
+            <Tool Name="VCALinkTool"/>
+            <Tool
+                Name="VCManifestTool"
+                OutputManifestFile="$(IntDir)\$(TargetFileName).manifest"
+                ManifestResourceFile="$(IntDir)\$(TargetFileName).manifest.res"
+                EmbedManifest="true"/>
+            <Tool Name="VCXDCMakeTool"/>
+            <Tool Name="VCBscMakeTool"/>
+            <Tool Name="VCFxCopTool"/>
+            <Tool Name="VCAppVerifierTool"/>
+            <Tool Name="VCPostBuildEventTool"/>
+        </Configuration>
+    </Configurations>
+    <References/>
+    <Files>
+        <Filter Name="Source Files" Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
+                UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
+            <File RelativePath=".\i2chid_helper.c"/>
+        </Filter>
+        <Filter Name="Header Files" Filter="h;hpp;hxx;hm;inl;inc;xsd"
+                UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
+            <File RelativePath=".\i2chid_helper_ioctl.h"/>
+            <File RelativePath=".\resource.h"/>
+        </Filter>
+        <Filter Name="Resource Files"
+                Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;manifest"
+                UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}">
+            <File RelativePath=".\i2chid_helper_dialog.rc"/>
+            <File RelativePath=".\i2chid_helper_version.rc"/>
+        </Filter>
+        <Filter Name="Exports">
+            <File RelativePath=".\i2chid_helper.def"/>
+        </Filter>
+        <File RelativePath=".\ReadMe.txt"/>
+    </Files>
+    <Globals/>
+</VisualStudioProject>

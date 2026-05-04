@@ -1,0 +1,110 @@
+#include <windows.h>
+#include "resource.h"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+IDI_APPLET ICON "touchpad.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Manifest (embed only one manifest resource)
+//
+1 RT_MANIFEST "i2chid_helper.manifest"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+STRINGTABLE
+BEGIN
+    IDS_NAME         "I2C Controller Helper"
+    IDS_INFO         "Configure HID-over-I2C touchpad and controller features"
+    IDS_ERR_REGREAD  "Error reading registry settings"
+    IDS_ERR_REGWRITE "Error writing registry settings"
+    IDS_OK_APPLY     "Settings applied successfully"
+    IDS_ABOUT_TITLE  "About I2C Controller Helper"
+    IDS_ABOUT_TEXT   "I2C Controller Helper\nVersion 1.0.0.0\n\nUsefulAGKHelper © 2025\n\nThis applet configures HID-over-I2C touchpad and controller features."
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator Table (keyboard shortcuts)
+//
+IDR_ACCELERATOR ACCELERATORS
+BEGIN
+    VK_RETURN, IDOK,      VIRTKEY, NOINVERT
+    VK_ESCAPE, IDCANCEL,  VIRTKEY, NOINVERT
+    VK_F1,     IDM_ABOUT, VIRTKEY, NOINVERT
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu (context/help)
+//
+IDR_MENU MENU
+BEGIN
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About...", IDM_ABOUT
+    END
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialogs
+//
+IDD_DIALOG DIALOGEX 0, 0, 300, 280
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "I2C Controller Helper"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Configure HID-over-I2C Touchpad Settings", IDC_STATIC, 10, 10, 280, 10
+
+    CONTROL "Enable Multitouch", IDC_MULTITOUCH, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 10, 30, 200, 10
+
+    CONTROL "Tap-to-Click", IDC_TAPTOCLICK, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 10, 50, 200, 10
+
+    CONTROL "Two-Finger Scroll", IDC_SCROLL, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 10, 70, 200, 10
+
+    LTEXT "Sensitivity:", IDC_STATIC, 10, 95, 60, 10
+    CONTROL "", IDC_SENSITIVITY, "msctls_trackbar32",
+            TBS_AUTOTICKS | WS_TABSTOP, 75, 90, 180, 20
+
+    GROUPBOX "Bus Speed", IDC_STATIC, 10, 120, 280, 40
+    COMBOBOX IDC_BUSSPEED, 20, 135, 120, 60,
+             CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    GROUPBOX "Arbitration", IDC_STATIC, 10, 165, 280, 70
+    CONTROL "Enable Multi-Master Arbitration", IDC_ARB_ENABLE, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 20, 180, 200, 10
+    LTEXT "Base (µs):", IDC_STATIC, 20, 195, 50, 10
+    EDITTEXT IDC_ARB_BASE, 75, 193, 40, 12, ES_NUMBER | WS_TABSTOP
+    LTEXT "Max (µs):", IDC_STATIC, 125, 195, 50, 10
+    EDITTEXT IDC_ARB_MAX, 175, 193, 40, 12, ES_NUMBER | WS_TABSTOP
+    LTEXT "Jitter (µs):", IDC_STATIC, 20, 210, 50, 10
+    EDITTEXT IDC_ARB_JITTER, 75, 208, 40, 12, ES_NUMBER | WS_TABSTOP
+
+    CONTROL "Wake from D3", IDC_WAKECAPABLE, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 20, 240, 200, 10
+
+    CONTROL "Force Crash on Error", IDC_FORCECRASH, "Button",
+            BS_AUTOCHECKBOX | WS_TABSTOP, 20, 255, 200, 10
+
+    DEFPUSHBUTTON "OK",     IDOK,     160, 260, 50, 14
+    PUSHBUTTON    "Cancel", IDCANCEL,220, 260, 50, 14
+END
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 200, 120
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About I2C Controller Helper"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    ICON IDI_APPLET, IDC_STATIC, 10, 10, 20, 20
+    LTEXT "I2C Controller Helper\nVersion 1.0.0.0\nUsefulAGKHelper © 2025", IDC_STATIC, 40, 10, 150, 40
+    DEFPUSHBUTTON "OK", IDOK, 75, 90, 50, 14
+END

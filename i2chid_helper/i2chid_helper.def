@@ -1,0 +1,3 @@
+LIBRARY "i2chid_helper"
+EXPORTS
+    CPlApplet @1
