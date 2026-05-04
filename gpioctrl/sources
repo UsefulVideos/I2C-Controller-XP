@@ -1,0 +1,42 @@
+# SOURCES for gpioctrl.sys
+# WinDDK 7.1.0 — XP/2003 build environment — WDM, C89-compliant
+
+TARGETNAME=gpioctrl
+TARGETTYPE=DRIVER
+
+# Output to project bin folder by platform (fre/CHK handled by build)
+TARGETPATH=..\bin
+
+# Use WDM headers; no KMDF
+USE_NATIVE_ENVIRONMENT=1
+
+# Compiler options: C89-friendly, high warnings
+MSC_WARNING_LEVEL=/W4
+MSC_OPTIMIZATION=/O2
+C_DEFINES=$(C_DEFINES) -DWIN32_LEAN_AND_MEAN -DNT_DRIVER -DDBG=0
+
+# Include current dir for headers
+INCLUDES=.;$(INCLUDES)
+
+# Source files
+SOURCES= \
+    gpioctrl.c      \
+    gpioctrl_io.c   \
+    gpioctrl_isr.c  \
+    gpioctrl_reg.c  \
+	gpioctrl_version.rc
+
+# Import libs (XP/2003 WDM)
+TARGETLIBS= \
+    $(DDK_LIB_PATH)\ntoskrnl.lib \
+    $(DDK_LIB_PATH)\hal.lib
+
+# No precompiled headers
+NOPCH=1
+
+# Use Unicode
+UMTYPE=nt
+
+# Explicitly target XP (5.1) through Server 2003 (5.2)
+TARGETNTVERSION=0x0501   # minimum supported NT version (XP)
+NTTARGETVER=0x0502       # maximum supported NT version (Server 2003)

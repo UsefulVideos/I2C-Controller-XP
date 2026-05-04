@@ -1,0 +1,120 @@
+; i2chid.inf
+; HID-over-I2C Miniport Driver + Control Panel Applet (PNP0C50 universal)
+; Provides HID services for touchpad and multitouch devices
+; Manufacturer: UsefulAGKHelper
+; Supported Platforms: Windows XP (5.1, x86),
+;                      Windows Server 2003 (5.2, x86/x64),
+;                      Windows XP Professional x64 Edition (5.2, amd64)
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = HIDClass
+ClassGuid   = {745A17A0-74D3-11D0-B6FE-00A0C90F57DA}
+Provider    = %MfgName%
+DriverVer   = 11/08/2025,1.0.0.0
+
+[Manufacturer]
+%MfgName% = UsefulAGKHelper,NTx86.5.1,NTx86.5.2,NTamd64.5.2
+
+; ---------------- Hardware IDs ----------------
+
+[UsefulAGKHelper.NTx86.5.1]   ; Windows XP 32-bit
+%DeviceDesc% = I2CHID_Inst, ACPI\PNP0C50
+
+[UsefulAGKHelper.NTx86.5.2]   ; Windows Server 2003 32-bit
+%DeviceDesc% = I2CHID_Inst, ACPI\PNP0C50
+
+[UsefulAGKHelper.NTamd64.5.2] ; Windows XP x64 / Server 2003 x64
+%DeviceDesc% = I2CHID_Inst, ACPI\PNP0C50
+
+; ---------------- Install Section ----------------
+
+[I2CHID_Inst]
+CopyFiles   = Drivers_Copy, Applet_Copy
+AddReg      = I2CHID_AddReg
+
+[I2CHID_Inst.Services]
+AddService  = i2chid, 0x00000002, I2CHID_Service_Inst, I2CHID_EventLog_Inst
+
+; ---------------- Service Definition ----------------
+
+[I2CHID_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1   ; SERVICE_KERNEL_DRIVER
+StartType      = 3   ; SERVICE_DEMAND_START
+ErrorControl   = 1   ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\i2chid.sys
+LoadOrderGroup = Base
+
+[I2CHID_EventLog_Inst]
+AddReg = I2CHID_EventLog_AddReg
+
+[I2CHID_EventLog_AddReg]
+HKR,,EventMessageFile,0x00020000,"%SystemRoot%\System32\IoLogMsg.dll;%SystemRoot%\System32\drivers\i2chid.sys"
+HKR,,TypesSupported,0x00010001,7
+
+; ---------------- Registry Settings ----------------
+; These correspond to fields in I2CHID_CONFIG and vendor feature reports (RID 5)
+
+[I2CHID_AddReg]
+HKR,,"EnableMultitouch",0x00010001,1
+HKR,,"TapToClick",0x00010001,1
+HKR,,"TwoFingerScroll",0x00010001,1
+HKR,,"Sensitivity",0x00010001,5
+HKR,,"ScrollScale",0x00010001,100
+HKR,,"ZoomScale",0x00010001,100
+HKR,,"TapTimeMs",0x00010001,180
+HKR,,"TapDistance",0x00010001,25
+HKR,,"PalmThreshold",0x00010001,200
+HKR,,"SwipeScale",0x00010001,100
+HKR,,"RotateScale",0x00010001,100
+HKR,,"PollIntervalMs",0x00010001,8
+HKR,,"DebugLevel",0x00010001,0
+
+; ---------------- Files, Destinations, Sources ----------------
+
+[Drivers_Copy]
+i2chid.sys
+
+[Applet_Copy]
+i2chid_helper.cpl
+
+[DestinationDirs]
+Drivers_Copy        = 12        ; %SystemRoot%\System32\drivers
+Applet_Copy         = 11        ; %SystemRoot%\System32 on x86
+Applet_Copy.ntamd64 = 16422     ; %SystemRoot%\SysWOW64 on x64
+
+[SourceDisksFiles]
+i2chid.sys        = 1
+i2chid_helper.cpl = 1
+
+[SourceDisksNames]
+1 = %DiskName%,,,.
+
+; ---------------- Uninstall Cleanup ----------------
+
+[I2CHID_Inst.Remove]
+DelReg = I2CHID_DelReg
+
+[I2CHID_DelReg]
+HKR,,"EnableMultitouch"
+HKR,,"TapToClick"
+HKR,,"TwoFingerScroll"
+HKR,,"Sensitivity"
+HKR,,"ScrollScale"
+HKR,,"ZoomScale"
+HKR,,"TapTimeMs"
+HKR,,"TapDistance"
+HKR,,"PalmThreshold"
+HKR,,"SwipeScale"
+HKR,,"RotateScale"
+HKR,,"PollIntervalMs"
+HKR,,"DebugLevel"
+
+; ---------------- Strings ----------------
+
+[Strings]
+MfgName     = "UsefulAGKHelper"
+DeviceDesc  = "Generic HID-over-I2C Touchpad"
+ServiceDesc = "Generic HID-over-I2C Miniport Service"
+DiskName    = "Generic HID-over-I2C Driver Disk"
