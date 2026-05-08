@@ -93,86 +93,6 @@ GpioCtrl_Unload(
     UNREFERENCED_PARAMETER(DriverObject);
 }
 
-VOID
-GpioCtrl_Log(
-    IN PCCHAR Format,
-    ...
-    )
-{
-    CHAR                buffer[512];
-    va_list             args;
-    UNICODE_STRING      path;
-    OBJECT_ATTRIBUTES   oa;
-    IO_STATUS_BLOCK     iosb;
-    HANDLE              hFile;
-    NTSTATUS            status;
-    SIZE_T              len;
-
-    PAGED_CODE();
-
-    if (Format == NULL) {
-        return;
-    }
-
-    /* Format the string with ALL arguments */
-    va_start(args, Format);
-    _vsnprintf(buffer, sizeof(buffer) - 1, Format, args);
-    va_end(args);
-
-    buffer[sizeof(buffer) - 1] = '\0';
-
-    len = strlen(buffer);
-    if (len == 0) {
-        return;
-    }
-
-    /* Prepare log file path */
-    RtlInitUnicodeString(&path, L"\\SystemRoot\\System32\\gpioctrl.log");
-
-    InitializeObjectAttributes(
-        &oa,
-        &path,
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-        NULL,
-        NULL
-    );
-
-    /* Open or create the log file */
-    status = ZwCreateFile(
-                 &hFile,
-                 FILE_APPEND_DATA | SYNCHRONIZE,
-                 &oa,
-                 &iosb,
-                 NULL,
-                 FILE_ATTRIBUTE_NORMAL,
-                 0,
-                 FILE_OPEN_IF,
-                 FILE_SYNCHRONOUS_IO_NONALERT,
-                 NULL,
-                 0
-             );
-
-    if (!NT_SUCCESS(status)) {
-        return;
-    }
-
-    /* Write the formatted text */
-    ZwWriteFile(
-        hFile,
-        NULL,
-        NULL,
-        NULL,
-        &iosb,
-        (PVOID)buffer,
-        (ULONG)len,
-        NULL,
-        NULL
-    );
-
-    ZwClose(hFile);
-}
-
-
 NTSTATUS
 GpioCtrl_AddDevice(
     IN PDRIVER_OBJECT  DriverObject,
@@ -914,3 +834,89 @@ GpioCtrl_FlushIsrLog(
     KeReleaseSpinLock(&Ext->IsrLogLock, oldIrql);
 }
 
+// ----------------------------------------------------
+// Place GpioCtrl_Log() HERE — at the bottom of the file
+// ----------------------------------------------------
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, GpioCtrl_Log)
+#endif
+
+VOID
+GpioCtrl_Log(
+    IN PCCHAR Format,
+    ...
+    )
+{
+    CHAR                buffer[512];
+    va_list             args;
+    UNICODE_STRING      path;
+    OBJECT_ATTRIBUTES   oa;
+    IO_STATUS_BLOCK     iosb;
+    HANDLE              hFile;
+    NTSTATUS            status;
+    SIZE_T              len;
+
+    PAGED_CODE();
+
+    if (Format == NULL) {
+        return;
+    }
+
+    /* Format the string with ALL arguments */
+    va_start(args, Format);
+    _vsnprintf(buffer, sizeof(buffer) - 1, Format, args);
+    va_end(args);
+
+    buffer[sizeof(buffer) - 1] = '\0';
+
+    len = strlen(buffer);
+    if (len == 0) {
+        return;
+    }
+
+    /* Prepare log file path */
+    RtlInitUnicodeString(&path, L"\\SystemRoot\\System32\\gpioctrl.log");
+
+    InitializeObjectAttributes(
+        &oa,
+        &path,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
+    );
+
+    /* Open or create the log file */
+    status = ZwCreateFile(
+                 &hFile,
+                 FILE_APPEND_DATA | SYNCHRONIZE,
+                 &oa,
+                 &iosb,
+                 NULL,
+                 FILE_ATTRIBUTE_NORMAL,
+                 0,
+                 FILE_OPEN_IF,
+                 FILE_SYNCHRONOUS_IO_NONALERT,
+                 NULL,
+                 0
+             );
+
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
+
+    /* Write the formatted text */
+    ZwWriteFile(
+        hFile,
+        NULL,
+        NULL,
+        NULL,
+        &iosb,
+        (PVOID)buffer,
+        (ULONG)len,
+        NULL,
+        NULL
+    );
+
+    ZwClose(hFile);
+}
