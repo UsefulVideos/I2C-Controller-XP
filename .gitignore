@@ -1,11 +1,64 @@
-# Exclude build output folders
-bin/
+###############################################
+# WinDDK 7.1.0 build output
+###############################################
+
+# Build output directories
 obj/
+objchk_*/
 objfre_*/
 chkfre_*/
 
-# Exclude DDK log files
-buildfre_*.log
-buildchk_*.log
+# Binaries
+*.sys
+*.dll
+*.exe
+*.cpl
+
+# Intermediate objects
+*.obj
+*.res
+*.lib
+*.exp
+*.ilk
+
+# Logs
+*.log
 *.wrn
 *.err
+
+# Build description artifacts
+*.pdb
+*.idb
+*.ipch
+*.tlog
+*.cache
+
+###############################################
+# Visual Studio 2008 (VC9) build output
+###############################################
+
+# Build directories
+Debug/
+Release/
+
+# VS2008 project user files
+*.suo
+*.user
+*.ncb
+*.sdf
+*.opensdf
+
+# VS2008 intermediate files
+*.pch
+*.pdb
+*.idb
+*.manifest
+*.dep
+
+###############################################
+# Editor / tooling
+###############################################
+
+.vscode/
+*.bak
+*~

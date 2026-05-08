@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<DEFECTS>
-<OACRDEFECTCOUNT>1</OACRDEFECTCOUNT>
-<OACRERRORCOUNT>0</OACRERRORCOUNT>
-<DEFECT _seq="1"><SFA><LINE>202</LINE><COLUMN>16</COLUMN><FILENAME>i2cctrl_dump.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2cctrl\</FILEPATH></SFA><DEFECTCODE>28159</DEFECTCODE><DESCRIPTION>Consider using 'error logging or driver shutdown' instead of 'KeBugCheckEx'. Reason: Whenever possible, all kernel-mode components should log an error and continue to run, rather than calling KeBugCheckEx.</DESCRIPTION><FUNCTION>I2cCtrl_ForceCrash</FUNCTION><FUNCLINE>186</FUNCLINE><PATH/></DEFECT>
-</DEFECTS>

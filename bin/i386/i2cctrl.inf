@@ -1,0 +1,193 @@
+; i2cctrl.inf
+; Standard I2C Host Controller Bus Driver (i2cctrl.sys)
+; Windows XP / Server 2003 (x86/x64)
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %MfgName%
+DriverVer   = 12/01/2025,1.0.0.0
+
+[Manufacturer]
+%MfgName% = UsefulAGKHelper, NTx86, NTamd64
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+; =====================================================================
+;  HARDWARE IDs — XP/2003 SUPPORTED CONTROLLERS
+; =====================================================================
+
+[UsefulAGKHelper.NTx86]   ; Windows XP / 2003 x86
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3446
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3447
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D60
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D61
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D62
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D63
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D64
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D65
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A160
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A161
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A162
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A163
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E0
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E1
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E2
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E3
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31AC
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31AE
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B0
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B2
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B4
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31BA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DE8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DE9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DEA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DEB
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DC5
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DC6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A368
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A369
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A36A
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A36B
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02E8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02E9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02EA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02EB
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02C5
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02C6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06E8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06E9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EB
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMD0010
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMDI0010
+
+[UsefulAGKHelper.NTamd64] ; Windows XP x64 / Server 2003 x64
+; (same list repeated)
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3446
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3447
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D60
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D61
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D62
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D63
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D64
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D65
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A160
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A161
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A162
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A163
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E0
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E1
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E2
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A2E3
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31AC
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31AE
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B0
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B2
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B4
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31B8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_31BA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DE8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DE9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DEA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DEB
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DC5
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9DC6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A368
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A369
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A36A
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_A36B
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02E8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02E9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02EA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02EB
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02C5
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_02C6
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06E8
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06E9
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EA
+%I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EB
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMD0010
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMDI0010
+
+; =====================================================================
+;  INSTALL SECTION — BUS DRIVER
+; =====================================================================
+
+[I2CCTRL_Inst]
+CopyFiles = Drivers_Copy
+AddReg    = I2CCTRL_AddReg
+
+[I2CCTRL_Inst.Services]
+AddService = i2cctrl, 0x00000002, I2CCTRL_Service_Inst, I2CCTRL_EventLog_Inst
+
+[I2CCTRL_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\i2cctrl.sys
+ImagePath      = \SystemRoot\System32\drivers\i2cctrl.sys
+LoadOrderGroup = Base
+
+[I2CCTRL_EventLog_Inst]
+AddReg = I2CCTRL_EventLog_AddReg
+
+[I2CCTRL_EventLog_AddReg]
+HKR,,EventMessageFile,0x00020000,"%SystemRoot%\System32\IoLogMsg.dll;%SystemRoot%\System32\drivers\i2cctrl.sys"
+HKR,,TypesSupported,0x00010001,7
+
+[I2CCTRL_AddReg]
+HKR,,"Quirk.ResetWorkaround",0x00010001,1
+HKR,,"Quirk.ClockGate",0x00010001,1
+HKR,,"Quirk.NoDma",0x00010001,1
+HKR,,"Policy.BusSpeedHz",0x00010001,400000
+HKR,,"Policy.MaxRetries",0x00010001,3
+HKR,,"Policy.TransactionTimeoutMs",0x00010001,1000
+HKR,,"Policy.BackoffInitialUs",0x00010001,10
+HKR,,"Policy.BackoffMaxUs",0x00010001,5000
+HKR,,"Policy.UsePec",0x00010001,0
+HKR,,"Policy.Force10BitAddr",0x00010001,0
+
+; =====================================================================
+;  DEFAULT INSTALL (right‑click → Install)
+; =====================================================================
+
+[DefaultInstall]
+CopyFiles = Drivers_Copy
+AddReg    = I2CCTRL_AddReg
+
+[DefaultInstall.Services]
+AddService = i2cctrl, 0x00000002, I2CCTRL_Service_Inst, I2CCTRL_EventLog_Inst
+
+; =====================================================================
+;  FILE COPY + DISK INFO
+; =====================================================================
+
+[Drivers_Copy]
+i2cctrl.sys
+
+[DestinationDirs]
+Drivers_Copy = 12   ; %SystemRoot%\System32\drivers
+
+[SourceDisksFiles]
+i2cctrl.sys = 1
+
+[SourceDisksNames]
+1 = %DiskName%,,,.
+
+; =====================================================================
+;  STRINGS
+; =====================================================================
+
+[Strings]
+MfgName           = "UsefulAGKHelper"
+I2CControllerDesc = "Standard I²C Host Controller Bus Driver"
+ServiceDesc       = "Standard I2C Host Controller Service"
+DiskName          = "Standard I2C Host Controller Driver Disk"

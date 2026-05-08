@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<DEFECTS>
-<OACRDEFECTCOUNT>2</OACRDEFECTCOUNT>
-<OACRERRORCOUNT>0</OACRERRORCOUNT>
-<DEFECT _seq="1"><SFA><LINE>578</LINE><COLUMN>12</COLUMN><FILENAME>i2chid_hw_shim.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2chid\</FILEPATH></SFA><DEFECTCODE>28155</DEFECTCODE><DESCRIPTION>The function being assigned or passed should be a KSERVICE_ROUTINE function:  Add the declaration 'KSERVICE_ROUTINE I2CHID_InterruptServiceRoutine;' before the current first declaration of I2CHID_InterruptServiceRoutine.</DESCRIPTION><FUNCTION>I2cHw_ConnectInterrupt</FUNCTION><FUNCLINE>565</FUNCLINE><PATH/></DEFECT>
-<DEFECT _seq="2"><SFA><LINE>592</LINE><COLUMN>48</COLUMN><FILENAME>i2chid_hw_shim.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2chid\</FILEPATH></SFA><DEFECTCODE>28155</DEFECTCODE><DESCRIPTION>The function being assigned or passed should be a KDEFERRED_ROUTINE function:  Add the declaration 'KDEFERRED_ROUTINE I2cHw_PollDpc;' before the current first declaration of I2cHw_PollDpc.</DESCRIPTION><FUNCTION>I2cHw_ConnectInterrupt</FUNCTION><FUNCLINE>565</FUNCLINE><PATH/></DEFECT>
-</DEFECTS>

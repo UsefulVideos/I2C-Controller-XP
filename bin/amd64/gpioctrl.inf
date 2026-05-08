@@ -1,0 +1,58 @@
+[Version]
+Signature   = "$Windows NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+DriverVer   = 11/09/2025, 1.0.0.0
+
+[ControlFlags]
+ExcludeFromSelect = *
+
+[Manufacturer]
+%ManufacturerName% = Models, NTx86.5.1, NTx86.5.2, NTamd64.5.2
+
+; Windows XP 32-bit
+[Models.NTx86.5.1]
+%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+
+; Windows Server 2003 32-bit
+[Models.NTx86.5.2]
+%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+
+; Windows XP/2003 x64
+[Models.NTamd64.5.2]
+%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+
+[GpioCtrl_Install.NT]
+CopyFiles = GpioCtrl.CopyFiles
+AddReg    = GpioCtrl.AddReg
+
+[GpioCtrl_Install.NT.Services]
+AddService = gpioctrl, 0x00000002, GpioCtrl_Service
+
+[GpioCtrl_Service]
+DisplayName    = %GpioCtrl.ServiceName%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\gpioctrl.sys
+
+[GpioCtrl.CopyFiles]
+gpioctrl.sys
+
+[GpioCtrl.AddReg]
+; Optional policy defaults under HKLM\System\CurrentControlSet\Services\gpioctrl\Parameters
+HKR, Parameters, DebounceDefaultMs, 0x00010001, 10
+HKR, Parameters, CrashOnError,      0x00010001, 0
+
+[DestinationDirs]
+GpioCtrl.CopyFiles = 12
+
+[Strings]
+ManufacturerName      = UsefulAGKHelper
+GpioCtrl.DeviceDesc0  = GPIO Controller (INT34BB)
+GpioCtrl.DeviceDesc1  = GPIO Controller (INT3450)
+GpioCtrl.ServiceName  = GPIO Controller Driver
