@@ -1,0 +1,38 @@
+# -----------------------------------------------------------------------
+# SOURCES – WDK build file for UARTCTRL (WDM kernel driver)
+# -----------------------------------------------------------------------
+
+TARGETNAME=uartctrl
+TARGETTYPE=DRIVER
+TARGETPATH=..\bin
+
+# Compile options
+MSC_WARNING_LEVEL=/W4
+C_DEFINES=$(C_DEFINES) -DDBG
+
+# Include paths (add more if you keep headers in subfolders)
+INCLUDES=.;$(INCLUDES)
+
+# Resource file for version info
+RCFILE=uartctrl_version.rc
+
+# Source files
+SOURCES= \
+    uartctrl.c \
+    uartctrl_ext.c \
+    uartctrl_hw.c \
+    uartctrl_ioctl.c \
+    uartctrl_isr.c \
+    uartctrl_pnp.c \
+    uartctrl_power.c \
+    uartctrl_pt.c \
+    uartctrl_ringbuf.c
+
+# Link against kernel libs
+TARGETLIBS= \
+    $(SDK_LIB_PATH)\ntoskrnl.lib \
+    $(SDK_LIB_PATH)\hal.lib
+
+# Optional: binplace the INF alongside the SYS in the build output
+MISCFILES= \
+    uartctrl.inf

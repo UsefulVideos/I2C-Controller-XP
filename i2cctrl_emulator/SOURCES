@@ -1,0 +1,18 @@
+TARGETNAME=i2cctrl_emu
+TARGETTYPE=DRIVER
+TARGETPATH=..\bin
+
+INCLUDES=..\;.\include
+
+MSC_WARNING_LEVEL=/W3 /WX
+
+SOURCES= \
+    i2cctrl_emu.c \
+	i2cctrl_emu_acpi.c \
+    i2cctrl_emu_ops.c \
+    i2cctrl_emu_hid.c \
+    i2cctrl_emu_ioctl.c \
+    i2cctrl_emu_version.rc
+
+TARGETLIBS= \
+    $(DDK_LIB_PATH)\wdmsec.lib

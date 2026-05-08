@@ -1,0 +1,53 @@
+# -----------------------------------------------------------------------
+# i2chid driver build control file
+# -----------------------------------------------------------------------
+
+TARGETNAME=i2chid
+TARGETTYPE=DRIVER
+TARGETPATH=..\bin
+
+# Include search paths for shared headers and mouclass internal header
+INCLUDES=..\;D:\WinDDK\7600.16385.1\src\input\mouclass;..\i2cctrl
+
+# Warning level: treat warnings as errors
+MSC_WARNING_LEVEL=/W3 /WX
+
+# Source files
+SOURCES= \
+    i2chid.c \
+    i2chid_guids.c \
+    i2chid_acpi.c \
+    i2chid_hid.c \
+    i2chid_power.c \
+    i2chid_hw_shim.c \
+    i2chid_spbcx.c \
+    i2chid_pt.c \
+    i2chid_i2cctrl.c \
+    i2chid_dpi.c \
+    i2chid_version.rc
+
+# -----------------------------------------------------------------------
+# Libraries to link against and target OS version
+# -----------------------------------------------------------------------
+
+!IF "$(BUILDARCH)" == "x86"
+TARGETLIBS= \
+    $(DDK_LIB_PATH)\hidclass.lib \
+    $(DDK_LIB_PATH)\wdmsec.lib
+
+# Target OS: Windows XP (NT 5.1) by default
+TARGETVER=NTDDI_WINXP
+
+# If you want to build for Server 2003 (NT 5.2) on x86,
+# override TARGETVER on the build command line:
+#   BUILDARCH=x86 BUILDENV=fre TARGETVER=NTDDI_WS03
+!ENDIF
+
+!IF "$(BUILDARCH)" == "x64"
+TARGETLIBS= \
+    $(DDK_LIB_PATH)\hidclass.lib \
+    $(DDK_LIB_PATH)\wdmsec.lib
+
+# Target OS: Windows Server 2003 (NT 5.2)
+TARGETVER=NTDDI_WS03
+!ENDIF

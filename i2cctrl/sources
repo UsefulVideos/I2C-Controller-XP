@@ -1,0 +1,43 @@
+TARGETNAME=i2cctrl
+TARGETTYPE=DRIVER
+TARGETPATH=..\bin
+
+INCLUDES=..\
+
+MSC_WARNING_LEVEL=/W3 /WX
+
+C_DEFINES=$(C_DEFINES) -DUNICODE -D_UNICODE -DNTDDI_VERSION=NTDDI_WINXP
+
+USE_PDB=1
+
+# Force include shim header to suppress inline KeInitializeSpinLock
+USER_C_FLAGS=/FIi2cctrl_spinlock_fix.h
+
+TARGETLIBS= \
+    $(DDK_LIB_PATH)\ntoskrnl.lib \
+    $(DDK_LIB_PATH)\hal.lib
+
+SOURCES= \
+    i2cctrl.c \
+	i2cctrl_zw.c \
+    i2cctrl_backport.c \
+    i2cctrl_bsod.c \
+    i2cctrl_detect.c \
+    i2cctrl_extra.c \
+    i2cctrl_dump.c \
+    i2cctrl_etw.c \
+    i2cctrl_fdo.c \
+    i2cctrl_guid.c \
+    i2cctrl_i2c.c \
+    i2cctrl_isr.c \
+    i2cctrl_pdo.c \
+    i2cctrl_queue.c \
+    i2cctrl_smbus.c \
+    i2cctrl_spbcx.c \
+    i2cctrl_acpiex.c \
+    i2cctrl_i2chid.c \
+    i2cctrl_dpi.c \
+    i2cctrl_wdm_compat.c \
+	i2cctrl_hal_intel.c \
+    i2cctrl_version.rc
+

@@ -1,0 +1,11 @@
+# Exclude build output folders
+bin/
+obj/
+objfre_*/
+chkfre_*/
+
+# Exclude DDK log files
+buildfre_*.log
+buildchk_*.log
+*.wrn
+*.err

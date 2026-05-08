@@ -1,0 +1,44 @@
+#include <winver.h>
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version Information
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DRV
+ FILESUBTYPE VFT2_DRV_SYSTEM
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"    // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      "UsefulAGKHelper\0"
+            VALUE "FileDescription",  "GPIO Controller Driver\0"
+            VALUE "FileVersion",      "1.0.0.0\0"
+            VALUE "InternalName",     "gpioctrl.sys\0"
+            VALUE "OriginalFilename", "gpioctrl.sys\0"
+            VALUE "ProductName",      "GPIO Controller Driver\0"
+            VALUE "ProductVersion",   "1.0.0.0\0"
+            VALUE "LegalCopyright",   "Copyright (C) 2025 UsefulAGKHelper\0"
+            VALUE "LegalTrademarks",  "UsefulAGKHelper Trademark\0"
+            VALUE "Comments",         "Feature-complete GPIO controller driver for XP/2003\0"
+            VALUE "PrivateBuild",     "Build with debug instrumentation\0"
+            VALUE "SpecialBuild",     "Release candidate\0"
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

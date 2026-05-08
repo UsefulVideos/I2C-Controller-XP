@@ -1,0 +1,14 @@
+# dirs
+# Root build file for the I2C controller + HID-over-I2C drivers
+
+TARGETPATH=bin
+
+# Restrict build environments to XP (wxp) and Server 2003 (wnet)
+BUILDENV=wxp wnet
+
+DIRS = \
+    gpioctrl           \
+	uartctrl           \
+    i2cctrl            \
+	i2cctrl_emulator   \
+    i2chid

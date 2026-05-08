@@ -1,0 +1,145 @@
+{
+    "configurations": [
+        {
+            "name": "WinDDK XP 5.1 x86 Debug",
+            "includePath": [
+                "D:/WinDDK/7600.16385.1/inc/api",
+                "D:/WinDDK/7600.16385.1/inc/ddk",
+                "D:/WinDDK/7600.16385.1/inc/crt",
+                "D:/Kituri_Programe/I2C-Controller-XP/",
+                "D:/Kituri_Programe/I2C-Controller-XP/gpioctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/uartctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl_emulator",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid_helper"
+            ],
+            "defines": [
+                "_X86_",
+                "DBG=1",
+                "_WIN32_WINNT=0x0501",
+                "WINVER=0x0501",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32_LEAN_AND_MEAN",
+                "NTDDI_VERSION=0x05010300"
+            ],
+            "compilerPath": "cl.exe",
+            "intelliSenseMode": "windows-msvc-x86",
+            "cStandard": "c89",
+            "cppStandard": "c++98",
+            "compilerArgs": [
+                "/Od",
+                "/Zi",
+                "/std:c89",
+                "/std:c++98"
+            ]
+        },
+        {
+            "name": "WinDDK XP 5.1 x86 Free",
+            "includePath": [
+                "D:/WinDDK/7600.16385.1/inc/api",
+                "D:/WinDDK/7600.16385.1/inc/ddk",
+                "D:/WinDDK/7600.16385.1/inc/crt",
+                "D:/Kituri_Programe/I2C-Controller-XP/",
+                "D:/Kituri_Programe/I2C-Controller-XP/gpioctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/uartctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl_emulator",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid_helper"
+            ],
+            "defines": [
+                "_X86_",
+                "DBG=0",
+                "_WIN32_WINNT=0x0501",
+                "WINVER=0x0501",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32_LEAN_AND_MEAN",
+                "NTDDI_VERSION=0x05010300"
+            ],
+            "compilerPath": "cl.exe",
+            "intelliSenseMode": "windows-msvc-x86",
+            "cStandard": "c89",
+            "cppStandard": "c++98",
+            "compilerArgs": [
+                "/O2",
+                "/DNDEBUG",
+                "/std:c89",
+                "/std:c++98"
+            ]
+        },
+        {
+            "name": "WinDDK XP/2003 5.2 amd64 Debug",
+            "includePath": [
+                "D:/WinDDK/7600.16385.1/inc/api",
+                "D:/WinDDK/7600.16385.1/inc/ddk",
+                "D:/WinDDK/7600.16385.1/inc/crt",
+                "D:/Kituri_Programe/I2C-Controller-XP/",
+                "D:/Kituri_Programe/I2C-Controller-XP/gpioctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/uartctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl_emulator",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid_helper"
+            ],
+            "defines": [
+                "_AMD64_",
+                "DBG=1",
+                "_WIN32_WINNT=0x0502",
+                "WINVER=0x0502",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32_LEAN_AND_MEAN",
+                "NTDDI_VERSION=0x05020000"
+            ],
+            "compilerPath": "cl.exe",
+            "intelliSenseMode": "windows-msvc-x64",
+            "cStandard": "c89",
+            "cppStandard": "c++98",
+            "compilerArgs": [
+                "/Od",
+                "/Zi",
+                "/std:c89",
+                "/std:c++98"
+            ]
+        },
+        {
+            "name": "WinDDK XP/2003 5.2 amd64 Free",
+            "includePath": [
+                "D:/WinDDK/7600.16385.1/inc/api",
+                "D:/WinDDK/7600.16385.1/inc/ddk",
+                "D:/WinDDK/7600.16385.1/inc/crt",
+                "D:/Kituri_Programe/I2C-Controller-XP/",
+                "D:/Kituri_Programe/I2C-Controller-XP/gpioctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/uartctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2cctrl_emulator",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid",
+                "D:/Kituri_Programe/I2C-Controller-XP/i2chid_helper"
+            ],
+            "defines": [
+                "_AMD64_",
+                "DBG=0",
+                "_WIN32_WINNT=0x0502",
+                "WINVER=0x0502",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32_LEAN_AND_MEAN",
+                "NTDDI_VERSION=0x05020000"
+            ],
+            "compilerPath": "cl.exe",
+            "intelliSenseMode": "windows-msvc-x64",
+            "cStandard": "c89",
+            "cppStandard": "c++98",
+            "compilerArgs": [
+                "/O2",
+                "/DNDEBUG",
+                "/std:c89",
+                "/std:c++98"
+            ]
+        }
+    ],
+    "version": 4
+}
