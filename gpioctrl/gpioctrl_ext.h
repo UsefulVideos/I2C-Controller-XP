@@ -16,6 +16,7 @@
 #define _GPIOCTRL_EXT_H_
 
 #include <ntddk.h>
+#include "gpioctrl_quirks.h"
 
 /* ---------------------------------------------------------------------------
    Device and IOCTL definitions
@@ -222,6 +223,33 @@ typedef struct _GPIOCTRL_GLOBAL {
 
 /* Global instance */
 extern GPIOCTRL_GLOBAL g_GpioCtrlGlobal;
+
+//
+// Lookup table entry for GPIO controllers
+//
+typedef struct _GPIOCTRL_DEVICE_ID {
+    PCWSTR PciId;              /* Hardware ID string to match */
+
+    /* GPIO functional register offsets (BAR0) */
+    ULONG  ControlOffset;      /* GPIO control register */
+    ULONG  StatusOffset;       /* GPIO status register */
+    ULONG  DataOffset;         /* GPIO data register */
+    ULONG  MiscOffset;         /* Timing / misc registers */
+
+    /* LPSS power-on register offsets (BAR2) */
+    ULONG  LpssClkGateOffset;  /* Clock gate control */
+    ULONG  LpssResetOffset;    /* Reset control */
+    ULONG  LpssFuncClkOffset;  /* Functional clock enable */
+    ULONG  LpssMiscOffset;     /* Misc / status */
+
+    ULONG  Quirks;             /* Functional quirks bitmask */
+    ULONG  BsodQuirks;         /* BSOD-tweak-workarounds bitmask */
+} GPIOCTRL_DEVICE_ID, *PGPIOCTRL_DEVICE_ID;
+
+
+/* Extern declarations */
+extern const GPIOCTRL_DEVICE_ID g_GpioControllers[];
+extern const ULONG g_GpioControllersCount;
 
 
 #endif /* _GPIOCTRL_EXT_H_ */

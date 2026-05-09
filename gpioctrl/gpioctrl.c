@@ -80,6 +80,82 @@ DriverEntry(
     return STATUS_SUCCESS;
 }
 
+//
+// Table of supported GPIO controllers (explicit ACPI/PCI devices)
+// Match against full HWID substrings only
+//
+const GPIOCTRL_DEVICE_ID g_GpioControllers[] = {
+
+    /* ACPI-based GPIO controllers */
+    { L"ACPI\\INT3450",
+      0x00,0x04,0x08,0x0C,       /* BAR0 GPIO registers */
+      0,0,0,0,                   /* No LPSS BAR2 */
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\INT3451",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_FORCE_PIO },
+
+    { L"ACPI\\AMD0030",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+
+    /* PCI-based Intel GPIO controllers WITH LPSS BAR2 */
+    { L"PCI\\VEN_8086&DEV_9D35",
+      0x00,0x04,0x08,0x0C,       /* BAR0 GPIO MMIO */
+      0x200,0x204,0x208,0x20C,   /* LPSS BAR2 */
+      QUIRK_NEEDS_RESET_WORKAROUND, BSOD_EXTRA_RESET },
+
+    { L"PCI\\VEN_8086&DEV_9D36",
+      0x10,0x14,0x18,0x1C,
+      0x200,0x204,0x208,0x20C,
+      QUIRK_BROKEN_CLOCK_GATE, BSOD_MASK_INTERRUPTS },
+
+    { L"PCI\\VEN_8086&DEV_9D37",
+      0x20,0x24,0x28,0x2C,
+      0x200,0x204,0x208,0x20C,
+      QUIRK_NO_DMA_SUPPORT, BSOD_FORCE_PIO },
+
+
+    /* Legacy PCI controllers requiring ACPI 1.0b fallback */
+    { L"PCI\\VEN_8086&DEV_A123",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI10, BSOD_DELAY_INIT },
+
+    { L"PCI\\VEN_8086&DEV_A124",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI10, BSOD_DELAY_INIT },
+
+
+    /* Generic Intel GPIO controllers (NO LPSS unless proven otherwise) */
+    { L"PCI\\VEN_8086&DEV_A2F0",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_NONE, BSOD_NONE },
+
+    { L"PCI\\VEN_8086&DEV_A2F1",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_NONE, BSOD_NONE },
+
+    { L"PCI\\VEN_8086&DEV_A2F2",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_NONE, BSOD_NONE },
+
+    { L"PCI\\VEN_8086&DEV_A2F3",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_NONE, BSOD_NONE }
+};
+
+const ULONG g_GpioControllersCount =
+    sizeof(g_GpioControllers) / sizeof(g_GpioControllers[0]);
 
 
 /* ---------------------------------------------------------------------------
