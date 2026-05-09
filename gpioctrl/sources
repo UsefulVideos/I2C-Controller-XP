@@ -7,6 +7,10 @@ TARGETTYPE=DRIVER
 # Output to project bin folder by platform (fre/CHK handled by build)
 TARGETPATH=..\bin
 
+# Output paths for free (fre) and checked (chk) builds
+_NT_TARGET_PATH=..\bin
+_NT_TARGET_PATH_DBG=..\bin-debug
+
 # Use WDM headers; no KMDF
 USE_NATIVE_ENVIRONMENT=1
 
@@ -24,7 +28,7 @@ SOURCES= \
     gpioctrl_io.c   \
     gpioctrl_isr.c  \
     gpioctrl_reg.c  \
-	gpioctrl_version.rc
+    gpioctrl_version.rc
 
 # Import libs (XP/2003 WDM)
 TARGETLIBS= \
