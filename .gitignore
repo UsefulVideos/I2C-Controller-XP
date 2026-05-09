@@ -8,13 +8,7 @@ objchk_*/
 objfre_*/
 chkfre_*/
 
-# Binaries
-*.sys
-*.dll
-*.exe
-*.cpl
-
-# Intermediate objects
+# Intermediate objects (safe to ignore)
 *.obj
 *.res
 *.lib
@@ -27,7 +21,6 @@ chkfre_*/
 *.err
 
 # Build description artifacts
-*.pdb
 *.idb
 *.ipch
 *.tlog
@@ -50,8 +43,6 @@ Release/
 
 # VS2008 intermediate files
 *.pch
-*.pdb
-*.idb
 *.manifest
 *.dep
 
