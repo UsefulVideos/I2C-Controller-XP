@@ -4,12 +4,12 @@
 TARGETNAME=gpioctrl
 TARGETTYPE=DRIVER
 
-# Output to project bin folder by platform (fre/CHK handled by build)
+# Evaluates the build suffix appended by the WDK environment
+!if "$(BUILD_ALT_DIR)" == "chk" || "$(BUILD_ALT_DIR)" == "_chk" || "$(FREEBUILD)" == "0"
+TARGETPATH=..\bin-debug
+!else
 TARGETPATH=..\bin
-
-# Output paths for free (fre) and checked (chk) builds
-_NT_TARGET_PATH=..\bin
-_NT_TARGET_PATH_DBG=..\bin-debug
+!endif
 
 # Use WDM headers; no KMDF
 USE_NATIVE_ENVIRONMENT=1

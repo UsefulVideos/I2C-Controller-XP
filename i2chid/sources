@@ -4,10 +4,12 @@
 
 TARGETNAME=i2chid
 TARGETTYPE=DRIVER
+# Evaluates the build suffix appended by the WDK environment
+!if "$(BUILD_ALT_DIR)" == "chk" || "$(BUILD_ALT_DIR)" == "_chk" || "$(FREEBUILD)" == "0"
+TARGETPATH=..\bin-debug
+!else
 TARGETPATH=..\bin
-# Output paths for free (fre) and checked (chk) builds
-_NT_TARGET_PATH=..\bin
-_NT_TARGET_PATH_DBG=..\bin-debug
+!endif
 # Include search paths for shared headers and mouclass internal header
 INCLUDES=..\;D:\WinDDK\7600.16385.1\src\input\mouclass;..\i2cctrl
 
