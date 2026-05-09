@@ -317,8 +317,10 @@ GpioCtrl_DispatchIoctl(
 }
 
 /* ---------------------------------------------------------------------------
-   START device: pass down, parse resources, map MMIO, map PMC, enable LPSS
-   power domain, enable LPSS clock/reset, connect interrupt, load policy
+   START device: pass down, parse resources, map MMIO, map PMC (LPSS only),
+   enable LPSS power domain, enable LPSS clock/reset, connect interrupt,
+   load policy. If no PMC window is present, treat as Cannon Lake–style GPIO
+   and skip LPSS‑specific power/clock sequences.
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StartDevice(
@@ -332,6 +334,7 @@ GpioCtrl_StartDevice(
     PCM_RESOURCE_LIST resRaw;
     PIO_STACK_LOCATION isl;
     ULONG i, j;
+    BOOLEAN hasPmcWindow = FALSE;
 
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
@@ -372,23 +375,23 @@ GpioCtrl_StartDevice(
 
                 case CmResourceTypeMemory:
 
-                    /* GPIO MMIO */
+                    /* GPIO MMIO (4 KB window) */
                     if (desc->u.Memory.Length == 0x1000) {
-                        ext->MmioBasePa = desc->u.Memory.Start;
-                        ext->MmioLength = desc->u.Memory.Length;
-                        GpioCtrl_Log("START: GPIO MMIO: PA=%08X Len=%u\n",
-                                     ext->MmioBasePa.LowPart,
-                                     ext->MmioLength);
-                    }
-
-                    /* PMC MMIO (LPSS power controller) */
-                    if (desc->u.Memory.Length == 0x1000 &&
-                        (desc->u.Memory.Start.LowPart & 0xFFF00000) == 0xFE000000) {
-                        ext->PmcBasePa = desc->u.Memory.Start;
-                        ext->PmcLength = desc->u.Memory.Length;
-                        GpioCtrl_Log("START: PMC MMIO: PA=%08X Len=%u\n",
-                                     ext->PmcBasePa.LowPart,
-                                     ext->PmcLength);
+                        /* PMC MMIO (LPSS power controller) lives in 0xFE000000 range */
+                        if ((desc->u.Memory.Start.LowPart & 0xFFF00000) == 0xFE000000) {
+                            ext->PmcBasePa = desc->u.Memory.Start;
+                            ext->PmcLength = desc->u.Memory.Length;
+                            hasPmcWindow   = TRUE;
+                            GpioCtrl_Log("START: PMC MMIO: PA=%08X Len=%u\n",
+                                         ext->PmcBasePa.LowPart,
+                                         ext->PmcLength);
+                        } else {
+                            ext->MmioBasePa = desc->u.Memory.Start;
+                            ext->MmioLength = desc->u.Memory.Length;
+                            GpioCtrl_Log("START: GPIO MMIO: PA=%08X Len=%u\n",
+                                         ext->MmioBasePa.LowPart,
+                                         ext->MmioLength);
+                        }
                     }
                     break;
 
@@ -440,7 +443,12 @@ GpioCtrl_StartDevice(
         }
     }
 
-    /* Enable LPSS power domain if PMC is mapped */
+    if (!hasPmcWindow && ext->MmioBase != NULL) {
+        /* No PMC window: treat as Cannon Lake / modern PCH GPIO and skip LPSS power/clock */
+        GpioCtrl_Log("START: No PMC window detected – assuming Cannon Lake‑style GPIO, skipping LPSS power/clock\n");
+    }
+
+    /* Enable LPSS power domain if PMC is mapped (LPSS only) */
     if (ext->PmcBase != NULL) {
         GpioCtrl_Log("START: Enabling LPSS power domain\n");
 
@@ -473,9 +481,9 @@ GpioCtrl_StartDevice(
     }
 
     /* -----------------------------------------------------------------------
-       LPSS CLOCK + RESET ENABLE SEQUENCE
+       LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present)
        ----------------------------------------------------------------------- */
-    if (ext->MmioBase != NULL) {
+    if (ext->MmioBase != NULL && hasPmcWindow) {
         ULONG val, timeout;
 
         GpioCtrl_Log("START: Enabling LPSS clock + reset\n");
@@ -581,7 +589,7 @@ GpioCtrl_StartDevice(
 }
 
 /* ---------------------------------------------------------------------------
-   STOP device: disconnect interrupt, unmap MMIO (with logging)
+   STOP device: disconnect interrupt, unmap MMIO/PMC safely (LPSS or CNL)
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StopDevice(
@@ -608,9 +616,9 @@ GpioCtrl_StopDevice(
         GpioCtrl_Log("STOP: Interrupt disconnected\n");
     }
 
-    /* Unmap MMIO */
+    /* Unmap GPIO MMIO */
     if (ext->MmioBase != NULL) {
-        GpioCtrl_Log("STOP: Unmapping MMIO at %p (Len=%u)\n",
+        GpioCtrl_Log("STOP: Unmapping GPIO MMIO at %p (Len=%u)\n",
                      ext->MmioBase,
                      ext->MmioLength);
 
@@ -619,7 +627,21 @@ GpioCtrl_StopDevice(
         ext->MmioBase   = NULL;
         ext->MmioLength = 0;
 
-        GpioCtrl_Log("STOP: MMIO unmapped\n");
+        GpioCtrl_Log("STOP: GPIO MMIO unmapped\n");
+    }
+
+    /* Unmap PMC MMIO (LPSS only — Cannon Lake has no PMC window) */
+    if (ext->PmcBase != NULL) {
+        GpioCtrl_Log("STOP: Unmapping PMC MMIO at %p (Len=%u)\n",
+                     ext->PmcBase,
+                     ext->PmcLength);
+
+        MmUnmapIoSpace(ext->PmcBase, ext->PmcLength);
+
+        ext->PmcBase   = NULL;
+        ext->PmcLength = 0;
+
+        GpioCtrl_Log("STOP: PMC MMIO unmapped\n");
     }
 
     ext->Started = FALSE;

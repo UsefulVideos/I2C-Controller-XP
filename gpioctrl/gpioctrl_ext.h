@@ -84,6 +84,13 @@ typedef struct _GPIOCTRL_PDO_EXT {
     ULONG           PinIndex;        /* if exposing per-pin PDOs; otherwise unused */
 } GPIOCTRL_PDO_EXT, *PGPIOCTRL_PDO_EXT;
 
+typedef enum _GPIOCTRL_CONTROLLER_TYPE {
+    GpioctrlControllerUnknown = 0,
+    GpioctrlControllerLpss,
+    GpioctrlControllerCannonLake
+} GPIOCTRL_CONTROLLER_TYPE;
+
+
 typedef struct _GPIOCTRL_FDO_EXT {
     PDEVICE_OBJECT     Self;
     PDEVICE_OBJECT     LowerDevice;
@@ -124,16 +131,20 @@ typedef struct _GPIOCTRL_FDO_EXT {
     /* Diagnostics */
     ULONG              ErrorCount;
     ULONG              Signature;
-	
+
     // ISR/DPC circular log buffer
-    CHAR  IsrLog[GPIO_LOG_SIZE][64];
-    ULONG IsrLogHead;
-    ULONG IsrLogTail;
-    KSPIN_LOCK IsrLogLock;
-	// LPSS power domain control
-	PHYSICAL_ADDRESS PmcBasePa;
-	ULONG            PmcLength;
-	PUCHAR           PmcBase;
+    CHAR               IsrLog[GPIO_LOG_SIZE][64];
+    ULONG              IsrLogHead;
+    ULONG              IsrLogTail;
+    KSPIN_LOCK         IsrLogLock;
+
+    // LPSS power domain control
+    PHYSICAL_ADDRESS   PmcBasePa;
+    ULONG              PmcLength;
+    PUCHAR             PmcBase;
+
+    // New: controller classification
+    GPIOCTRL_CONTROLLER_TYPE ControllerType;
 
 } GPIOCTRL_FDO_EXT, *PGPIOCTRL_FDO_EXT;
 

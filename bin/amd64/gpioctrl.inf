@@ -11,20 +11,44 @@ ExcludeFromSelect = *
 [Manufacturer]
 %ManufacturerName% = Models, NTx86.5.1, NTx86.5.2, NTamd64.5.2
 
+; ============================================================
 ; Windows XP 32-bit
+; ============================================================
 [Models.NTx86.5.1]
-%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
-%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3451
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3452
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B2
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B3
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMD0030
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMDI0030
 
+; ============================================================
 ; Windows Server 2003 32-bit
+; ============================================================
 [Models.NTx86.5.2]
-%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
-%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3451
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3452
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B2
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B3
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMD0030
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMDI0030
 
+; ============================================================
 ; Windows XP/2003 x64
+; ============================================================
 [Models.NTamd64.5.2]
-%GpioCtrl.DeviceDesc0% = GpioCtrl_Install, ACPI\INT34BB
-%GpioCtrl.DeviceDesc1% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT34BB
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3450
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3451
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT3452
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B2
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\INT33B3
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMD0030
+%GpioCtrl.DeviceDesc% = GpioCtrl_Install, ACPI\AMDI0030
 
 [GpioCtrl_Install.NT]
 CopyFiles = GpioCtrl.CopyFiles
@@ -44,7 +68,6 @@ ServiceBinary  = %12%\gpioctrl.sys
 gpioctrl.sys
 
 [GpioCtrl.AddReg]
-; Optional policy defaults under HKLM\System\CurrentControlSet\Services\gpioctrl\Parameters
 HKR, Parameters, DebounceDefaultMs, 0x00010001, 10
 HKR, Parameters, CrashOnError,      0x00010001, 0
 
@@ -53,6 +76,5 @@ GpioCtrl.CopyFiles = 12
 
 [Strings]
 ManufacturerName      = UsefulAGKHelper
-GpioCtrl.DeviceDesc0  = GPIO Controller (INT34BB)
-GpioCtrl.DeviceDesc1  = GPIO Controller (INT3450)
+GpioCtrl.DeviceDesc   = GPIO Controller
 GpioCtrl.ServiceName  = GPIO Controller Driver
