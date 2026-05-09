@@ -5,7 +5,9 @@
 TARGETNAME=uartctrl
 TARGETTYPE=DRIVER
 TARGETPATH=..\bin
-
+# Output paths for free (fre) and checked (chk) builds
+_NT_TARGET_PATH=..\bin
+_NT_TARGET_PATH_DBG=..\bin-debug
 # Compile options
 MSC_WARNING_LEVEL=/W4
 C_DEFINES=$(C_DEFINES) -DDBG

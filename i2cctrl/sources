@@ -1,7 +1,9 @@
 TARGETNAME=i2cctrl
 TARGETTYPE=DRIVER
 TARGETPATH=..\bin
-
+# Output paths for free (fre) and checked (chk) builds
+_NT_TARGET_PATH=..\bin
+_NT_TARGET_PATH_DBG=..\bin-debug
 INCLUDES=..\
 
 MSC_WARNING_LEVEL=/W3 /WX

@@ -5,7 +5,9 @@
 TARGETNAME=i2chid
 TARGETTYPE=DRIVER
 TARGETPATH=..\bin
-
+# Output paths for free (fre) and checked (chk) builds
+_NT_TARGET_PATH=..\bin
+_NT_TARGET_PATH_DBG=..\bin-debug
 # Include search paths for shared headers and mouclass internal header
 INCLUDES=..\;D:\WinDDK\7600.16385.1\src\input\mouclass;..\i2cctrl
 
