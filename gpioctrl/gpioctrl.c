@@ -392,12 +392,6 @@ GpioCtrl_DispatchIoctl(
     return status;
 }
 
-/* ---------------------------------------------------------------------------
-   START device: pass down, parse resources, map MMIO, map PMC (LPSS only),
-   enable LPSS power domain, enable LPSS clock/reset, connect interrupt,
-   load policy. If no PMC window is present, treat as Cannon Lake–style GPIO
-   and skip LPSS‑specific power/clock sequences.
-   --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StartDevice(
     IN PDEVICE_OBJECT DeviceObject,
@@ -410,14 +404,24 @@ GpioCtrl_StartDevice(
     PCM_RESOURCE_LIST resRaw;
     PIO_STACK_LOCATION isl;
     ULONG i, j;
-    BOOLEAN hasPmcWindow = FALSE;
+    BOOLEAN hasPmcWindow;
+    const GPIOCTRL_DEVICE_ID* ctrlProfile;
+    WCHAR hwidBuf[256];
+    UNICODE_STRING hwid;
 
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
+    hasPmcWindow = FALSE;
+    ctrlProfile  = NULL;
+
+    RtlZeroMemory(hwidBuf, sizeof(hwidBuf));
+
     GpioCtrl_Log("START: Entered for device %p\n", DeviceObject);
 
-    /* Forward START_DEVICE to lower driver */
+    //
+    // Forward START_DEVICE to lower driver
+    //
     IoCopyCurrentIrpStackLocationToNext(Irp);
     status = IoCallDriver(ext->LowerDevice, Irp);
 
@@ -427,6 +431,59 @@ GpioCtrl_StartDevice(
     }
 
     GpioCtrl_Log("START: Lower driver completed successfully\n");
+
+    //
+    // Query Hardware ID and match against g_GpioControllers[]
+    //
+    RtlInitEmptyUnicodeString(&hwid, hwidBuf, sizeof(hwidBuf));
+
+    status = IoGetDeviceProperty(
+                 ext->Pdo,                      /* physical device object */
+                 DevicePropertyHardwareID,
+                 sizeof(hwidBuf),
+                 hwidBuf,
+                 &i);                           /* i reused as length */
+
+    if (NT_SUCCESS(status)) {
+        const WCHAR* p;
+
+        /* hwidBuf is MULTI_SZ */
+        p = hwidBuf;
+
+        while (*p != UNICODE_NULL) {
+            UNICODE_STRING oneId;
+
+            RtlInitUnicodeString(&oneId, p);
+
+            for (i = 0; i < g_GpioControllersCount; i++) {
+                /* simple substring match: does this HWID contain our pattern? */
+                if (wcsstr(p, g_GpioControllers[i].PciId) != NULL) {
+                    ctrlProfile = &g_GpioControllers[i];
+                    break;
+                }
+            }
+
+            if (ctrlProfile != NULL) {
+                break;
+            }
+
+            /* advance to next string in MULTI_SZ */
+            p += wcslen(p) + 1;
+        }
+    } else {
+        GpioCtrl_Log("START: IoGetDeviceProperty(HardwareID) failed, status=0x%08X\n", status);
+    }
+
+    if (ctrlProfile != NULL) {
+        ext->ControllerProfile = ctrlProfile;
+        GpioCtrl_Log("START: Matched controller profile: %ws (quirks=0x%X, bsod=0x%X)\n",
+                     ctrlProfile->PciId,
+                     ctrlProfile->Quirks,
+                     ctrlProfile->BsodQuirks);
+    } else {
+        ext->ControllerProfile = NULL;
+        GpioCtrl_Log("START: No specific controller profile matched – using defaults\n");
+    }
 
     resTranslated = isl->Parameters.StartDevice.AllocatedResourcesTranslated;
     resRaw        = isl->Parameters.StartDevice.AllocatedResources;
@@ -521,46 +578,49 @@ GpioCtrl_StartDevice(
 
     if (!hasPmcWindow && ext->MmioBase != NULL) {
         /* No PMC window: treat as Cannon Lake / modern PCH GPIO and skip LPSS power/clock */
+        ext->ControllerType = GpioctrlControllerCannonLake;
         GpioCtrl_Log("START: No PMC window detected – assuming Cannon Lake‑style GPIO, skipping LPSS power/clock\n");
+    } else if (hasPmcWindow) {
+        ext->ControllerType = GpioctrlControllerLpss;
+    } else {
+        ext->ControllerType = GpioctrlControllerUnknown;
     }
 
     /* Enable LPSS power domain if PMC is mapped (LPSS only) */
     if (ext->PmcBase != NULL) {
+        ULONG val;
+        ULONG timeout;
+
         GpioCtrl_Log("START: Enabling LPSS power domain\n");
 
-        {
-            ULONG val, timeout;
+        /* Clear PG bit */
+        val = *(volatile ULONG*)(ext->PmcBase + 0x44);
+        val &= ~0x1;
+        *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
 
-            /* Clear PG bit */
-            val = *(volatile ULONG*)(ext->PmcBase + 0x44);
-            val &= ~0x1;
-            *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
-
-            /* Wait for PG_STATUS to clear */
-            timeout = 1000;
-            while (timeout--) {
-                val = *(volatile ULONG*)(ext->PmcBase + 0x48);
-                if ((val & 0x1) == 0) {
-                    GpioCtrl_Log("START: LPSS power domain ON\n");
-                    break;
-                }
-                KeStallExecutionProcessor(10);
+        /* Wait for PG_STATUS to clear */
+        timeout = 1000;
+        while (timeout--) {
+            val = *(volatile ULONG*)(ext->PmcBase + 0x48);
+            if ((val & 0x1) == 0) {
+                GpioCtrl_Log("START: LPSS power domain ON\n");
+                break;
             }
-
-            if (timeout == 0) {
-                GpioCtrl_Log("START: ERROR – LPSS power domain did not turn on\n");
-            }
-
-            /* Clear ACK */
-            *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
+            KeStallExecutionProcessor(10);
         }
+
+        if (timeout == 0) {
+            GpioCtrl_Log("START: ERROR – LPSS power domain did not turn on\n");
+        }
+
+        /* Clear ACK */
+        *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
     }
 
-    /* -----------------------------------------------------------------------
-       LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present)
-       ----------------------------------------------------------------------- */
+    /* LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present) */
     if (ext->MmioBase != NULL && hasPmcWindow) {
-        ULONG val, timeout;
+        ULONG val;
+        ULONG timeout;
 
         GpioCtrl_Log("START: Enabling LPSS clock + reset\n");
 
