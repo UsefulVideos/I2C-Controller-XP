@@ -43,6 +43,8 @@
 #define REG_INT_TYPE_OFFSET   0x018  /* R/W: 0=level, 1=edge */
 #define REG_INT_POL_OFFSET    0x01C  /* R/W: 0=low/falling, 1=high/rising */
 
+#define GPIO_LOG_SIZE 256
+
 /* ---------------------------------------------------------------------------
    IOCTL payload structures (METHOD_BUFFERED)
    --------------------------------------------------------------------------- */
@@ -71,8 +73,6 @@ typedef struct _GPIO_CONFIGURE_PIN {
     ULONG IntPol;    /* 0=low/falling, 1=high/rising */
 } GPIO_CONFIGURE_PIN, *PGPIO_CONFIGURE_PIN;
 
-#define GPIO_LOG_SIZE 256
-
 /* ---------------------------------------------------------------------------
    Device extensions
    --------------------------------------------------------------------------- */
@@ -91,10 +91,36 @@ typedef enum _GPIOCTRL_CONTROLLER_TYPE {
     GpioctrlControllerCannonLake
 } GPIOCTRL_CONTROLLER_TYPE;
 
+//
+// Lookup table entry for GPIO controllers
+//
+typedef struct _GPIOCTRL_DEVICE_ID {
+    PCWSTR PciId;              /* Hardware ID string to match */
+
+    /* GPIO functional register offsets (BAR0) */
+    ULONG  ControlOffset;      /* GPIO control register */
+    ULONG  StatusOffset;       /* GPIO status register */
+    ULONG  DataOffset;         /* GPIO data register */
+    ULONG  MiscOffset;         /* Timing / misc registers */
+
+    /* LPSS power-on register offsets (BAR2) */
+    ULONG  LpssClkGateOffset;  /* Clock gate control */
+    ULONG  LpssResetOffset;    /* Reset control */
+    ULONG  LpssFuncClkOffset;  /* Functional clock enable */
+    ULONG  LpssMiscOffset;     /* Misc / status */
+
+    ULONG  Quirks;             /* Functional quirks bitmask */
+    ULONG  BsodQuirks;         /* BSOD-tweak-workarounds bitmask */
+} GPIOCTRL_DEVICE_ID, *PGPIOCTRL_DEVICE_ID;
+
+/* Extern declarations for controller table */
+extern const GPIOCTRL_DEVICE_ID g_GpioControllers[];
+extern const ULONG g_GpioControllersCount;
 
 typedef struct _GPIOCTRL_FDO_EXT {
     PDEVICE_OBJECT     Self;
     PDEVICE_OBJECT     LowerDevice;
+    PDEVICE_OBJECT     Pdo;          /* physical device object for IoGetDeviceProperty */
 
     /* MMIO resources */
     PHYSICAL_ADDRESS   MmioBasePa;
@@ -133,19 +159,23 @@ typedef struct _GPIOCTRL_FDO_EXT {
     ULONG              ErrorCount;
     ULONG              Signature;
 
-    // ISR/DPC circular log buffer
+    /* ISR/DPC circular log buffer */
     CHAR               IsrLog[GPIO_LOG_SIZE][64];
     ULONG              IsrLogHead;
     ULONG              IsrLogTail;
     KSPIN_LOCK         IsrLogLock;
 
-    // LPSS power domain control
+    /* LPSS power domain control */
     PHYSICAL_ADDRESS   PmcBasePa;
     ULONG              PmcLength;
     PUCHAR             PmcBase;
 
-    // New: controller classification
-    GPIOCTRL_CONTROLLER_TYPE ControllerType;
+    /* Controller classification + profile */
+    GPIOCTRL_CONTROLLER_TYPE      ControllerType;
+    const GPIOCTRL_DEVICE_ID*     ControllerProfile;
+    // New: cached flags for quick access
+    ULONG              QuirkFlags;
+    ULONG              BsodPolicy;
 
 } GPIOCTRL_FDO_EXT, *PGPIOCTRL_FDO_EXT;
 
@@ -184,6 +214,7 @@ NTSTATUS GpioCtrl_IoctlReadPin(PGPIOCTRL_FDO_EXT Ext, PIRP Irp);
 NTSTATUS GpioCtrl_IoctlWritePin(PGPIOCTRL_FDO_EXT Ext, PIRP Irp);
 NTSTATUS GpioCtrl_IoctlConfigurePin(PGPIOCTRL_FDO_EXT Ext, PIRP Irp);
 NTSTATUS GpioCtrl_IoctlQueryCaps(PGPIOCTRL_FDO_EXT Ext, PIRP Irp);
+
 VOID GpioCtrl_Log(IN PCCHAR Format, ...);
 VOID GpioCtrl_LogIsr(
     PGPIOCTRL_FDO_EXT Ext,
@@ -223,33 +254,5 @@ typedef struct _GPIOCTRL_GLOBAL {
 
 /* Global instance */
 extern GPIOCTRL_GLOBAL g_GpioCtrlGlobal;
-
-//
-// Lookup table entry for GPIO controllers
-//
-typedef struct _GPIOCTRL_DEVICE_ID {
-    PCWSTR PciId;              /* Hardware ID string to match */
-
-    /* GPIO functional register offsets (BAR0) */
-    ULONG  ControlOffset;      /* GPIO control register */
-    ULONG  StatusOffset;       /* GPIO status register */
-    ULONG  DataOffset;         /* GPIO data register */
-    ULONG  MiscOffset;         /* Timing / misc registers */
-
-    /* LPSS power-on register offsets (BAR2) */
-    ULONG  LpssClkGateOffset;  /* Clock gate control */
-    ULONG  LpssResetOffset;    /* Reset control */
-    ULONG  LpssFuncClkOffset;  /* Functional clock enable */
-    ULONG  LpssMiscOffset;     /* Misc / status */
-
-    ULONG  Quirks;             /* Functional quirks bitmask */
-    ULONG  BsodQuirks;         /* BSOD-tweak-workarounds bitmask */
-} GPIOCTRL_DEVICE_ID, *PGPIOCTRL_DEVICE_ID;
-
-
-/* Extern declarations */
-extern const GPIOCTRL_DEVICE_ID g_GpioControllers[];
-extern const ULONG g_GpioControllersCount;
-
 
 #endif /* _GPIOCTRL_EXT_H_ */
