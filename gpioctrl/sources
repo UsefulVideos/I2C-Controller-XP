@@ -3,13 +3,7 @@
 
 TARGETNAME=gpioctrl
 TARGETTYPE=DRIVER
-
-# Evaluates the build suffix appended by the WDK environment
-!if "$(BUILD_ALT_DIR)" == "chk" || "$(BUILD_ALT_DIR)" == "_chk" || "$(FREEBUILD)" == "0"
-TARGETPATH=..\bin-debug
-!else
-TARGETPATH=..\bin
-!endif
+TARGETPATH=..\bin\$(BUILD_ALT_DIR)
 
 # Use WDM headers; no KMDF
 USE_NATIVE_ENVIRONMENT=1

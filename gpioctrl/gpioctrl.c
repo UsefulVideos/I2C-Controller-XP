@@ -664,6 +664,7 @@ GpioCtrl_StartDevice(
     return STATUS_SUCCESS;
 }
 
+
 /* ---------------------------------------------------------------------------
    STOP device: disconnect interrupt, unmap MMIO/PMC safely (LPSS or CNL)
    --------------------------------------------------------------------------- */

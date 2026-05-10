@@ -4,12 +4,7 @@
 
 TARGETNAME=uartctrl
 TARGETTYPE=DRIVER
-# Evaluates the build suffix appended by the WDK environment
-!if "$(BUILD_ALT_DIR)" == "chk" || "$(BUILD_ALT_DIR)" == "_chk" || "$(FREEBUILD)" == "0"
-TARGETPATH=..\bin-debug
-!else
-TARGETPATH=..\bin
-!endif
+TARGETPATH=..\bin\$(BUILD_ALT_DIR)
 # Compile options
 MSC_WARNING_LEVEL=/W4
 C_DEFINES=$(C_DEFINES) -DDBG
