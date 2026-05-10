@@ -392,12 +392,6 @@ GpioCtrl_DispatchIoctl(
     return status;
 }
 
-/* ---------------------------------------------------------------------------
-   START device: pass down, parse resources, map MMIO, map PMC (LPSS only),
-   enable LPSS power domain, enable LPSS clock/reset, connect interrupt,
-   load policy. If no PMC window is present, treat as Cannon Lake–style GPIO
-   and skip LPSS‑specific power/clock sequences.
-   --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StartDevice(
     IN PDEVICE_OBJECT DeviceObject,
@@ -410,14 +404,28 @@ GpioCtrl_StartDevice(
     PCM_RESOURCE_LIST resRaw;
     PIO_STACK_LOCATION isl;
     ULONG i, j;
-    BOOLEAN hasPmcWindow = FALSE;
+    BOOLEAN hasPmcWindow;
+    const GPIOCTRL_DEVICE_ID* ctrlProfile;
+    WCHAR hwidBuf[256];
+    UNICODE_STRING hwid;
+    ULONG quirks;
+    ULONG bsodFlags;
 
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
+    hasPmcWindow = FALSE;
+    ctrlProfile  = NULL;
+    quirks       = QUIRK_NONE;
+    bsodFlags    = BSOD_NONE;
+
+    RtlZeroMemory(hwidBuf, sizeof(hwidBuf));
+
     GpioCtrl_Log("START: Entered for device %p\n", DeviceObject);
 
-    /* Forward START_DEVICE to lower driver */
+    //
+    // Forward START_DEVICE to lower driver
+    //
     IoCopyCurrentIrpStackLocationToNext(Irp);
     status = IoCallDriver(ext->LowerDevice, Irp);
 
@@ -427,6 +435,70 @@ GpioCtrl_StartDevice(
     }
 
     GpioCtrl_Log("START: Lower driver completed successfully\n");
+
+    //
+    // Query Hardware ID and match against g_GpioControllers[]
+    //
+    RtlInitEmptyUnicodeString(&hwid, hwidBuf, sizeof(hwidBuf));
+
+    status = IoGetDeviceProperty(
+                 ext->Pdo,                      /* physical device object */
+                 DevicePropertyHardwareID,
+                 sizeof(hwidBuf),
+                 hwidBuf,
+                 &i);                           /* i reused as length */
+
+    if (NT_SUCCESS(status)) {
+        const WCHAR* p;
+
+        /* hwidBuf is MULTI_SZ */
+        p = hwidBuf;
+
+        while (*p != UNICODE_NULL) {
+            UNICODE_STRING oneId;
+
+            RtlInitUnicodeString(&oneId, p);
+
+            for (i = 0; i < g_GpioControllersCount; i++) {
+                /* simple substring match: does this HWID contain our pattern? */
+                if (wcsstr(p, g_GpioControllers[i].PciId) != NULL) {
+                    ctrlProfile = &g_GpioControllers[i];
+                    break;
+                }
+            }
+
+            if (ctrlProfile != NULL) {
+                break;
+            }
+
+            /* advance to next string in MULTI_SZ */
+            p += wcslen(p) + 1;
+        }
+    } else {
+        GpioCtrl_Log("START: IoGetDeviceProperty(HardwareID) failed, status=0x%08X\n", status);
+    }
+
+    if (ctrlProfile != NULL) {
+        ext->ControllerProfile = ctrlProfile;
+        quirks    = ctrlProfile->Quirks;
+        bsodFlags = ctrlProfile->BsodQuirks;
+
+        GpioCtrl_Log("START: Matched controller profile: %ws (quirks=0x%X, bsod=0x%X)\n",
+                     ctrlProfile->PciId,
+                     ctrlProfile->Quirks,
+                     ctrlProfile->BsodQuirks);
+    } else {
+        ext->ControllerProfile = NULL;
+        GpioCtrl_Log("START: No specific controller profile matched – using defaults\n");
+    }
+
+    //
+    // BSOD_DELAY_INIT: conservative delay before touching hardware
+    //
+    if (bsodFlags & BSOD_DELAY_INIT) {
+        GpioCtrl_Log("START: BSOD_DELAY_INIT – delaying initial hardware access\n");
+        KeStallExecutionProcessor(20000); /* ~20 ms */
+    }
 
     resTranslated = isl->Parameters.StartDevice.AllocatedResourcesTranslated;
     resRaw        = isl->Parameters.StartDevice.AllocatedResources;
@@ -521,46 +593,58 @@ GpioCtrl_StartDevice(
 
     if (!hasPmcWindow && ext->MmioBase != NULL) {
         /* No PMC window: treat as Cannon Lake / modern PCH GPIO and skip LPSS power/clock */
+        ext->ControllerType = GpioctrlControllerCannonLake;
         GpioCtrl_Log("START: No PMC window detected – assuming Cannon Lake‑style GPIO, skipping LPSS power/clock\n");
+    } else if (hasPmcWindow) {
+        ext->ControllerType = GpioctrlControllerLpss;
+    } else {
+        ext->ControllerType = GpioctrlControllerUnknown;
+    }
+
+    /* BSOD_MASK_INTERRUPTS: mask IRQs before any heavy register programming */
+    if ((bsodFlags & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+        KIRQL oldIrql;
+        GpioCtrl_Log("START: BSOD_MASK_INTERRUPTS – pre‑masking GPIO interrupts\n");
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
     }
 
     /* Enable LPSS power domain if PMC is mapped (LPSS only) */
     if (ext->PmcBase != NULL) {
+        ULONG val;
+        ULONG timeout;
+
         GpioCtrl_Log("START: Enabling LPSS power domain\n");
 
-        {
-            ULONG val, timeout;
+        /* Clear PG bit */
+        val = *(volatile ULONG*)(ext->PmcBase + 0x44);
+        val &= ~0x1;
+        *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
 
-            /* Clear PG bit */
-            val = *(volatile ULONG*)(ext->PmcBase + 0x44);
-            val &= ~0x1;
-            *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
-
-            /* Wait for PG_STATUS to clear */
-            timeout = 1000;
-            while (timeout--) {
-                val = *(volatile ULONG*)(ext->PmcBase + 0x48);
-                if ((val & 0x1) == 0) {
-                    GpioCtrl_Log("START: LPSS power domain ON\n");
-                    break;
-                }
-                KeStallExecutionProcessor(10);
+        /* Wait for PG_STATUS to clear */
+        timeout = 1000;
+        while (timeout--) {
+            val = *(volatile ULONG*)(ext->PmcBase + 0x48);
+            if ((val & 0x1) == 0) {
+                GpioCtrl_Log("START: LPSS power domain ON\n");
+                break;
             }
-
-            if (timeout == 0) {
-                GpioCtrl_Log("START: ERROR – LPSS power domain did not turn on\n");
-            }
-
-            /* Clear ACK */
-            *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
+            KeStallExecutionProcessor(10);
         }
+
+        if (timeout == 0) {
+            GpioCtrl_Log("START: ERROR – LPSS power domain did not turn on\n");
+        }
+
+        /* Clear ACK */
+        *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
     }
 
-    /* -----------------------------------------------------------------------
-       LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present)
-       ----------------------------------------------------------------------- */
+    /* LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present) */
     if (ext->MmioBase != NULL && hasPmcWindow) {
-        ULONG val, timeout;
+        ULONG val;
+        ULONG timeout;
 
         GpioCtrl_Log("START: Enabling LPSS clock + reset\n");
 
@@ -569,19 +653,24 @@ GpioCtrl_StartDevice(
         val |= 0x1;
         *(volatile ULONG*)(ext->MmioBase + 0x800) = val;
 
-        /* Wait for clock status (bit1 = CLK_ON_STATUS) */
-        timeout = 1000;
-        while (timeout--) {
-            val = *(volatile ULONG*)(ext->MmioBase + 0x800);
-            if (val & 0x2) {
-                GpioCtrl_Log("START: LPSS clock ON\n");
-                break;
+        /* QUIRK_BROKEN_CLOCK_GATE: skip clock‑gate polling if unreliable */
+        if (!(quirks & QUIRK_BROKEN_CLOCK_GATE)) {
+            /* Wait for clock status (bit1 = CLK_ON_STATUS) */
+            timeout = 1000;
+            while (timeout--) {
+                val = *(volatile ULONG*)(ext->MmioBase + 0x800);
+                if (val & 0x2) {
+                    GpioCtrl_Log("START: LPSS clock ON\n");
+                    break;
+                }
+                KeStallExecutionProcessor(10);
             }
-            KeStallExecutionProcessor(10);
-        }
 
-        if (timeout == 0) {
-            GpioCtrl_Log("START: WARNING – LPSS clock status did not assert\n");
+            if (timeout == 0) {
+                GpioCtrl_Log("START: WARNING – LPSS clock status did not assert\n");
+            }
+        } else {
+            GpioCtrl_Log("START: QUIRK_BROKEN_CLOCK_GATE – skipping clock status polling\n");
         }
 
         /* 2) Deassert reset (offset 0x804, bit0 = RESET_DEASSERT) */
@@ -604,7 +693,32 @@ GpioCtrl_StartDevice(
             GpioCtrl_Log("START: WARNING – LPSS reset status did not assert\n");
         }
 
+        /* QUIRK_NEEDS_RESET_WORKAROUND: extra reset pulse */
+        if (quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
+            GpioCtrl_Log("START: QUIRK_NEEDS_RESET_WORKAROUND – issuing extra reset pulse\n");
+
+            /* Briefly clear RESET_DEASSERT then set again */
+            val = *(volatile ULONG*)(ext->MmioBase + 0x804);
+            val &= ~0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+            KeStallExecutionProcessor(10);
+
+            val |= 0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+        }
+
         GpioCtrl_Log("START: LPSS clock/reset sequence completed\n");
+    }
+
+    /* QUIRK_NO_DMA_SUPPORT / BSOD_FORCE_PIO:
+       GPIO driver itself does not use DMA, but log for diagnostics so that
+       upper‑layer (e.g. I2C) drivers can honor PIO‑only policy. */
+    if (quirks & QUIRK_NO_DMA_SUPPORT) {
+        GpioCtrl_Log("START: QUIRK_NO_DMA_SUPPORT – controller is PIO‑only (no DMA)\n");
+    }
+
+    if (bsodFlags & BSOD_FORCE_PIO) {
+        GpioCtrl_Log("START: BSOD_FORCE_PIO – system policy prefers PIO over DMA\n");
     }
 
     /* Load registry policy */
@@ -666,7 +780,8 @@ GpioCtrl_StartDevice(
 
 
 /* ---------------------------------------------------------------------------
-   STOP device: disconnect interrupt, unmap MMIO/PMC safely (LPSS or CNL)
+   STOP device: disconnect interrupt, apply quirks, power down LPSS,
+   unmap MMIO/PMC safely (LPSS or Cannon Lake)
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StopDevice(
@@ -675,13 +790,32 @@ GpioCtrl_StopDevice(
     )
 {
     PGPIOCTRL_FDO_EXT ext;
+    ULONG quirks;
+    ULONG bsodFlags;
 
     UNREFERENCED_PARAMETER(Irp);
+
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
+    quirks    = (ext->ControllerProfile ? ext->ControllerProfile->Quirks     : 0);
+    bsodFlags = (ext->ControllerProfile ? ext->ControllerProfile->BsodQuirks : 0);
 
     GpioCtrl_Log("STOP: Entered for device %p\n", DeviceObject);
 
-    /* Disconnect interrupt */
+    /* -----------------------------------------------------------------------
+       BSOD_MASK_INTERRUPTS – mask IRQs before shutdown
+       ----------------------------------------------------------------------- */
+    if ((bsodFlags & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+        KIRQL oldIrql;
+        GpioCtrl_Log("STOP: BSOD_MASK_INTERRUPTS – masking interrupts before shutdown\n");
+
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
+    }
+
+    /* -----------------------------------------------------------------------
+       Disconnect interrupt
+       ----------------------------------------------------------------------- */
     if (ext->InterruptConnected && ext->InterruptObject != NULL) {
         GpioCtrl_Log("STOP: Disconnecting interrupt (Vector=%u)\n", ext->Vector);
 
@@ -693,7 +827,39 @@ GpioCtrl_StopDevice(
         GpioCtrl_Log("STOP: Interrupt disconnected\n");
     }
 
-    /* Unmap GPIO MMIO */
+    /* -----------------------------------------------------------------------
+       LPSS shutdown sequence (if PMC exists)
+       ----------------------------------------------------------------------- */
+    if (ext->PmcBase != NULL) {
+        ULONG val;
+
+        GpioCtrl_Log("STOP: Powering down LPSS domain\n");
+
+        /* Assert PG bit (power‑gate) */
+        val = *(volatile ULONG*)(ext->PmcBase + 0x44);
+        val |= 0x1;
+        *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
+
+        /* QUIRK_NEEDS_RESET_WORKAROUND – extra shutdown pulse */
+        if (quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
+            GpioCtrl_Log("STOP: QUIRK_NEEDS_RESET_WORKAROUND – issuing shutdown reset pulse\n");
+
+            /* Toggle reset line */
+            val = *(volatile ULONG*)(ext->MmioBase + 0x804);
+            val &= ~0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+            KeStallExecutionProcessor(10);
+
+            val |= 0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+        }
+
+        GpioCtrl_Log("STOP: LPSS power domain gated\n");
+    }
+
+    /* -----------------------------------------------------------------------
+       Unmap GPIO MMIO
+       ----------------------------------------------------------------------- */
     if (ext->MmioBase != NULL) {
         GpioCtrl_Log("STOP: Unmapping GPIO MMIO at %p (Len=%u)\n",
                      ext->MmioBase,
@@ -707,7 +873,9 @@ GpioCtrl_StopDevice(
         GpioCtrl_Log("STOP: GPIO MMIO unmapped\n");
     }
 
-    /* Unmap PMC MMIO (LPSS only — Cannon Lake has no PMC window) */
+    /* -----------------------------------------------------------------------
+       Unmap PMC MMIO (LPSS only)
+       ----------------------------------------------------------------------- */
     if (ext->PmcBase != NULL) {
         GpioCtrl_Log("STOP: Unmapping PMC MMIO at %p (Len=%u)\n",
                      ext->PmcBase,
@@ -728,7 +896,7 @@ GpioCtrl_StopDevice(
 }
 
 /* ---------------------------------------------------------------------------
-   REMOVE device: ensure stopped, delete (no detach)
+   REMOVE device: ensure stopped, apply BSOD quirks, flush logs, delete device
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_RemoveDevice(
@@ -737,28 +905,52 @@ GpioCtrl_RemoveDevice(
     )
 {
     PGPIOCTRL_FDO_EXT ext;
+    ULONG bsodFlags;
 
     UNREFERENCED_PARAMETER(Irp);
+
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
+    bsodFlags = (ext->ControllerProfile ? ext->ControllerProfile->BsodQuirks : 0);
 
     GpioCtrl_Log("REMOVE: Entered for device %p\n", DeviceObject);
 
     ext->Removed = TRUE;
 
+    /* -----------------------------------------------------------------------
+       BSOD_MASK_INTERRUPTS – mask IRQs before any teardown
+       ----------------------------------------------------------------------- */
+    if ((bsodFlags & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+        KIRQL oldIrql;
+
+        GpioCtrl_Log("REMOVE: BSOD_MASK_INTERRUPTS – masking interrupts before removal\n");
+
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
+    }
+
+    /* -----------------------------------------------------------------------
+       If still started, stop it cleanly
+       ----------------------------------------------------------------------- */
     if (ext->Started) {
         GpioCtrl_Log("REMOVE: Device still started, calling StopDevice\n");
         (VOID)GpioCtrl_StopDevice(DeviceObject, Irp);
     }
 
+    /* -----------------------------------------------------------------------
+       Flush ISR/DPC log buffer
+       ----------------------------------------------------------------------- */
     GpioCtrl_FlushIsrLog(ext);
 
+    /* -----------------------------------------------------------------------
+       Delete device object
+       ----------------------------------------------------------------------- */
     GpioCtrl_Log("REMOVE: Deleting device object %p\n", DeviceObject);
     IoDeleteDevice(DeviceObject);
 
     GpioCtrl_Log("REMOVE: Completed successfully\n");
     return STATUS_SUCCESS;
 }
-
 
 
 /* ---------------------------------------------------------------------------
