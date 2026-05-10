@@ -1,0 +1,85 @@
+; -----------------------------------------------------------------------
+; uartctrl.inf – UART Controller Driver
+; Manufacturer: UsefulAGKHelper
+; -----------------------------------------------------------------------
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+DriverVer   = 11/13/2025,1.0.0.0
+CatalogFile = uartctrl.cat
+
+; -----------------------------------------------------------------------
+; Source disk declarations
+; -----------------------------------------------------------------------
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+uartctrl.sys = 1
+
+[DestinationDirs]
+UARTCTRL.CopyFiles = 12 ; system32\drivers
+
+[Manufacturer]
+%ManufacturerName% = UsefulAGKHelper,NTx86.5.1,NTx86.5.2,NTamd64.5.2
+
+[UsefulAGKHelper.NTx86.5.1]
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+
+[UsefulAGKHelper.NTx86.5.2]
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+
+[UsefulAGKHelper.NTamd64.5.2]
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
+%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+
+[UARTCTRL_Install]
+CopyFiles     = UARTCTRL.CopyFiles
+AddReg        = UARTCTRL.AddReg
+ServiceInstall= UARTCTRL_Service
+
+[UARTCTRL.CopyFiles]
+uartctrl.sys
+
+[UARTCTRL.AddReg]
+HKR,,DevLoader,,*ntkern
+HKR,,NTMPDriver,,uartctrl.sys
+HKR,Parameters,FifoDepth,0x00010001,64
+
+[UARTCTRL_Service]
+DisplayName   = %UARTCTRL.ServiceDesc%
+ServiceType   = 1 ; SERVICE_KERNEL_DRIVER
+StartType     = 3 ; SERVICE_DEMAND_START
+ErrorControl  = 1 ; SERVICE_ERROR_NORMAL
+ServiceBinary = %12%\uartctrl.sys
+
+; -----------------------------------------------------------------------
+; Right-click installation support
+; -----------------------------------------------------------------------
+[DefaultInstall]
+CopyFiles     = UARTCTRL.CopyFiles
+AddReg        = UARTCTRL.AddReg
+ServiceInstall= UARTCTRL_Service
+
+[DefaultInstall.Services]
+AddService = UARTCTRL,0,UARTCTRL_Service
+
+[Strings]
+ManufacturerName    = "UsefulAGKHelper"
+UARTCTRL.DeviceDesc = "UART Controller Driver"
+UARTCTRL.ServiceDesc= "UARTCTRL Kernel Service"
+DiskName            = "UARTCTRL Installation Disk"
