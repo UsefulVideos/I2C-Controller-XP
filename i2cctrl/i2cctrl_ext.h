@@ -697,6 +697,18 @@ typedef struct _I2CCTRL_FDO {
     PHYSICAL_ADDRESS LpssBar2Phys;
     ULONG LpssBar2Length;
 	
+	//
+	// LPSS2 register offsets (BAR0)
+	//
+	ULONG RegCtrl;        // Control register
+	ULONG RegStatus;      // Status register
+	ULONG RegReset;       // Soft reset
+	ULONG RegClkCtl;      // Clock gate control
+	ULONG RegClkDiv;      // Clock divider
+	ULONG RegClkUpdate;   // Clock update trigger
+	ULONG RegIntrMask;    // Interrupt mask
+
+	
 } I2CCTRL_FDO, *PI2CCTRL_FDO;
 
 #endif /* _I2CCTRL_FDO_DEFINED */
@@ -1430,7 +1442,7 @@ EXTERN_C const GUID GUID_NULL;
 //
 
 /* Enable or disable the controller core */
-VOID
+NTSTATUS
 I2cCtrl_EnableController(
     PI2CCTRL_FDO devctx,
     BOOLEAN      enable
@@ -1658,13 +1670,24 @@ I2cCtrl_RemoveDevice(
 	);
 
 VOID
-I2cCtrl_LogSimple(
-    PCSTR Text
+I2cCtrl_Log(
+    PCSTR Format,
+    ...
     );
 	
 const I2CCTRL_DEVICE_ID*
 I2cCtrl_FindControllerId(
     PCWSTR PnpId
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOn(
+    PI2CCTRL_FDO devctx
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOff(
+    PI2CCTRL_FDO devctx
     );
 
 #endif /* _I2CCTRL_EXT_H_ */
