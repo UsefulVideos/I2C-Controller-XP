@@ -1658,8 +1658,9 @@ I2cCtrl_RemoveDevice(
 	);
 
 VOID
-I2cCtrl_LogSimple(
-    PCSTR Text
+I2cCtrl_Log(
+    PCSTR Format,
+    ...
     );
 	
 const I2CCTRL_DEVICE_ID*

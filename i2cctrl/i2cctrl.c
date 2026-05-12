@@ -3,6 +3,7 @@
 #include <wdm.h>
 #include "i2cctrl_spinlock_fix.h"
 #include <acpiioct.h>       /* ACPI_EVAL_INPUT_BUFFER, ACPI_EVAL_OUTPUT_BUFFER, IOCTL_ACPI_EVAL_METHOD */
+#include <stdarg.h>
 #include <ntstrsafe.h>      /* RtlInitUnicodeString, safe string helpers for ACPI method names */
 #include <strsafe.h>        /* RtlStringCchCopyW, safe string helpers for ACPI method names */
 #include "i2cctrl_hw.h"     /* register offsets, PCI IDs, bit masks */
@@ -3773,31 +3774,35 @@ I2cCtrl_DetectTouchpadRedirect(
     return status;
 }
 
-
 /* -----------------------------------------------------------------------
- * Simple kernel logger: appends to \SystemRoot\System32\i2cctrl.log
- * Must be called at PASSIVE_LEVEL.
+ * Simple kernel logger with printf-style formatting
  * ----------------------------------------------------------------------- */
 VOID
-I2cCtrl_LogSimple(
-    PCSTR Text
+I2cCtrl_Log(
+    PCSTR Format,
+    ...
     )
 {
+    CHAR buffer[512];
+    va_list args;
+    NTSTATUS status;
+
     UNICODE_STRING      path;
     OBJECT_ATTRIBUTES   oa;
     IO_STATUS_BLOCK     iosb;
     HANDLE              hFile;
-    NTSTATUS            status;
-    SIZE_T              len;
 
     PAGED_CODE();
 
-    if (Text == NULL) {
+    if (Format == NULL) {
         return;
     }
 
-    len = strlen(Text);
-    if (len == 0) {
+    va_start(args, Format);
+    status = RtlStringCbVPrintfA(buffer, sizeof(buffer), Format, args);
+    va_end(args);
+
+    if (!NT_SUCCESS(status)) {
         return;
     }
 
@@ -3835,8 +3840,8 @@ I2cCtrl_LogSimple(
         NULL,
         NULL,
         &iosb,
-        (PVOID)Text,
-        (ULONG)len,
+        buffer,
+        (ULONG)strlen(buffer),
         NULL,
         NULL
     );
@@ -3858,24 +3863,24 @@ I2cCtrl_StartDevice(
     IN PIRP         Irp
     )
 {
-    NTSTATUS                       status;
-    PIO_STACK_LOCATION             isl;
-    PCM_RESOURCE_LIST              transList;
-    ULONG                          outer;
-    ULONG                          inner;
-    BOOLEAN                        haveMem;
-    BOOLEAN                        haveInt;
-    BOOLEAN                        shareVector;
-    ULONG                          intrFlags;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR desc;
-    KINTERRUPT_MODE                mode;
-    PHYSICAL_ADDRESS               mmioPhys;
-    ULONG                          mmioLength;
+    NTSTATUS                         status;
+    PIO_STACK_LOCATION               isl;
+    PCM_RESOURCE_LIST                transList;
+    ULONG                            outer;
+    ULONG                            inner;
+    BOOLEAN                          haveMem;
+    BOOLEAN                          haveInt;
+    BOOLEAN                          shareVector;
+    ULONG                            intrFlags;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR  desc;
+    KINTERRUPT_MODE                  mode;
+    PHYSICAL_ADDRESS                 mmioPhys;
+    ULONG                            mmioLength;
 
-    /* NEW: BAR2 detection flags */
-    BOOLEAN                        haveBar2;
-    PHYSICAL_ADDRESS               bar2Phys;
-    ULONG                          bar2Length;
+    /* BAR2 detection flags */
+    BOOLEAN                          haveBar2;
+    PHYSICAL_ADDRESS                 bar2Phys;
+    ULONG                            bar2Length;
 
     /* C89 init */
     status      = STATUS_SUCCESS;
@@ -3892,56 +3897,137 @@ I2cCtrl_StartDevice(
     mmioPhys.QuadPart = 0;
     mmioLength  = 0U;
 
-    haveBar2    = FALSE;
+    haveBar2          = FALSE;
     bar2Phys.QuadPart = 0;
-    bar2Length  = 0U;
+    bar2Length        = 0U;
 
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     PAGED_CODE();
 
-    I2cCtrl_LogSimple("StartDevice: entered\n");
+    I2cCtrl_Log("StartDevice: entered\n");
 
     if (fdoExt == NULL || Irp == NULL) {
-        I2cCtrl_LogSimple("StartDevice: invalid parameters\n");
+        I2cCtrl_Log("StartDevice: invalid parameters\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-/* -------------------------------------------------------------
- * Populate PnpId (required for quirks + backend selection)
- * ------------------------------------------------------------- */
-{
-    WCHAR hwidBuf[256];
-    ULONG hwidLen = 0;
-    NTSTATUS st;
+    /* -------------------------------------------------------------
+     * Populate PnpId (required for quirks + backend selection)
+     * ------------------------------------------------------------- */
+    {
+        WCHAR    hwidBuf[256];
+        ULONG    hwidLen = 0;
+        NTSTATUS st;
 
-    st = IoGetDeviceProperty(
-            fdoExt->PhysicalDevice,
-            DevicePropertyHardwareID,
-            sizeof(hwidBuf),
-            hwidBuf,
-            &hwidLen
-        );
+        st = IoGetDeviceProperty(
+                fdoExt->PhysicalDevice,
+                DevicePropertyHardwareID,
+                sizeof(hwidBuf),
+                hwidBuf,
+                &hwidLen
+            );
 
-    if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
+        if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
 
-        /* Allocate nonpaged copy */
-        SIZE_T bytes = hwidLen + sizeof(WCHAR);
-        PWSTR copy = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
+            SIZE_T bytes = hwidLen + sizeof(WCHAR);
+            PWSTR  copy  = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
 
-        if (copy != NULL) {
-            RtlZeroMemory(copy, bytes);
-            RtlCopyMemory(copy, hwidBuf, hwidLen);
-            fdoExt->PnpId = copy;
-            I2cCtrl_LogSimple("StartDevice: PnpId captured\n");
+            if (copy != NULL) {
+                RtlZeroMemory(copy, bytes);
+                RtlCopyMemory(copy, hwidBuf, hwidLen);
+                fdoExt->PnpId = copy;
+                I2cCtrl_Log("StartDevice: PnpId captured\n");
+            } else {
+                fdoExt->PnpId = NULL;
+                I2cCtrl_Log("StartDevice: PnpId alloc failed\n");
+            }
+
         } else {
             fdoExt->PnpId = NULL;
-            I2cCtrl_LogSimple("StartDevice: PnpId alloc failed\n");
+            I2cCtrl_Log("StartDevice: PnpId unavailable\n");
+        }
+    }
+
+/* -------------------------------------------------------------
+ * Match HWID against g_I2cControllers[] and capture profile
+ * ------------------------------------------------------------- */
+{
+    const I2CCTRL_DEVICE_ID* match = NULL;
+    ULONG i;
+
+    if (fdoExt->PnpId != NULL) {
+        for (i = 0; i < g_I2cControllersCount; i++) {
+            if (wcsstr(fdoExt->PnpId, g_I2cControllers[i].PciId) != NULL) {
+                match = &g_I2cControllers[i];
+                break;
+            }
+        }
+    }
+
+    if (match == NULL) {
+
+        WCHAR wbuf[256];
+        CHAR  abuf[256];
+        UNICODE_STRING ustr;
+        ANSI_STRING astr;
+
+        RtlStringCchPrintfW(
+            wbuf,
+            RTL_NUMBER_OF(wbuf),
+            L"StartDevice: unsupported controller HWID %ws",
+            (fdoExt->PnpId != NULL) ? fdoExt->PnpId : L"<null>"
+        );
+
+        RtlInitUnicodeString(&ustr, wbuf);
+        astr.Buffer        = abuf;
+        astr.Length        = 0;
+        astr.MaximumLength = sizeof(abuf);
+
+        if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+            abuf[astr.Length] = '\0';
+            I2cCtrl_Log(abuf);
         }
 
-    } else {
-        fdoExt->PnpId = NULL;
-        I2cCtrl_LogSimple("StartDevice: PnpId unavailable\n");
+        return STATUS_NOT_SUPPORTED;
     }
+
+    /* Log matched controller (BAR0 offsets only — LPSS offsets not used here) */
+    {
+        WCHAR wbuf[256];
+        CHAR  abuf[256];
+        UNICODE_STRING ustr;
+        ANSI_STRING astr;
+
+        RtlStringCchPrintfW(
+            wbuf,
+            RTL_NUMBER_OF(wbuf),
+            L"StartDevice: matched controller %ws "
+            L"(BAR0 Offsets: CTRL=%02X STAT=%02X DATA=%02X CLK=%02X, "
+            L"quirks=0x%X bsod=0x%X)",
+            match->PciId,
+            match->ControlOffset,
+            match->StatusOffset,
+            match->DataOffset,
+            match->ClockOffset,
+            match->Quirks,
+            match->BsodQuirks
+        );
+
+        RtlInitUnicodeString(&ustr, wbuf);
+        astr.Buffer        = abuf;
+        astr.Length        = 0;
+        astr.MaximumLength = sizeof(abuf);
+
+        if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+            abuf[astr.Length] = '\0';
+            I2cCtrl_Log(abuf);
+        }
+    }
+
+    /* Store quirks (your FDO already has BsodQuirks, but NOT Quirks) */
+    fdoExt->BsodQuirks = match->BsodQuirks;
+
+    /* Quirks are applied later by I2cCtrlApplyQuirks() using PnpId */
 }
 
 
@@ -3949,10 +4035,10 @@ I2cCtrl_StartDevice(
     transList =
         (isl != NULL) ? isl->Parameters.StartDevice.AllocatedResourcesTranslated : NULL;
 
-    I2cCtrl_LogSimple("StartDevice: got translated resources\n");
+    I2cCtrl_Log("StartDevice: got translated resources\n");
 
     if (transList == NULL || transList->Count == 0U) {
-        I2cCtrl_LogSimple("StartDevice: no translated resources\n");
+        I2cCtrl_Log("StartDevice: no translated resources\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -4004,19 +4090,19 @@ I2cCtrl_StartDevice(
     }
 
     if (!haveMem) {
-        I2cCtrl_LogSimple("StartDevice: no MMIO resource\n");
+        I2cCtrl_Log("StartDevice: no MMIO resource\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     if (mmioLength < 0x00A8U) {
-        I2cCtrl_LogSimple("StartDevice: MMIO length too small\n");
+        I2cCtrl_Log("StartDevice: MMIO length too small\n");
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 
     /* Map BAR0 (DW-I2C) */
     fdoExt->Mmio = (PUCHAR)MmMapIoSpace(mmioPhys, mmioLength, MmNonCached);
     if (fdoExt->Mmio == NULL) {
-        I2cCtrl_LogSimple("StartDevice: MmMapIoSpace failed\n");
+        I2cCtrl_Log("StartDevice: MmMapIoSpace failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -4024,81 +4110,72 @@ I2cCtrl_StartDevice(
     fdoExt->MmioLength = mmioLength;
     fdoExt->MmioBase   = fdoExt->Mmio;
 
-    I2cCtrl_LogSimple("StartDevice: MMIO mapped\n");
-	
-/* -------------------------------------------------------------
- * BAR0 diagnostic dump (first 0x40 bytes)
- * ------------------------------------------------------------- */
-{
-    ULONG off;
-    WCHAR wbuf[128];
-    CHAR  abuf[128];
-    UNICODE_STRING ustr;
-    ANSI_STRING astr;
+    I2cCtrl_Log("StartDevice: MMIO mapped\n");
 
-    for (off = 0; off < 0x40; off += 4) {
+    /* BAR0 diagnostic dump (first 0x40 bytes) */
+    {
+        ULONG          off;
+        WCHAR          wbuf[128];
+        CHAR           abuf[128];
+        UNICODE_STRING ustr;
+        ANSI_STRING    astr;
 
-        ULONG v = READ_REGISTER_ULONG((PULONG)(fdoExt->MmioBase + off));
+        for (off = 0; off < 0x40; off += 4) {
 
-        /* Format into wide buffer */
-        RtlStringCchPrintfW(
-            wbuf,
-            RTL_NUMBER_OF(wbuf),
-            L"BAR0[%02X] = 0x%08lx",
-            off,
-            v
-        );
+            ULONG v = READ_REGISTER_ULONG((PULONG)(fdoExt->MmioBase + off));
 
-        /* Prepare UNICODE_STRING */
-        RtlInitUnicodeString(&ustr, wbuf);
+            RtlStringCchPrintfW(
+                wbuf,
+                RTL_NUMBER_OF(wbuf),
+                L"BAR0[%02X] = 0x%08lx",
+                off,
+                v
+            );
 
-        /* Prepare ANSI_STRING wrapper */
-        astr.Buffer = abuf;
-        astr.Length = 0;
-        astr.MaximumLength = sizeof(abuf);
+            RtlInitUnicodeString(&ustr, wbuf);
+            astr.Buffer        = abuf;
+            astr.Length        = 0;
+            astr.MaximumLength = sizeof(abuf);
 
-        /* Convert wide → ANSI (no allocation) */
-        if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
-            abuf[astr.Length] = '\0';  /* Ensure null‑termination */
-            I2cCtrl_LogSimple(abuf);
+            if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+                abuf[astr.Length] = '\0';
+                I2cCtrl_Log(abuf);
+            }
         }
     }
+
+/* Map LPSS BAR2 if present */
+if (haveBar2) {
+
+    fdoExt->LpssBar2Phys   = bar2Phys;
+    fdoExt->LpssBar2Length = bar2Length;
+
+    fdoExt->LpssBar2 = MmMapIoSpace(
+        fdoExt->LpssBar2Phys,
+        fdoExt->LpssBar2Length,
+        MmNonCached
+    );
+
+    if (fdoExt->LpssBar2 != NULL) {
+        I2cCtrl_Log("StartDevice: LPSS BAR2 mapped\n");
+    } else {
+        I2cCtrl_Log("StartDevice: LPSS BAR2 map FAILED\n");
+    }
+
+} else {
+
+    fdoExt->LpssBar2 = NULL;
+    I2cCtrl_Log("StartDevice: no LPSS BAR2 resource\n");
 }
 
 
-    /* Map LPSS BAR2 if present */
-    if (haveBar2) {
-
-        fdoExt->LpssBar2Phys   = bar2Phys;
-        fdoExt->LpssBar2Length = bar2Length;
-
-        fdoExt->LpssBar2 = MmMapIoSpace(
-            fdoExt->LpssBar2Phys,
-            fdoExt->LpssBar2Length,
-            MmNonCached
-        );
-
-        if (fdoExt->LpssBar2 != NULL) {
-            I2cCtrl_LogSimple("StartDevice: LPSS BAR2 mapped\n");
-        } else {
-            I2cCtrl_LogSimple("StartDevice: LPSS BAR2 map FAILED\n");
-        }
-    } else {
-        fdoExt->LpssBar2 = NULL;
-        I2cCtrl_LogSimple("StartDevice: no LPSS BAR2 resource\n");
-    }
-
-    /* Install backend FIRST */
+    /* Install backend FIRST (Intel DW-I2C / Cannon Lake style) */
     I2cCtrl_InstallBackend(fdoExt);
 
-    
-	/* Apply unified LPSS + DW-I2C quirks AFTER backend install */
-    I2cCtrl_LogSimple("StartDevice: applying unified quirks\n");
+    /* Apply unified LPSS + DW-I2C quirks AFTER backend install */
+    I2cCtrl_Log("StartDevice: applying unified quirks\n");
     I2cCtrlApplyQuirks(fdoExt);
-    I2cCtrl_LogSimple("StartDevice: unified quirks applied\n");
-
-    /* (rest of your StartDevice remains unchanged) */
-    /* ... */
+    I2cCtrl_Log("StartDevice: unified quirks applied\n");
 
     /* Initialize locks/DPCs/events (first start or restart) */
     if (!fdoExt->InitDone) {
@@ -4141,7 +4218,7 @@ I2cCtrl_StartDevice(
 
     status = I2cCtrl_WaitForEnableState(fdoExt, FALSE, 500U);
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_LogSimple("StartDevice: disable did not latch\n");
+        I2cCtrl_Log("StartDevice: disable did not latch\n");
         fdoExt->HardwareFailure = TRUE;
 
         MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
@@ -4162,31 +4239,84 @@ I2cCtrl_StartDevice(
         );
     }
 
-    /* Connect interrupt if available */
-    if (haveInt && fdoExt->InterruptObject == NULL) {
+/* Connect interrupt if available */
+if (haveInt && fdoExt->InterruptObject == NULL) {
 
-        mode = fdoExt->IrqMode;
+    WCHAR wbuf[160];
+    CHAR  abuf[160];
+    UNICODE_STRING ustr;
+    ANSI_STRING astr;
 
-        status = IoConnectInterrupt(
-            &fdoExt->InterruptObject,
-            (PKSERVICE_ROUTINE)I2cCtrl_Isr,
-            (PVOID)fdoExt,
-            (PKSPIN_LOCK)&fdoExt->HwLock,
+    /* Log what we are about to connect */
+    RtlStringCchPrintfW(
+        wbuf,
+        RTL_NUMBER_OF(wbuf),
+        L"StartDevice: Connecting interrupt:\n"
+        L"  Vector=%lu Level=%lu Mode=%s Sharable=%lu Affinity=0x%p\n",
+        fdoExt->IrqVector,
+        (ULONG)fdoExt->IrqLevel,
+        (fdoExt->IrqMode == Latched) ? L"Latched" : L"Level",
+        fdoExt->IrqSharable ? 1UL : 0UL,
+        (PVOID)(ULONG_PTR)fdoExt->IrqAffinity
+    );
+
+    RtlInitUnicodeString(&ustr, wbuf);
+    astr.Buffer        = abuf;
+    astr.Length        = 0;
+    astr.MaximumLength = sizeof(abuf);
+
+    if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+        abuf[astr.Length] = '\0';
+        I2cCtrl_Log(abuf);
+    }
+
+    mode = fdoExt->IrqMode;
+
+    status = IoConnectInterrupt(
+        &fdoExt->InterruptObject,
+        (PKSERVICE_ROUTINE)I2cCtrl_Isr,
+        (PVOID)fdoExt,
+        (PKSPIN_LOCK)&fdoExt->HwLock,
+        fdoExt->IrqVector,
+        fdoExt->IrqLevel,
+        fdoExt->IrqLevel,
+        mode,
+        fdoExt->IrqSharable,
+        fdoExt->IrqAffinity,
+        FALSE
+    );
+
+    if (!NT_SUCCESS(status)) {
+
+        /* Detailed failure log */
+        RtlStringCchPrintfW(
+            wbuf,
+            RTL_NUMBER_OF(wbuf),
+            L"StartDevice: IoConnectInterrupt FAILED (0x%08lx)\n"
+            L"  Vector=%lu Level=%lu Mode=%s Sharable=%lu\n",
+            status,
             fdoExt->IrqVector,
-            fdoExt->IrqLevel,
-            fdoExt->IrqLevel,
-            mode,
-            fdoExt->IrqSharable,
-            fdoExt->IrqAffinity,
-            FALSE
+            (ULONG)fdoExt->IrqLevel,
+            (fdoExt->IrqMode == Latched) ? L"Latched" : L"Level",
+            fdoExt->IrqSharable ? 1UL : 0UL
         );
 
-        if (!NT_SUCCESS(status)) {
-            I2cCtrl_LogSimple("StartDevice: IoConnectInterrupt failed, polling mode\n");
-            fdoExt->InterruptObject = NULL;
-            haveInt = FALSE;
+        RtlInitUnicodeString(&ustr, wbuf);
+        astr.Buffer        = abuf;
+        astr.Length        = 0;
+        astr.MaximumLength = sizeof(abuf);
+
+        if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+            abuf[astr.Length] = '\0';
+            I2cCtrl_Log(abuf);
         }
+
+        I2cCtrl_Log("StartDevice: Falling back to polling mode\n");
+
+        fdoExt->InterruptObject = NULL;
+        haveInt = FALSE;
     }
+}
 
     /* Program safe initial interrupt mask after ISR connect */
     if (fdoExt->Ops != NULL && fdoExt->Ops->MaskInterrupts != NULL) {
@@ -4198,22 +4328,59 @@ I2cCtrl_StartDevice(
         (VOID)fdoExt->Ops->Enable(fdoExt, TRUE);
     }
 
-    status = I2cCtrl_WaitForEnableState(fdoExt, TRUE, 500U);
-    if (!NT_SUCCESS(status)) {
-        I2cCtrl_LogSimple("StartDevice: enable did not latch\n");
-        fdoExt->HardwareFailure = TRUE;
+status = I2cCtrl_WaitForEnableState(fdoExt, TRUE, 500U);
+if (!NT_SUCCESS(status)) {
 
-        if (fdoExt->InterruptObject != NULL) {
-            IoDisconnectInterrupt(fdoExt->InterruptObject);
-            fdoExt->InterruptObject = NULL;
+    /* WinDbg-style detailed diagnostics */
+    {
+        WCHAR wbuf[160];
+        CHAR  abuf[160];
+        UNICODE_STRING ustr;
+        ANSI_STRING astr;
+
+        RtlStringCchPrintfW(
+            wbuf,
+            RTL_NUMBER_OF(wbuf),
+            L"StartDevice: ENABLE FAILED (status=0x%08lx)\n"
+            L"  HWID=%ws\n"
+            L"  BAR0=PA=%08X%08X Len=%lu\n"
+            L"  IRQ: Vector=%lu Level=%lu Mode=%s Sharable=%lu\n",
+            status,
+            (fdoExt->PnpId != NULL) ? fdoExt->PnpId : L"<null>",
+            fdoExt->MmioPhys.HighPart,
+            fdoExt->MmioPhys.LowPart,
+            fdoExt->MmioLength,
+            fdoExt->IrqVector,
+            (ULONG)fdoExt->IrqLevel,
+            (fdoExt->IrqMode == Latched) ? L"Latched" : L"Level",
+            fdoExt->IrqSharable ? 1UL : 0UL
+        );
+
+        RtlInitUnicodeString(&ustr, wbuf);
+        astr.Buffer        = abuf;
+        astr.Length        = 0;
+        astr.MaximumLength = sizeof(abuf);
+
+        if (NT_SUCCESS(RtlUnicodeStringToAnsiString(&astr, &ustr, FALSE))) {
+            abuf[astr.Length] = '\0';
+            I2cCtrl_Log(abuf);
         }
-
-        MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
-        fdoExt->Mmio       = NULL;
-        fdoExt->MmioLength = 0U;
-        fdoExt->MmioPhys.QuadPart = 0;
-        return status;
     }
+
+    fdoExt->HardwareFailure = TRUE;
+
+    if (fdoExt->InterruptObject != NULL) {
+        IoDisconnectInterrupt(fdoExt->InterruptObject);
+        fdoExt->InterruptObject = NULL;
+    }
+
+    MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
+    fdoExt->Mmio       = NULL;
+    fdoExt->MmioLength = 0U;
+    fdoExt->MmioPhys.QuadPart = 0;
+
+    return status;
+}
 
     /* Clear transfer context and runtime flags */
     RtlZeroMemory(&fdoExt->XferCtx, sizeof(fdoExt->XferCtx));
@@ -4227,7 +4394,7 @@ I2cCtrl_StartDevice(
     fdoExt->HotplugPending = FALSE;
     fdoExt->ChildrenStale  = FALSE;
 
-    I2cCtrl_LogSimple("StartDevice: controller enabled, runtime flags set\n");
+    I2cCtrl_Log("StartDevice: controller enabled, runtime flags set\n");
 
     /* Optional: probe for touchpad presence */
     {
@@ -4236,11 +4403,11 @@ I2cCtrl_StartDevice(
 
         status = g_I2cCtrlGlobal.DetectTouchpad(fdoExt, &detectResult);
         if (!NT_SUCCESS(status)) {
-            I2cCtrl_LogSimple("StartDevice: touchpad detection failed\n");
+            I2cCtrl_Log("StartDevice: touchpad detection failed\n");
             fdoExt->TouchpadPresent = FALSE;
         } else {
             fdoExt->TouchpadPresent = detectResult.Present ? TRUE : FALSE;
-            I2cCtrl_LogSimple(
+            I2cCtrl_Log(
                 detectResult.Present ?
                 "StartDevice: touchpad present\n" :
                 "StartDevice: touchpad not present\n"
@@ -4254,7 +4421,7 @@ I2cCtrl_StartDevice(
         WCHAR hidBuf[64];
         WCHAR uidBuf[32];
 
-        I2cCtrl_LogSimple("StartDevice: ChildList empty, creating PNP0C50 PDO\n");
+        I2cCtrl_Log("StartDevice: ChildList empty, creating PNP0C50 PDO\n");
 
         RtlZeroMemory(hidBuf, sizeof(hidBuf));
         RtlZeroMemory(uidBuf, sizeof(uidBuf));
@@ -4265,19 +4432,19 @@ I2cCtrl_StartDevice(
         status = I2cCtrl_CreateChildPdo(fdoExt->Self, fdoExt, hidBuf, uidBuf);
         if (!NT_SUCCESS(status)) {
 
-            I2cCtrl_LogSimple("StartDevice: CreateChildPdo FAILED\n");
+            I2cCtrl_Log("StartDevice: CreateChildPdo FAILED\n");
             status = STATUS_SUCCESS;
 
         } else {
 
-            I2cCtrl_LogSimple("StartDevice: CreateChildPdo SUCCESS, invalidating BusRelations\n");
+            I2cCtrl_Log("StartDevice: CreateChildPdo SUCCESS, invalidating BusRelations\n");
             IoInvalidateDeviceRelations(fdoExt->PhysicalDevice, BusRelations);
         }
     } else {
-        I2cCtrl_LogSimple("StartDevice: ChildList not empty, skipping PNP0C50 PDO\n");
+        I2cCtrl_Log("StartDevice: ChildList not empty, skipping PNP0C50 PDO\n");
     }
 
-    I2cCtrl_LogSimple("StartDevice: complete\n");
+    I2cCtrl_Log("StartDevice: complete\n");
 
     return STATUS_SUCCESS;
 }
@@ -4314,7 +4481,7 @@ I2cCtrl_StopDevice(
         return STATUS_INVALID_PARAMETER;
     }
 
-    I2cCtrl_LogSimple("StopDevice: begin\n");
+    I2cCtrl_Log("StopDevice: begin\n");
 
     fdoExt->Stopping       = TRUE;
     fdoExt->ActiveBusy     = FALSE;
@@ -4345,7 +4512,7 @@ I2cCtrl_StopDevice(
         (VOID)fdoExt->Ops->Enable(fdoExt, FALSE);
         status = I2cCtrl_WaitForEnableState(fdoExt, FALSE, 500U);
         if (!NT_SUCCESS(status)) {
-            I2cCtrl_LogSimple("StopDevice: disable did not latch\n");
+            I2cCtrl_Log("StopDevice: disable did not latch\n");
             /* Do not poison future starts; just log it */
         }
     }
@@ -4388,7 +4555,7 @@ I2cCtrl_StopDevice(
         fdoExt->LpssBar2       = NULL;
         fdoExt->LpssBar2Length = 0U;
         fdoExt->LpssBar2Phys.QuadPart = 0;
-        I2cCtrl_LogSimple("StopDevice: LPSS BAR2 unmapped\n");
+        I2cCtrl_Log("StopDevice: LPSS BAR2 unmapped\n");
     }
 
     /* 9) Unmap MMIO (BAR0) */
@@ -4398,7 +4565,7 @@ I2cCtrl_StopDevice(
         fdoExt->MmioLength        = 0U;
         fdoExt->MmioPhys.QuadPart = 0;
         fdoExt->MmioBase          = NULL;
-        I2cCtrl_LogSimple("StopDevice: MMIO unmapped\n");
+        I2cCtrl_Log("StopDevice: MMIO unmapped\n");
     }
 
     /* 10) Stop IOCTL worker queue */
@@ -4483,7 +4650,7 @@ I2cCtrl_StopDevice(
     RtlZeroMemory(&fdoExt->XferCtx, sizeof(fdoExt->XferCtx));
     KeResetEvent(&fdoExt->TransferEvent);
 
-    I2cCtrl_LogSimple("StopDevice: complete\n");
+    I2cCtrl_Log("StopDevice: complete\n");
 
     return STATUS_SUCCESS;
 }
@@ -4512,17 +4679,17 @@ I2cCtrl_RestartDevice(
     status = STATUS_SUCCESS;
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
-        I2cCtrl_LogSimple("RestartDevice: invalid IRQL\n");
+        I2cCtrl_Log("RestartDevice: invalid IRQL\n");
         return STATUS_INVALID_DEVICE_STATE;
     }
     PAGED_CODE();
 
     if (fdoExt == NULL) {
-        I2cCtrl_LogSimple("RestartDevice: fdoExt=NULL\n");
+        I2cCtrl_Log("RestartDevice: fdoExt=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    I2cCtrl_LogSimple("RestartDevice: begin\n");
+    I2cCtrl_Log("RestartDevice: begin\n");
 
     /*
      * Perform a clean stop. This safely:
@@ -4537,7 +4704,7 @@ I2cCtrl_RestartDevice(
      */
     status = I2cCtrl_StopDevice(fdoExt);
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_LogSimple("RestartDevice: StopDevice FAILED\n");
+        I2cCtrl_Log("RestartDevice: StopDevice FAILED\n");
         return status;
     }
 
@@ -4546,7 +4713,7 @@ I2cCtrl_RestartDevice(
      * XP/2003 requires a real IRP_MN_START_DEVICE from PnP
      * to provide fresh resources and restart the controller.
      */
-    I2cCtrl_LogSimple("RestartDevice: complete, awaiting PnP START_DEVICE\n");
+    I2cCtrl_Log("RestartDevice: complete, awaiting PnP START_DEVICE\n");
 
     return STATUS_SUCCESS;
 }
@@ -4579,17 +4746,17 @@ I2cCtrl_RemoveDevice(
     UNREFERENCED_PARAMETER(Irp);
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
-        I2cCtrl_LogSimple("RemoveDevice: invalid IRQL\n");
+        I2cCtrl_Log("RemoveDevice: invalid IRQL\n");
         return STATUS_INVALID_DEVICE_STATE;
     }
     PAGED_CODE();
 
     if (fdoExt == NULL) {
-        I2cCtrl_LogSimple("RemoveDevice: fdoExt=NULL\n");
+        I2cCtrl_Log("RemoveDevice: fdoExt=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    I2cCtrl_LogSimple("RemoveDevice: begin\n");
+    I2cCtrl_Log("RemoveDevice: begin\n");
 
     /* Mark removal BEFORE StopDevice */
     fdoExt->Removed        = TRUE;
@@ -4611,7 +4778,7 @@ I2cCtrl_RemoveDevice(
      */
     status = I2cCtrl_StopDevice(fdoExt);
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_LogSimple("RemoveDevice: StopDevice FAILED\n");
+        I2cCtrl_Log("RemoveDevice: StopDevice FAILED\n");
         /* Continue anyway — removal must not fail */
     }
 
@@ -4640,7 +4807,7 @@ I2cCtrl_RemoveDevice(
         fdoExt->RebindWorkItem = NULL;
     }
 
-    I2cCtrl_LogSimple("RemoveDevice: complete\n");
+    I2cCtrl_Log("RemoveDevice: complete\n");
 
     return STATUS_SUCCESS;
 }
@@ -5656,7 +5823,13 @@ I2cCtrl_DispatchPnP(
     status = Irp->IoStatus.Status;
     ext    = DeviceObject->DeviceExtension;
 
+    I2cCtrl_Log("PnP: Entered for device %p, MinorFunction=0x%02X\n",
+                DeviceObject, isl->MinorFunction);
+
     if (ext == NULL) {
+        I2cCtrl_Log("PnP: Device %p has NULL extension → STATUS_NO_SUCH_DEVICE\n",
+                    DeviceObject);
+
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -5667,15 +5840,19 @@ I2cCtrl_DispatchPnP(
     // Decide PDO vs FDO by signature.
     //
     if (((PI2CCTRL_PDO)ext)->Signature == I2CCTRL_PDO_SIGNATURE) {
-        //
-        // Child PDO - use PDO dispatch.
-        //
+
+        I2cCtrl_Log("PnP: Device %p recognized as PDO → routing to PdoDispatch\n",
+                    DeviceObject);
+
         return I2cCtrl_PdoDispatch(DeviceObject, Irp);
     }
 
     //
     // Otherwise treat as FDO - use FDO dispatch.
     //
+    I2cCtrl_Log("PnP: Device %p recognized as FDO → routing to FdoDispatch\n",
+                DeviceObject);
+
     return I2cCtrl_FdoDispatch(DeviceObject, Irp);
 }
 
@@ -8495,7 +8672,7 @@ I2cCtrl_FindControllerId(
     ULONG i;
 
     if (PnpId == NULL) {
-        I2cCtrl_LogSimple("FindControllerId: NULL PnpId\n");
+        I2cCtrl_Log("FindControllerId: NULL PnpId\n");
         return NULL;
     }
 
@@ -8508,12 +8685,12 @@ I2cCtrl_FindControllerId(
 
         /* Case-insensitive match */
         if (_wcsnicmp(PnpId, id->PciId, wcslen(id->PciId)) == 0) {
-            I2cCtrl_LogSimple("FindControllerId: match found\n");
+            I2cCtrl_Log("FindControllerId: match found\n");
             return id;
         }
     }
 
-    I2cCtrl_LogSimple("FindControllerId: no match\n");
+    I2cCtrl_Log("FindControllerId: no match\n");
     return NULL;
 }
 
@@ -8539,21 +8716,21 @@ I2cCtrlApplyQuirks(
 
     if (devctx == NULL || devctx->PnpId == NULL) {
         KdPrint(("I2CCTRL: ApplyQuirks: invalid devctx\n"));
-        I2cCtrl_LogSimple("ApplyQuirks: invalid devctx\n");
+        I2cCtrl_Log("ApplyQuirks: invalid devctx\n");
         return;
     }
 
     id = I2cCtrl_FindControllerId(devctx->PnpId);
     if (id == NULL) {
         KdPrint(("I2CCTRL: ApplyQuirks: no table entry for %ws\n", devctx->PnpId));
-        I2cCtrl_LogSimple("ApplyQuirks: no table entry\n");
+        I2cCtrl_Log("ApplyQuirks: no table entry\n");
         return;
     }
 
     bar0 = devctx->MmioBase;
     bar2 = devctx->LpssBar2;
 
-    I2cCtrl_LogSimple("ApplyQuirks: begin\n");
+    I2cCtrl_Log("ApplyQuirks: begin\n");
 
     /* ============================================================
        LPSS POWER-ON (BAR2)
@@ -8565,7 +8742,7 @@ I2cCtrlApplyQuirks(
             clk = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssClkGateOffset));
             clk &= ~0x1U;
             WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssClkGateOffset), clk);
-            I2cCtrl_LogSimple("LPSS: clock gate cleared\n");
+            I2cCtrl_Log("LPSS: clock gate cleared\n");
         }
 
         /* LPSS reset */
@@ -8573,7 +8750,7 @@ I2cCtrlApplyQuirks(
             ctrl = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssResetOffset));
             ctrl &= ~0x1U;
             WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssResetOffset), ctrl);
-            I2cCtrl_LogSimple("LPSS: reset deasserted\n");
+            I2cCtrl_Log("LPSS: reset deasserted\n");
         }
 
         /* LPSS functional clock */
@@ -8581,14 +8758,14 @@ I2cCtrlApplyQuirks(
             clk = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssFuncClkOffset));
             clk |= 0x1U;
             WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssFuncClkOffset), clk);
-            I2cCtrl_LogSimple("LPSS: functional clock enabled\n");
+            I2cCtrl_Log("LPSS: functional clock enabled\n");
         }
 
         /* LPSS misc */
         if (id->LpssMiscOffset) {
             verify = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssMiscOffset));
             WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssMiscOffset), verify);
-            I2cCtrl_LogSimple("LPSS: misc touched\n");
+            I2cCtrl_Log("LPSS: misc touched\n");
         }
     }
 
@@ -8599,7 +8776,7 @@ I2cCtrlApplyQuirks(
     /* Reset workaround */
     if (id->Quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
 
-        I2cCtrl_LogSimple("Quirk: reset workaround\n");
+        I2cCtrl_Log("Quirk: reset workaround\n");
 
         ctrl = READ_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset));
         WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset),
@@ -8619,13 +8796,13 @@ I2cCtrlApplyQuirks(
         WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset),
                              ctrl & ~CTRL_RESET_BIT);
 
-        I2cCtrl_LogSimple("Quirk: reset workaround complete\n");
+        I2cCtrl_Log("Quirk: reset workaround complete\n");
     }
 
     /* Broken clock gate */
     if (id->Quirks & QUIRK_BROKEN_CLOCK_GATE) {
 
-        I2cCtrl_LogSimple("Quirk: broken clock gate\n");
+        I2cCtrl_Log("Quirk: broken clock gate\n");
 
         clk = READ_REGISTER_ULONG((PULONG)(bar0 + id->ClockOffset));
         clk |= CLK_ENABLE_BIT;
@@ -8636,7 +8813,7 @@ I2cCtrlApplyQuirks(
     /* No DMA support */
     if (id->Quirks & QUIRK_NO_DMA_SUPPORT) {
 
-        I2cCtrl_LogSimple("Quirk: no DMA support\n");
+        I2cCtrl_Log("Quirk: no DMA support\n");
 
         ctrl = READ_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset));
         ctrl &= ~CTRL_DMA_EN_BIT;
@@ -8646,26 +8823,26 @@ I2cCtrlApplyQuirks(
     /* ACPI 2.0+ */
     if (id->Quirks & QUIRK_ACPI20) {
         devctx->AcpiIs20Plus = TRUE;
-        I2cCtrl_LogSimple("Quirk: ACPI 2.0+\n");
+        I2cCtrl_Log("Quirk: ACPI 2.0+\n");
     }
 
     /* ACPI 1.0b */
     if (id->Quirks & QUIRK_ACPI10) {
         devctx->AcpiIs20Plus = FALSE;
-        I2cCtrl_LogSimple("Quirk: ACPI 1.0b\n");
+        I2cCtrl_Log("Quirk: ACPI 1.0b\n");
     }
 
     /* Slow clock */
     if (id->Quirks & QUIRK_SLOW_CLOCK) {
         devctx->StallIntervalUs += 5;
-        I2cCtrl_LogSimple("Quirk: slow clock\n");
+        I2cCtrl_Log("Quirk: slow clock\n");
     }
 
     /* No D1/D2 */
     if (id->Quirks & QUIRK_NO_D1D2) {
         devctx->SupportsD1 = FALSE;
         devctx->SupportsD2 = FALSE;
-        I2cCtrl_LogSimple("Quirk: no D1/D2\n");
+        I2cCtrl_Log("Quirk: no D1/D2\n");
     }
 
     /* ============================================================
@@ -8674,25 +8851,25 @@ I2cCtrlApplyQuirks(
 
     if (id->BsodQuirks & BSOD_FORCE_PIO) {
         devctx->ForcePioMode = TRUE;
-        I2cCtrl_LogSimple("BSOD: force PIO\n");
+        I2cCtrl_Log("BSOD: force PIO\n");
     }
 
     if (id->BsodQuirks & BSOD_MASK_INTERRUPTS) {
         I2cCtrl_MaskInterrupts(devctx, TRUE);
-        I2cCtrl_LogSimple("BSOD: mask interrupts\n");
+        I2cCtrl_Log("BSOD: mask interrupts\n");
     }
 
     if (id->BsodQuirks & BSOD_EXTRA_RESET) {
         I2cCtrl_PerformReset(devctx);
-        I2cCtrl_LogSimple("BSOD: extra reset\n");
+        I2cCtrl_Log("BSOD: extra reset\n");
     }
 
     if (id->BsodQuirks & BSOD_DELAY_INIT) {
         KeStallExecutionProcessor(50000);
-        I2cCtrl_LogSimple("BSOD: delay init\n");
+        I2cCtrl_Log("BSOD: delay init\n");
     }
 
-    I2cCtrl_LogSimple("ApplyQuirks: done\n");
+    I2cCtrl_Log("ApplyQuirks: done\n");
 }
 
 VOID
