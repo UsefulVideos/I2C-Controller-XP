@@ -102,6 +102,12 @@ const GPIOCTRL_DEVICE_ID g_GpioControllers[] = {
       0,0,0,0,
       QUIRK_ACPI20, BSOD_NONE },
 
+    /* NEW: ACPI Skylake/Kaby Lake GPIO controller */
+    { L"ACPI\\INT34BB",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
 
     /* PCI-based Intel GPIO controllers WITH LPSS BAR2 */
     { L"PCI\\VEN_8086&DEV_9D35",
@@ -180,6 +186,11 @@ GpioCtrl_AddDevice(
     PGPIOCTRL_FDO_EXT ext;
     PDEVICE_OBJECT lowerDevice;
 
+    GpioCtrl_Log("AddDevice: Entered for PDO %p\n", PhysicalDeviceObject);
+
+    //
+    // Create FDO
+    //
     status = IoCreateDevice(
         DriverObject,
         sizeof(GPIOCTRL_FDO_EXT),
@@ -190,43 +201,64 @@ GpioCtrl_AddDevice(
         &fdo);
 
     if (!NT_SUCCESS(status)) {
+        GpioCtrl_Log("AddDevice: IoCreateDevice FAILED (0x%08X)\n", status);
         return status;
     }
 
+    GpioCtrl_Log("AddDevice: Created FDO %p\n", fdo);
+
     //
-    // Attach to the PDO’s stack – REQUIRED for PnP behavior.
+    // Zero extension BEFORE attaching
+    //
+    ext = (PGPIOCTRL_FDO_EXT)fdo->DeviceExtension;
+    RtlZeroMemory(ext, sizeof(*ext));
+
+    ext->Self = fdo;
+    ext->Pdo  = PhysicalDeviceObject;
+
+    //
+    // Attach to PDO stack
     //
     lowerDevice = IoAttachDeviceToDeviceStack(fdo, PhysicalDeviceObject);
     if (lowerDevice == NULL) {
+        GpioCtrl_Log("AddDevice: IoAttachDeviceToDeviceStack FAILED\n");
         IoDeleteDevice(fdo);
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    Gpioctrl_GlobalDeviceObject = fdo;
-
-    ext = (PGPIOCTRL_FDO_EXT)fdo->DeviceExtension;
-    RtlZeroMemory(ext, sizeof(*ext));
-
-    ext->Self        = fdo;
     ext->LowerDevice = lowerDevice;
-    ext->Signature   = GPIOCTRL_FDO_SIGNATURE;
 
-    ext->SupportsPull        = 1;
-    ext->SupportsInterrupts  = 1;
-    ext->SupportsDebounce    = 1;
-    ext->PinCount            = 32;
-    ext->DebounceDefaultMs   = 10;
-    ext->CrashOnError        = 0;
+    GpioCtrl_Log("AddDevice: Attached FDO %p to lower device %p\n",
+                 fdo, lowerDevice);
+
+    //
+    // Initialize extension fields
+    //
+    ext->Signature          = GPIOCTRL_FDO_SIGNATURE;
+    ext->SupportsPull       = 1;
+    ext->SupportsInterrupts = 1;
+    ext->SupportsDebounce   = 1;
+    ext->PinCount           = 32;
+    ext->DebounceDefaultMs  = 10;
+    ext->CrashOnError       = 0;
 
     KeInitializeSpinLock(&ext->RegLock);
     KeInitializeSpinLock(&ext->IsrLogLock);
     KeInitializeDpc(&ext->IsrDpc, GpioCtrl_Dpc, ext);
+
     ext->PendingIntMask = 0;
     ext->IsrLogHead     = 0;
     ext->IsrLogTail     = 0;
 
+    GpioCtrl_Log("AddDevice: Extension initialized\n");
+
+    //
+    // Mark device ready
+    //
     fdo->Flags |= DO_POWER_PAGABLE;
     fdo->Flags &= ~DO_DEVICE_INITIALIZING;
+
+    GpioCtrl_Log("AddDevice: Completed successfully for FDO %p\n", fdo);
 
     return STATUS_SUCCESS;
 }
@@ -247,36 +279,37 @@ GpioCtrl_DispatchPnp(
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
+    GpioCtrl_Log("PnP: Entered for device %p, MinorFunction=0x%02X\n",
+                 DeviceObject, isl->MinorFunction);
+
     switch (isl->MinorFunction) {
 
     case IRP_MN_START_DEVICE:
-        //
-        // StartDevice MUST complete the IRP itself.
-        //
+        GpioCtrl_Log("PnP: IRP_MN_START_DEVICE → calling StartDevice\n");
         return g_GpioCtrlGlobal.StartDevice(DeviceObject, Irp);
 
     case IRP_MN_STOP_DEVICE:
-        //
-        // StopDevice MUST complete the IRP itself.
-        //
+        GpioCtrl_Log("PnP: IRP_MN_STOP_DEVICE → calling StopDevice\n");
         return g_GpioCtrlGlobal.StopDevice(DeviceObject, Irp);
 
     case IRP_MN_REMOVE_DEVICE:
-        //
-        // RemoveDevice MUST complete the IRP itself.
-        //
+        GpioCtrl_Log("PnP: IRP_MN_REMOVE_DEVICE → calling RemoveDevice\n");
         return GpioCtrl_RemoveDevice(DeviceObject, Irp);
 
     default:
-        //
-        // For all other PnP IRPs, succeed and complete here.
-        //
+        GpioCtrl_Log("PnP: Unhandled MinorFunction=0x%02X → completing SUCCESS\n",
+                     isl->MinorFunction);
+
         status = STATUS_SUCCESS;
         break;
     }
 
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    GpioCtrl_Log("PnP: Completed default IRP for device %p, status=0x%08X\n",
+                 DeviceObject, status);
+
     return status;
 }
 
@@ -297,17 +330,35 @@ GpioCtrl_DispatchPower(
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
-    UNREFERENCED_PARAMETER(isl);
+    GpioCtrl_Log("Power: Entered for device %p, MinorFunction=0x%02X\n",
+                 DeviceObject, isl->MinorFunction);
 
+    //
+    // Required for XP/2003 power IRP sequencing
+    //
     PoStartNextPowerIrp(Irp);
 
+    //
+    // If we have a lower device, forward the IRP
+    //
     if (ext->LowerDevice != NULL) {
+
+        GpioCtrl_Log("Power: Forwarding to lower device %p\n",
+                     ext->LowerDevice);
+
         IoSkipCurrentIrpStackLocation(Irp);
         return PoCallDriver(ext->LowerDevice, Irp);
     }
 
+    //
+    // Standalone FDO: complete here
+    //
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    GpioCtrl_Log("Power: Completed locally for device %p, status=0x%08X\n",
+                 DeviceObject, status);
+
     return status;
 }
 
@@ -345,42 +396,61 @@ GpioCtrl_DispatchIoctl(
     ext  = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     code = isl->Parameters.DeviceIoControl.IoControlCode;
 
+    GpioCtrl_Log("Ioctl: Entered for device %p, IoctlCode=0x%08X\n",
+                 DeviceObject, code);
+
     /* Default values */
     status = STATUS_INVALID_DEVICE_REQUEST;
     Irp->IoStatus.Information = 0;
 
     /* Device not started yet */
     if (!ext->Started) {
+
+        GpioCtrl_Log("Ioctl: Device %p not started → STATUS_DEVICE_NOT_READY\n",
+                     DeviceObject);
+
         status = STATUS_DEVICE_NOT_READY;
+
     } else {
+
         switch (code) {
+
         case IOCTL_GPIO_READ_PIN:
+            GpioCtrl_Log("Ioctl: IOCTL_GPIO_READ_PIN\n");
             status = GpioCtrl_IoctlReadPin(ext, Irp);
             break;
 
         case IOCTL_GPIO_WRITE_PIN:
+            GpioCtrl_Log("Ioctl: IOCTL_GPIO_WRITE_PIN\n");
             status = GpioCtrl_IoctlWritePin(ext, Irp);
             break;
 
         case IOCTL_GPIO_CONFIGURE_PIN:
+            GpioCtrl_Log("Ioctl: IOCTL_GPIO_CONFIGURE_PIN\n");
             status = GpioCtrl_IoctlConfigurePin(ext, Irp);
             break;
 
         case IOCTL_GPIO_QUERY_CAPS:
+            GpioCtrl_Log("Ioctl: IOCTL_GPIO_QUERY_CAPS\n");
             status = GpioCtrl_IoctlQueryCaps(ext, Irp);
             break;
 
         case IOCTL_GPIO_FORCE_CRASH:
-            /* This call never returns; no code after it executes */
-            KeBugCheckEx(MANUALLY_INITIATED_CRASH,
-                         0x474F5043UL, /* "GPOC" */
-                         ext->Signature,
-                         0,
-                         0);
-            /* no break, no return needed */
+            GpioCtrl_Log("Ioctl: IOCTL_GPIO_FORCE_CRASH → triggering bugcheck\n");
+
+            KeBugCheckEx(
+                MANUALLY_INITIATED_CRASH,
+                0x474F5043UL, /* "GPOC" */
+                ext->Signature,
+                0,
+                0
+            );
+            /* No return — system will bugcheck */
             break;
 
         default:
+            GpioCtrl_Log("Ioctl: Unknown IoctlCode=0x%08X → STATUS_INVALID_DEVICE_REQUEST\n",
+                         code);
             status = STATUS_INVALID_DEVICE_REQUEST;
             break;
         }
@@ -389,15 +459,13 @@ GpioCtrl_DispatchIoctl(
     /* Complete IRP once, unless bugcheck occurred */
     Irp->IoStatus.Status = status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    GpioCtrl_Log("Ioctl: Completed for device %p, status=0x%08X\n",
+                 DeviceObject, status);
+
     return status;
 }
 
-/* ---------------------------------------------------------------------------
-   START device: pass down, parse resources, map MMIO, map PMC (LPSS only),
-   enable LPSS power domain, enable LPSS clock/reset, connect interrupt,
-   load policy. If no PMC window is present, treat as Cannon Lake–style GPIO
-   and skip LPSS‑specific power/clock sequences.
-   --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StartDevice(
     IN PDEVICE_OBJECT DeviceObject,
@@ -410,23 +478,101 @@ GpioCtrl_StartDevice(
     PCM_RESOURCE_LIST resRaw;
     PIO_STACK_LOCATION isl;
     ULONG i, j;
-    BOOLEAN hasPmcWindow = FALSE;
+    BOOLEAN hasPmcWindow;
+    const GPIOCTRL_DEVICE_ID* ctrlProfile;
+    WCHAR hwidBuf[256];
+    UNICODE_STRING hwid;
+    ULONG quirks;
+    ULONG bsodFlags;
 
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
-    GpioCtrl_Log("START: Entered for device %p\n", DeviceObject);
+    hasPmcWindow = FALSE;
+    ctrlProfile  = NULL;
+    quirks       = QUIRK_NONE;
+    bsodFlags    = BSOD_NONE;
 
-    /* Forward START_DEVICE to lower driver */
+    RtlZeroMemory(hwidBuf, sizeof(hwidBuf));
+
+    GpioCtrl_Log("StartDevice: Entered for device %p\n", DeviceObject);
+
+    //
+    // Forward START_DEVICE to lower driver
+    //
     IoCopyCurrentIrpStackLocationToNext(Irp);
     status = IoCallDriver(ext->LowerDevice, Irp);
 
     if (!NT_SUCCESS(status)) {
-        GpioCtrl_Log("START: Lower driver failed, status=0x%08X\n", status);
+        GpioCtrl_Log("StartDevice: Lower driver failed, status=0x%08X\n", status);
         return status;
     }
 
-    GpioCtrl_Log("START: Lower driver completed successfully\n");
+    GpioCtrl_Log("StartDevice: Lower driver completed successfully\n");
+
+    //
+    // Query Hardware ID and match against g_GpioControllers[]
+    //
+    RtlInitEmptyUnicodeString(&hwid, hwidBuf, sizeof(hwidBuf));
+
+    status = IoGetDeviceProperty(
+                 ext->Pdo,                      /* physical device object */
+                 DevicePropertyHardwareID,
+                 sizeof(hwidBuf),
+                 hwidBuf,
+                 &i);                           /* i reused as length */
+
+    if (NT_SUCCESS(status)) {
+        const WCHAR* p;
+
+        /* hwidBuf is MULTI_SZ */
+        p = hwidBuf;
+
+        while (*p != UNICODE_NULL) {
+            UNICODE_STRING oneId;
+
+            RtlInitUnicodeString(&oneId, p);
+
+            for (i = 0; i < g_GpioControllersCount; i++) {
+                /* simple substring match: does this HWID contain our pattern? */
+                if (wcsstr(p, g_GpioControllers[i].PciId) != NULL) {
+                    ctrlProfile = &g_GpioControllers[i];
+                    break;
+                }
+            }
+
+            if (ctrlProfile != NULL) {
+                break;
+            }
+
+            /* advance to next string in MULTI_SZ */
+            p += wcslen(p) + 1;
+        }
+    } else {
+        GpioCtrl_Log("StartDevice: IoGetDeviceProperty(HardwareID) failed, status=0x%08X\n", status);
+    }
+
+    if (ctrlProfile != NULL) {
+        ext->ControllerProfile = ctrlProfile;
+        quirks    = ctrlProfile->Quirks;
+        bsodFlags = ctrlProfile->BsodQuirks;
+
+        GpioCtrl_Log("StartDevice: Matched controller profile: %ws (quirks=0x%X, bsod=0x%X)\n",
+                     ctrlProfile->PciId,
+                     ctrlProfile->Quirks,
+                     ctrlProfile->BsodQuirks);
+    } else {
+        ext->ControllerProfile = NULL;
+        GpioCtrl_Log("StartDevice: No specific controller profile matched – using defaults\n");
+    }
+
+    //
+    // BSOD_DELAY_INIT: conservative delay before touching hardware
+    //
+    if (bsodFlags & BSOD_DELAY_INIT) {
+        GpioCtrl_Log("StartDevice: BSOD_DELAY_INIT – delaying initial hardware access\n");
+        KeStallExecutionProcessor(20000); /* ~20 ms */
+    }
 
     resTranslated = isl->Parameters.StartDevice.AllocatedResourcesTranslated;
     resRaw        = isl->Parameters.StartDevice.AllocatedResources;
@@ -434,7 +580,7 @@ GpioCtrl_StartDevice(
 
     /* Parse translated resources */
     if (resTranslated != NULL) {
-        GpioCtrl_Log("START: Parsing %u resource lists\n", resTranslated->Count);
+        GpioCtrl_Log("StartDevice: Parsing %u resource lists\n", resTranslated->Count);
 
         for (i = 0; i < resTranslated->Count; i++) {
             PCM_FULL_RESOURCE_DESCRIPTOR full;
@@ -458,13 +604,13 @@ GpioCtrl_StartDevice(
                             ext->PmcBasePa = desc->u.Memory.Start;
                             ext->PmcLength = desc->u.Memory.Length;
                             hasPmcWindow   = TRUE;
-                            GpioCtrl_Log("START: PMC MMIO: PA=%08X Len=%u\n",
+                            GpioCtrl_Log("StartDevice: PMC MMIO: PA=%08X Len=%u\n",
                                          ext->PmcBasePa.LowPart,
                                          ext->PmcLength);
                         } else {
                             ext->MmioBasePa = desc->u.Memory.Start;
                             ext->MmioLength = desc->u.Memory.Length;
-                            GpioCtrl_Log("START: GPIO MMIO: PA=%08X Len=%u\n",
+                            GpioCtrl_Log("StartDevice: GPIO MMIO: PA=%08X Len=%u\n",
                                          ext->MmioBasePa.LowPart,
                                          ext->MmioLength);
                         }
@@ -479,7 +625,7 @@ GpioCtrl_StartDevice(
                     ext->InterruptMode = (desc->Flags & CM_RESOURCE_INTERRUPT_LATCHED)
                                          ? Latched : LevelSensitive;
 
-                    GpioCtrl_Log("START: IRQ: Vector=%u IRQL=%u Mode=%s\n",
+                    GpioCtrl_Log("StartDevice: IRQ: Vector=%u IRQL=%u Mode=%s\n",
                                  ext->Vector,
                                  ext->Irql,
                                  (ext->InterruptMode == Latched ? "Latched" : "Level"));
@@ -499,11 +645,11 @@ GpioCtrl_StartDevice(
                                              MmNonCached);
 
         if (ext->MmioBase == NULL) {
-            GpioCtrl_Log("START: MmMapIoSpace FAILED for GPIO\n");
+            GpioCtrl_Log("StartDevice: MmMapIoSpace FAILED for GPIO\n");
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        GpioCtrl_Log("START: GPIO MMIO mapped at %p\n", ext->MmioBase);
+        GpioCtrl_Log("StartDevice: GPIO MMIO mapped at %p\n", ext->MmioBase);
     }
 
     /* Map PMC MMIO (LPSS power domain controller) */
@@ -513,75 +659,92 @@ GpioCtrl_StartDevice(
                                             MmNonCached);
 
         if (ext->PmcBase == NULL) {
-            GpioCtrl_Log("START: MmMapIoSpace FAILED for PMC\n");
+            GpioCtrl_Log("StartDevice: MmMapIoSpace FAILED for PMC\n");
         } else {
-            GpioCtrl_Log("START: PMC MMIO mapped at %p\n", ext->PmcBase);
+            GpioCtrl_Log("StartDevice: PMC MMIO mapped at %p\n", ext->PmcBase);
         }
     }
 
     if (!hasPmcWindow && ext->MmioBase != NULL) {
         /* No PMC window: treat as Cannon Lake / modern PCH GPIO and skip LPSS power/clock */
-        GpioCtrl_Log("START: No PMC window detected – assuming Cannon Lake‑style GPIO, skipping LPSS power/clock\n");
+        ext->ControllerType = GpioctrlControllerCannonLake;
+        GpioCtrl_Log("StartDevice: No PMC window detected – assuming Cannon Lake‑style GPIO, skipping LPSS power/clock\n");
+    } else if (hasPmcWindow) {
+        ext->ControllerType = GpioctrlControllerLpss;
+    } else {
+        ext->ControllerType = GpioctrlControllerUnknown;
+    }
+
+    /* BSOD_MASK_INTERRUPTS: mask IRQs before any heavy register programming */
+    if ((bsodFlags & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+        KIRQL oldIrql;
+        GpioCtrl_Log("StartDevice: BSOD_MASK_INTERRUPTS – pre‑masking GPIO interrupts\n");
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
     }
 
     /* Enable LPSS power domain if PMC is mapped (LPSS only) */
     if (ext->PmcBase != NULL) {
-        GpioCtrl_Log("START: Enabling LPSS power domain\n");
+        ULONG val;
+        ULONG timeout;
 
-        {
-            ULONG val, timeout;
+        GpioCtrl_Log("StartDevice: Enabling LPSS power domain\n");
 
-            /* Clear PG bit */
-            val = *(volatile ULONG*)(ext->PmcBase + 0x44);
-            val &= ~0x1;
-            *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
+        /* Clear PG bit */
+        val = *(volatile ULONG*)(ext->PmcBase + 0x44);
+        val &= ~0x1;
+        *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
 
-            /* Wait for PG_STATUS to clear */
-            timeout = 1000;
-            while (timeout--) {
-                val = *(volatile ULONG*)(ext->PmcBase + 0x48);
-                if ((val & 0x1) == 0) {
-                    GpioCtrl_Log("START: LPSS power domain ON\n");
-                    break;
-                }
-                KeStallExecutionProcessor(10);
-            }
-
-            if (timeout == 0) {
-                GpioCtrl_Log("START: ERROR – LPSS power domain did not turn on\n");
-            }
-
-            /* Clear ACK */
-            *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
-        }
-    }
-
-    /* -----------------------------------------------------------------------
-       LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present)
-       ----------------------------------------------------------------------- */
-    if (ext->MmioBase != NULL && hasPmcWindow) {
-        ULONG val, timeout;
-
-        GpioCtrl_Log("START: Enabling LPSS clock + reset\n");
-
-        /* 1) Enable clock (offset 0x800, bit0 = CLK_EN) */
-        val = *(volatile ULONG*)(ext->MmioBase + 0x800);
-        val |= 0x1;
-        *(volatile ULONG*)(ext->MmioBase + 0x800) = val;
-
-        /* Wait for clock status (bit1 = CLK_ON_STATUS) */
+        /* Wait for PG_STATUS to clear */
         timeout = 1000;
         while (timeout--) {
-            val = *(volatile ULONG*)(ext->MmioBase + 0x800);
-            if (val & 0x2) {
-                GpioCtrl_Log("START: LPSS clock ON\n");
+            val = *(volatile ULONG*)(ext->PmcBase + 0x48);
+            if ((val & 0x1) == 0) {
+                GpioCtrl_Log("StartDevice: LPSS power domain ON\n");
                 break;
             }
             KeStallExecutionProcessor(10);
         }
 
         if (timeout == 0) {
-            GpioCtrl_Log("START: WARNING – LPSS clock status did not assert\n");
+            GpioCtrl_Log("StartDevice: ERROR – LPSS power domain did not turn on\n");
+        }
+
+        /* Clear ACK */
+        *(volatile ULONG*)(ext->PmcBase + 0x4C) = 0x1;
+    }
+
+    /* LPSS CLOCK + RESET ENABLE SEQUENCE (only when PMC/LPSS is present) */
+    if (ext->MmioBase != NULL && hasPmcWindow) {
+        ULONG val;
+        ULONG timeout;
+
+        GpioCtrl_Log("StartDevice: Enabling LPSS clock + reset\n");
+
+        /* 1) Enable clock (offset 0x800, bit0 = CLK_EN) */
+        val = *(volatile ULONG*)(ext->MmioBase + 0x800);
+        val |= 0x1;
+        *(volatile ULONG*)(ext->MmioBase + 0x800) = val;
+
+        /* QUIRK_BROKEN_CLOCK_GATE: skip clock‑gate polling if unreliable */
+        if (!(quirks & QUIRK_BROKEN_CLOCK_GATE)) {
+            /* Wait for clock status (bit1 = CLK_ON_STATUS) */
+            timeout = 1000;
+            while (timeout--) {
+                val = *(volatile ULONG*)(ext->MmioBase + 0x800);
+                if (val & 0x2) {
+                    GpioCtrl_Log("StartDevice: LPSS clock ON\n");
+                    break;
+                }
+                KeStallExecutionProcessor(10);
+            }
+
+            if (timeout == 0) {
+                GpioCtrl_Log("StartDevice: WARNING – LPSS clock status did not assert\n");
+            }
+        } else {
+            GpioCtrl_Log("StartDevice: QUIRK_BROKEN_CLOCK_GATE – skipping clock status polling\n");
         }
 
         /* 2) Deassert reset (offset 0x804, bit0 = RESET_DEASSERT) */
@@ -594,21 +757,46 @@ GpioCtrl_StartDevice(
         while (timeout--) {
             val = *(volatile ULONG*)(ext->MmioBase + 0x804);
             if (val & 0x2) {
-                GpioCtrl_Log("START: LPSS reset deasserted\n");
+                GpioCtrl_Log("StartDevice: LPSS reset deasserted\n");
                 break;
             }
             KeStallExecutionProcessor(10);
         }
 
         if (timeout == 0) {
-            GpioCtrl_Log("START: WARNING – LPSS reset status did not assert\n");
+            GpioCtrl_Log("StartDevice: WARNING – LPSS reset status did not assert\n");
         }
 
-        GpioCtrl_Log("START: LPSS clock/reset sequence completed\n");
+        /* QUIRK_NEEDS_RESET_WORKAROUND: extra reset pulse */
+        if (quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
+            GpioCtrl_Log("StartDevice: QUIRK_NEEDS_RESET_WORKAROUND – issuing extra reset pulse\n");
+
+            /* Briefly clear RESET_DEASSERT then set again */
+            val = *(volatile ULONG*)(ext->MmioBase + 0x804);
+            val &= ~0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+            KeStallExecutionProcessor(10);
+
+            val |= 0x1;
+            *(volatile ULONG*)(ext->MmioBase + 0x804) = val;
+        }
+
+        GpioCtrl_Log("StartDevice: LPSS clock/reset sequence completed\n");
+    }
+
+    /* QUIRK_NO_DMA_SUPPORT / BSOD_FORCE_PIO:
+       GPIO driver itself does not use DMA, but log for diagnostics so that
+       upper‑layer (e.g. I2C) drivers can honor PIO‑only policy. */
+    if (quirks & QUIRK_NO_DMA_SUPPORT) {
+        GpioCtrl_Log("StartDevice: QUIRK_NO_DMA_SUPPORT – controller is PIO‑only (no DMA)\n");
+    }
+
+    if (bsodFlags & BSOD_FORCE_PIO) {
+        GpioCtrl_Log("StartDevice: BSOD_FORCE_PIO – system policy prefers PIO over DMA\n");
     }
 
     /* Load registry policy */
-    GpioCtrl_Log("START: Loading registry policy\n");
+    GpioCtrl_Log("StartDevice: Loading registry policy\n");
     GpioCtrl_LoadRegistryPolicy(ext, NULL);
 
     /* Initialize hardware defaults */
@@ -616,7 +804,7 @@ GpioCtrl_StartDevice(
         KIRQL oldIrql;
         ULONG mask;
 
-        GpioCtrl_Log("START: Initializing hardware defaults\n");
+        GpioCtrl_Log("StartDevice: Initializing hardware defaults\n");
 
         KeAcquireSpinLock(&ext->RegLock, &oldIrql);
 
@@ -625,7 +813,7 @@ GpioCtrl_StartDevice(
 
         if (mask != 0) {
             GpioRegWrite(ext, REG_INT_STAT_OFFSET, mask);
-            GpioCtrl_Log("START: Cleared pending interrupts (mask=%08X)\n", mask);
+            GpioCtrl_Log("StartDevice: Cleared pending interrupts (mask=%08X)\n", mask);
         }
 
         KeReleaseSpinLock(&ext->RegLock, oldIrql);
@@ -633,7 +821,7 @@ GpioCtrl_StartDevice(
 
     /* Connect interrupt */
     if (ext->Vector != 0) {
-        GpioCtrl_Log("START: Connecting interrupt\n");
+        GpioCtrl_Log("StartDevice: Connecting interrupt\n");
 
         status = IoConnectInterrupt(
             &ext->InterruptObject,
@@ -649,87 +837,160 @@ GpioCtrl_StartDevice(
             FALSE);
 
         if (!NT_SUCCESS(status)) {
-            GpioCtrl_Log("START: IoConnectInterrupt FAILED (0x%08X)\n", status);
+            GpioCtrl_Log("StartDevice: IoConnectInterrupt FAILED (0x%08X)\n", status);
             ext->InterruptObject    = NULL;
             ext->InterruptConnected = FALSE;
         } else {
-            GpioCtrl_Log("START: Interrupt connected successfully\n");
+            GpioCtrl_Log("StartDevice: Interrupt connected successfully\n");
             ext->InterruptConnected = TRUE;
         }
     }
 
     ext->Started = TRUE;
-    GpioCtrl_Log("START: Completed successfully\n");
+    GpioCtrl_Log("StartDevice: Completed successfully\n");
 
     return STATUS_SUCCESS;
 }
 
 
 /* ---------------------------------------------------------------------------
-   STOP device: disconnect interrupt, unmap MMIO/PMC safely (LPSS or CNL)
+   StopDevice: disconnect interrupt, cancel DPC, power down LPSS, unmap MMIO/PMC
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_StopDevice(
     IN PDEVICE_OBJECT DeviceObject,
-    IN PIRP Irp
+    IN PIRP           Irp
     )
 {
     PGPIOCTRL_FDO_EXT ext;
+    const GPIOCTRL_DEVICE_ID* id;
+    ULONG quirks;
+    ULONG bsod;
 
     UNREFERENCED_PARAMETER(Irp);
+
     ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
+    id  = ext->ControllerProfile;   /* Set in StartDevice */
+    quirks = ext->QuirkFlags;
+    bsod   = ext->BsodPolicy;
 
-    GpioCtrl_Log("STOP: Entered for device %p\n", DeviceObject);
+    GpioCtrl_Log("StopDevice: Entered for device %p\n", DeviceObject);
 
-    /* Disconnect interrupt */
+    /* -----------------------------------------------------------------------
+       0) Cancel ISR DPC (this prevents BugCheck 0xCE)
+       ----------------------------------------------------------------------- */
+    GpioCtrl_Log("StopDevice: Removing queued ISR DPC (if any)\n");
+    KeRemoveQueueDpc(&ext->IsrDpc);
+
+    /* -----------------------------------------------------------------------
+       1) BSOD_MASK_INTERRUPTS – mask IRQs before shutdown
+       ----------------------------------------------------------------------- */
+    if ((bsod & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+
+        KIRQL oldIrql;
+
+        GpioCtrl_Log("StopDevice: BSOD_MASK_INTERRUPTS – masking interrupts\n");
+
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
+    }
+
+    /* -----------------------------------------------------------------------
+       2) Disconnect interrupt
+       ----------------------------------------------------------------------- */
     if (ext->InterruptConnected && ext->InterruptObject != NULL) {
-        GpioCtrl_Log("STOP: Disconnecting interrupt (Vector=%u)\n", ext->Vector);
+
+        GpioCtrl_Log("StopDevice: Disconnecting interrupt (Vector=%u)\n", ext->Vector);
 
         IoDisconnectInterrupt(ext->InterruptObject);
 
         ext->InterruptObject    = NULL;
         ext->InterruptConnected = FALSE;
 
-        GpioCtrl_Log("STOP: Interrupt disconnected\n");
+        GpioCtrl_Log("StopDevice: Interrupt disconnected\n");
     }
 
-    /* Unmap GPIO MMIO */
+    /* -----------------------------------------------------------------------
+       3) LPSS shutdown sequence (only if PMC exists AND controller has LPSS offsets)
+       ----------------------------------------------------------------------- */
+    if (ext->PmcBase != NULL &&
+        id != NULL &&
+        (id->LpssClkGateOffset ||
+         id->LpssResetOffset   ||
+         id->LpssFuncClkOffset ||
+         id->LpssMiscOffset))
+    {
+        ULONG val;
+
+        GpioCtrl_Log("StopDevice: LPSS shutdown sequence\n");
+
+        /* Power‑gate LPSS domain (PMC + 0x44) */
+        val = *(volatile ULONG*)(ext->PmcBase + 0x44);
+        val |= 0x1;
+        *(volatile ULONG*)(ext->PmcBase + 0x44) = val;
+
+        /* QUIRK_NEEDS_RESET_WORKAROUND */
+        if ((quirks & QUIRK_NEEDS_RESET_WORKAROUND) &&
+            ext->MmioBase != NULL &&
+            id->LpssResetOffset != 0)
+        {
+            ULONG r;
+
+            GpioCtrl_Log("StopDevice: QUIRK_NEEDS_RESET_WORKAROUND – issuing reset pulse\n");
+
+            r = READ_REGISTER_ULONG((PULONG)(ext->MmioBase + id->LpssResetOffset));
+            r &= ~0x1;
+            WRITE_REGISTER_ULONG((PULONG)(ext->MmioBase + id->LpssResetOffset), r);
+
+            KeStallExecutionProcessor(10);
+
+            r |= 0x1;
+            WRITE_REGISTER_ULONG((PULONG)(ext->MmioBase + id->LpssResetOffset), r);
+        }
+
+        GpioCtrl_Log("StopDevice: LPSS power domain gated\n");
+    }
+
+    /* -----------------------------------------------------------------------
+       4) Unmap GPIO MMIO (BAR0)
+       ----------------------------------------------------------------------- */
     if (ext->MmioBase != NULL) {
-        GpioCtrl_Log("STOP: Unmapping GPIO MMIO at %p (Len=%u)\n",
-                     ext->MmioBase,
-                     ext->MmioLength);
+
+        GpioCtrl_Log("StopDevice: Unmapping GPIO MMIO at %p (Len=%u)\n",
+                     ext->MmioBase, ext->MmioLength);
 
         MmUnmapIoSpace(ext->MmioBase, ext->MmioLength);
 
         ext->MmioBase   = NULL;
         ext->MmioLength = 0;
 
-        GpioCtrl_Log("STOP: GPIO MMIO unmapped\n");
+        GpioCtrl_Log("StopDevice: GPIO MMIO unmapped\n");
     }
 
-    /* Unmap PMC MMIO (LPSS only — Cannon Lake has no PMC window) */
+    /* -----------------------------------------------------------------------
+       5) Unmap PMC MMIO (LPSS only)
+       ----------------------------------------------------------------------- */
     if (ext->PmcBase != NULL) {
-        GpioCtrl_Log("STOP: Unmapping PMC MMIO at %p (Len=%u)\n",
-                     ext->PmcBase,
-                     ext->PmcLength);
+
+        GpioCtrl_Log("StopDevice: Unmapping PMC MMIO at %p (Len=%u)\n",
+                     ext->PmcBase, ext->PmcLength);
 
         MmUnmapIoSpace(ext->PmcBase, ext->PmcLength);
 
         ext->PmcBase   = NULL;
         ext->PmcLength = 0;
 
-        GpioCtrl_Log("STOP: PMC MMIO unmapped\n");
+        GpioCtrl_Log("StopDevice: PMC MMIO unmapped\n");
     }
 
     ext->Started = FALSE;
-    GpioCtrl_Log("STOP: Completed successfully\n");
+
+    GpioCtrl_Log("StopDevice: Completed successfully\n");
 
     return STATUS_SUCCESS;
 }
 
-/* ---------------------------------------------------------------------------
-   REMOVE device: ensure stopped, delete (no detach)
-   --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_RemoveDevice(
     IN PDEVICE_OBJECT DeviceObject,
@@ -737,29 +998,51 @@ GpioCtrl_RemoveDevice(
     )
 {
     PGPIOCTRL_FDO_EXT ext;
+    ULONG bsodFlags;
 
     UNREFERENCED_PARAMETER(Irp);
-    ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
 
-    GpioCtrl_Log("REMOVE: Entered for device %p\n", DeviceObject);
+    ext = (PGPIOCTRL_FDO_EXT)DeviceObject->DeviceExtension;
+    bsodFlags = (ext->ControllerProfile ? ext->ControllerProfile->BsodQuirks : 0);
+
+    GpioCtrl_Log("RemoveDevice: Entered for device %p\n", DeviceObject);
 
     ext->Removed = TRUE;
 
+    /* BSOD_MASK_INTERRUPTS – mask IRQs before any teardown */
+    if ((bsodFlags & BSOD_MASK_INTERRUPTS) && ext->MmioBase != NULL) {
+        KIRQL oldIrql;
+
+        GpioCtrl_Log("RemoveDevice: BSOD_MASK_INTERRUPTS – masking interrupts before removal\n");
+
+        KeAcquireSpinLock(&ext->RegLock, &oldIrql);
+        GpioRegWrite(ext, REG_INT_EN_OFFSET, 0);
+        KeReleaseSpinLock(&ext->RegLock, oldIrql);
+    }
+
+    /* If still started, stop it cleanly */
     if (ext->Started) {
-        GpioCtrl_Log("REMOVE: Device still started, calling StopDevice\n");
+        GpioCtrl_Log("RemoveDevice: Device still started, calling StopDevice\n");
         (VOID)GpioCtrl_StopDevice(DeviceObject, Irp);
     }
 
+    /* Flush ISR/DPC log buffer */
     GpioCtrl_FlushIsrLog(ext);
 
-    GpioCtrl_Log("REMOVE: Deleting device object %p\n", DeviceObject);
+    /* Detach from lower device before deleting */
+    if (ext->LowerDevice != NULL) {
+        GpioCtrl_Log("RemoveDevice: Detaching from lower device %p\n", ext->LowerDevice);
+        IoDetachDevice(ext->LowerDevice);
+        ext->LowerDevice = NULL;
+    }
+
+    /* Delete device object */
+    GpioCtrl_Log("RemoveDevice: Deleting device object %p\n", DeviceObject);
     IoDeleteDevice(DeviceObject);
 
-    GpioCtrl_Log("REMOVE: Completed successfully\n");
+    GpioCtrl_Log("RemoveDevice: Completed successfully\n");
     return STATUS_SUCCESS;
 }
-
-
 
 /* ---------------------------------------------------------------------------
    MMIO helpers
