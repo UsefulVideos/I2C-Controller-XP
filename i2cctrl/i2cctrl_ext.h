@@ -697,6 +697,18 @@ typedef struct _I2CCTRL_FDO {
     PHYSICAL_ADDRESS LpssBar2Phys;
     ULONG LpssBar2Length;
 	
+	//
+	// LPSS2 register offsets (BAR0)
+	//
+	ULONG RegCtrl;        // Control register
+	ULONG RegStatus;      // Status register
+	ULONG RegReset;       // Soft reset
+	ULONG RegClkCtl;      // Clock gate control
+	ULONG RegClkDiv;      // Clock divider
+	ULONG RegClkUpdate;   // Clock update trigger
+	ULONG RegIntrMask;    // Interrupt mask
+
+	
 } I2CCTRL_FDO, *PI2CCTRL_FDO;
 
 #endif /* _I2CCTRL_FDO_DEFINED */
@@ -1028,6 +1040,7 @@ typedef struct _I2CCTRL_PDO {
 PIRP                PendingHidReadIrp;
 USHORT              SlaveAddress;
 ULONG               DataRegister;
+BOOLEAN             HidHasDsmHidDescriptor;  /* TRUE if _DSM HID descriptor was used */
 
 //
 // ACPI-derived GPIO interrupt info
@@ -1430,7 +1443,7 @@ EXTERN_C const GUID GUID_NULL;
 //
 
 /* Enable or disable the controller core */
-VOID
+NTSTATUS
 I2cCtrl_EnableController(
     PI2CCTRL_FDO devctx,
     BOOLEAN      enable
@@ -1658,13 +1671,57 @@ I2cCtrl_RemoveDevice(
 	);
 
 VOID
-I2cCtrl_LogSimple(
-    PCSTR Text
+I2cCtrl_Log(
+    PCSTR Format,
+    ...
     );
 	
 const I2CCTRL_DEVICE_ID*
 I2cCtrl_FindControllerId(
     PCWSTR PnpId
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOn(
+    PI2CCTRL_FDO devctx
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOff(
+    PI2CCTRL_FDO devctx
+    );
+
+BOOLEAN
+I2cCtrl_ParseCrsForI2cSerialBus(
+    const UCHAR *buf,
+    ULONG        len,
+    PUCHAR       addrOut,
+    PULONG       speedOut,
+    PBOOLEAN     tenBitOut
+    );
+
+#define HID_I2C_DSM_REVISION 1
+#define HID_I2C_DSM_GET_DESCRIPTOR 1
+#define HID_I2C_DSM_GET_REPORT     2
+
+typedef struct _HID_I2C_DSM_GUID {
+    UCHAR Bytes[16];
+} HID_I2C_DSM_GUID;
+
+#define HID_I2C_DSM_GUID_PTR ((PUCHAR)g_HidI2cDsmGuid)
+
+/* HID-over-I2C _DSM GUID: 3CDFF6F7-4267-4555-AD05-B30A3D8938DE */
+static const UCHAR g_HidI2cDsmGuid[16] = {
+    0xF7,0xF6,0xDF,0x3C, 0x67,0x42, 0x55,0x45,
+    0xAD,0x05, 0xB3,0x0A,0x3D,0x89,0x38,0xDE
+};
+
+NTSTATUS
+I2cCtrl_AcpiGetHidDescriptorViaDsm(
+    PI2CCTRL_FDO            devctx,
+    PVOID                   handle,
+    PUCHAR                  outBuf,
+    PULONG                  outLen
     );
 
 #endif /* _I2CCTRL_EXT_H_ */
