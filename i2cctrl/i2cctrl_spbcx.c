@@ -153,18 +153,24 @@ I2cCtrl_IoctlSetTarget(
     Dx->SavedTimingHighNs = highNs;
     Dx->SavedTimingLowNs  = lowNs;
 
-    /* ---- Program controller defaults only if MMIO is valid ---- */
-    if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
+/* ---- Program controller defaults only if MMIO is valid ---- */
+if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
 
-        /* Enable controller */
-        (VOID)I2cCtrl_EnableController(Dx, TRUE);
+    NTSTATUS status;
 
-        /* Apply timing */
-        I2cCtrl_ApplyBusTiming(Dx,
-                               highNs,
-                               lowNs,
-                               speed);
+    /* Enable controller */
+    status = I2cCtrl_EnableController(Dx, TRUE);
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("I2CCTRL: IoctlSetTarget: EnableController failed, status=0x%08lx\n", status));
+        return status;
     }
+
+    /* Apply timing */
+    I2cCtrl_ApplyBusTiming(Dx,
+                           highNs,
+                           lowNs,
+                           speed);
+}
 
     /* ---- Configure addressing mode ---- */
     Dx->Use10BitAddrDefault =

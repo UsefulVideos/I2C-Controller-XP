@@ -8,6 +8,7 @@
 
 #include <ntddk.h>
 #include <hidport.h>
+#include <acpiioct.h>
 #include "..\i2chid\i2chid_contacts.h"
 #include "i2cctrl_sal.h"
 #include "i2cctrl_extra.h"
@@ -697,6 +698,19 @@ typedef struct _I2CCTRL_FDO {
     PHYSICAL_ADDRESS LpssBar2Phys;
     ULONG LpssBar2Length;
 	
+	//
+	// LPSS2 register offsets (BAR0)
+	//
+	ULONG RegCtrl;        // Control register
+	ULONG RegStatus;      // Status register
+	ULONG RegReset;       // Soft reset
+	ULONG RegClkCtl;      // Clock gate control
+	ULONG RegClkDiv;      // Clock divider
+	ULONG RegClkUpdate;   // Clock update trigger
+	ULONG RegIntrMask;    // Interrupt mask
+	ULONG ControllerIndex;   /* Index into g_I2cControllers[] */
+	PHYSICAL_ADDRESS PwrmBase;   /* Whiskey Lake / CNP-LP PMC PWRMBASE */
+
 } I2CCTRL_FDO, *PI2CCTRL_FDO;
 
 #endif /* _I2CCTRL_FDO_DEFINED */
@@ -1028,6 +1042,7 @@ typedef struct _I2CCTRL_PDO {
 PIRP                PendingHidReadIrp;
 USHORT              SlaveAddress;
 ULONG               DataRegister;
+BOOLEAN             HidHasDsmHidDescriptor;  /* TRUE if _DSM HID descriptor was used */
 
 //
 // ACPI-derived GPIO interrupt info
@@ -1287,12 +1302,43 @@ I2cCtrl_AcpiOpen(
     );
 
 NTSTATUS
-I2cCtrl_AcpiEvalMethod(
-    PI2CCTRL_FDO devctx,
-    PCWSTR                  MethodName,
-    PUCHAR                  OutBuffer,
-    PULONG                  OutBufferLen
+I2cCtrl_EnumerateAcpiNamespace(
+    PDEVICE_OBJECT AcpiPdo,
+    PVOID          ParentHandle,
+    ULONG          Depth,
+    PI2CCTRL_FDO   FdoExt
     );
+
+//
+// Minimal description of one ACPI device entry returned by
+// IOCTL_ACPI_GET_DEVICE_INFORMATION (hybrid traversal root walk).
+//
+typedef struct _I2CCTRL_ACPI_ENUM_ENTRY {
+    ULONG NextRequest;     // IN: index to request (0,1,2,...)
+    PVOID DeviceHandle;    // OUT: opaque ACPI handle
+    ULONG DeviceStatus;    // OUT: _STA bits (if ACPI fills them)
+} I2CCTRL_ACPI_ENUM_ENTRY, *PI2CCTRL_ACPI_ENUM_ENTRY;
+
+NTSTATUS
+I2cCtrl_AcpiGetDeviceInformation(
+    PDEVICE_OBJECT             AcpiPdo,
+    PVOID                      DeviceHandle,   // reserved for future use
+    PI2CCTRL_ACPI_ENUM_ENTRY   Info,
+    ULONG                      InfoLength
+    );
+
+//
+// Private copy of the front of ACPI_DEVICE_INFORMATION as used by
+// IOCTL_ACPI_GET_DEVICE_INFORMATION. We only care about a few fields.
+//
+typedef struct _I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE {
+    ULONG Signature;       // filled by ACPI, ignored here
+    ULONG Length;          // total length of this structure
+    ULONG NextRequest;     // IN: index to request
+    PVOID DeviceHandle;    // OUT: opaque handle
+    ULONG DeviceStatus;    // OUT: _STA bits
+    // The real structure has more fields; we don't need them.
+} I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE, *PI2CCTRL_ACPI_DEVICE_INFORMATION_WIRE;
 
 /* FIFO helpers used by surprise-remove quiesce */
 VOID I2cCtrl_DrainRxFifoBounded(PI2CCTRL_FDO FdoExt);
@@ -1430,7 +1476,7 @@ EXTERN_C const GUID GUID_NULL;
 //
 
 /* Enable or disable the controller core */
-VOID
+NTSTATUS
 I2cCtrl_EnableController(
     PI2CCTRL_FDO devctx,
     BOOLEAN      enable
@@ -1658,13 +1704,116 @@ I2cCtrl_RemoveDevice(
 	);
 
 VOID
-I2cCtrl_LogSimple(
-    PCSTR Text
+I2cCtrl_Log(
+    PCSTR Format,
+    ...
     );
 	
 const I2CCTRL_DEVICE_ID*
 I2cCtrl_FindControllerId(
     PCWSTR PnpId
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOn(
+    PI2CCTRL_FDO devctx
+    );
+
+NTSTATUS
+I2cCtrl_Lpss2PowerOff(
+    PI2CCTRL_FDO devctx
+    );
+
+BOOLEAN
+I2cCtrl_ParseCrsForI2cSerialBus(
+    const UCHAR *buf,
+    ULONG        len,
+    PUCHAR       addrOut,
+    PULONG       speedOut,
+    PBOOLEAN     tenBitOut
+    );
+
+#define HID_I2C_DSM_REVISION 1
+#define HID_I2C_DSM_GET_DESCRIPTOR 1
+#define HID_I2C_DSM_GET_REPORT     2
+
+typedef struct _HID_I2C_DSM_GUID {
+    UCHAR Bytes[16];
+} HID_I2C_DSM_GUID;
+
+#define HID_I2C_DSM_GUID_PTR ((PUCHAR)g_HidI2cDsmGuid)
+
+/* HID-over-I2C _DSM GUID: 3CDFF6F7-4267-4555-AD05-B30A3D8938DE */
+static const UCHAR g_HidI2cDsmGuid[16] = {
+    0xF7,0xF6,0xDF,0x3C, 0x67,0x42, 0x55,0x45,
+    0xAD,0x05, 0xB3,0x0A,0x3D,0x89,0x38,0xDE
+};
+
+NTSTATUS
+I2cCtrl_AcpiGetHidDescriptorViaDsm(
+    PI2CCTRL_FDO            devctx,
+    PVOID                   handle,
+    PUCHAR                  outBuf,
+    PULONG                  outLen
+    );
+
+VOID     I2cCtrlApplyQuirks(PI2CCTRL_FDO devctx);
+
+#ifndef IOCTL_ACPI_GET_DEVICE_INFORMATION
+#define IOCTL_ACPI_GET_DEVICE_INFORMATION \
+    CTL_CODE(FILE_DEVICE_ACPI, 0x0003, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#endif
+
+#define ACPI_DEVICE_INFORMATION_SIGNATURE 'IPCA'
+
+//
+// Modern ACPI 2.0+ input buffer for complex method evaluation
+// (used by patched ACPI.sys on modern hardware)
+//
+typedef struct _I2CCTRL_ACPI_EVAL_INPUT_BUFFER_COMPLEX {
+    ULONG  Signature;
+    CHAR   MethodName[4];
+    ULONG  Size;
+    ULONG  ArgumentCount;
+    ULONG  Data[ANYSIZE_ARRAY];   // GUID + integers, packed
+} I2CCTRL_ACPI_EVAL_INPUT_BUFFER_COMPLEX,
+  *PI2CCTRL_ACPI_EVAL_INPUT_BUFFER_COMPLEX;
+
+
+//
+// Modern ACPI 2.0+ output buffer for method evaluation
+//
+typedef struct _I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER {
+    ULONG  Signature;
+    ULONG  Length;
+    ULONG  Count;                 // number of ACPI_METHOD_ARGUMENTs
+    UCHAR  Data[ANYSIZE_ARRAY];   // packed arguments
+} I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER,
+  *PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER;
+
+
+//
+// Modern ACPI 2.0+ method argument layout
+//
+typedef struct _I2CCTRL_ACPI_METHOD_ARGUMENT {
+    USHORT Type;
+    USHORT DataLength;
+    ULONG  Argument;              // inline or offset
+} I2CCTRL_ACPI_METHOD_ARGUMENT,
+  *PI2CCTRL_ACPI_METHOD_ARGUMENT;
+
+NTSTATUS
+I2cCtrl_AcpiEvalMethod(
+    PDEVICE_OBJECT            AcpiPdo,
+    PVOID                     AcpiHandle,
+    PCSTR                     MethodName,
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER  *OutBuf,
+    ULONG                     OutBufLen
+    );
+
+NTSTATUS
+I2cCtrl_EnablePmcPowerWellWhiskeyLake(
+    _In_ PHYSICAL_ADDRESS PwrmBase
     );
 
 #endif /* _I2CCTRL_EXT_H_ */
