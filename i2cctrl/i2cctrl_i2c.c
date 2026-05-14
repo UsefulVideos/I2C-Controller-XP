@@ -71,23 +71,23 @@ WaitStatusBits(
 
 /* ---------------------------------------------------------------------------
  * I2cHwPowerOnAcpi - ACPI power-on helper (_PS0 / _ON)
- * XP/2003 BSOD-safe, WinDDK-compiler-safe, C89-compliant
+ * Updated to use 5-argument I2cCtrl_AcpiEvalMethod()
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2cHwPowerOnAcpi(PDEVICE_OBJECT Pdo)
 {
-    NTSTATUS           status;
-    PVOID              buf;
-    ULONG              outLen;
-    PI2CCTRL_PDO       childDx;
-    PI2CCTRL_FDO       parentFdo;
+    NTSTATUS status;
+    PI2CCTRL_PDO childDx;
+    PI2CCTRL_FDO parentFdo;
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER outBuf;
+    ULONG outLen;
 
-    /* C89 init */
+    /* C89 initialization */
     status    = STATUS_UNSUCCESSFUL;
-    buf       = NULL;
-    outLen    = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 256U;
     childDx   = NULL;
     parentFdo = NULL;
+    outBuf    = NULL;
+    outLen    = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 256U;
 
     if (Pdo == NULL) {
         return STATUS_INVALID_PARAMETER;
@@ -99,6 +99,7 @@ I2cHwPowerOnAcpi(PDEVICE_OBJECT Pdo)
     if (childDx == NULL) {
         return STATUS_INVALID_DEVICE_REQUEST;
     }
+
     parentFdo = childDx->ParentFdo;
     if (parentFdo == NULL) {
         return STATUS_INVALID_DEVICE_REQUEST;
@@ -110,48 +111,68 @@ I2cHwPowerOnAcpi(PDEVICE_OBJECT Pdo)
         return STATUS_NOT_SUPPORTED;
     }
 
-    buf = ExAllocatePoolWithTag(PagedPool, outLen, 'Acpi');
-    if (buf == NULL) {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
+    /* Try _PS0 first */
+    status = I2cCtrl_AcpiEvalMethod(
+                 parentFdo->AcpiDeviceObject,   /* ACPI PDO */
+                 parentFdo->AcpiHandle,         /* ACPI handle */
+                 "_PS0",                         /* method */
+                 outBuf,                        /* OUT: allocated buffer */
+                 outLen                          /* IN: max size */
+             );
 
-    /* Try _PS0 first, then fall back to _ON */
-    status = I2cCtrl_AcpiEvalMethod(parentFdo, L"_PS0", (PUCHAR)buf, &outLen);
     if (!NT_SUCCESS(status)) {
-        outLen = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 256U;
-        status = I2cCtrl_AcpiEvalMethod(parentFdo, L"_ON", (PUCHAR)buf, &outLen);
+
+        /* Free buffer from _PS0 attempt */
+        if (outBuf != NULL) {
+            ExFreePoolWithTag(outBuf, 'Acpi');
+            outBuf = NULL;
+        }
+
+        /* Reset length and try _ON */
+        outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 256U;
+
+        status = I2cCtrl_AcpiEvalMethod(
+                     parentFdo->AcpiDeviceObject,
+                     parentFdo->AcpiHandle,
+                     "_ON",
+                     outBuf,
+                     outLen
+                 );
     }
 
+    /* Free ACPI output buffer */
+    if (outBuf != NULL) {
+        ExFreePoolWithTag(outBuf, 'Acpi');
+        outBuf = NULL;
+    }
+
+    /* Normalize return value */
     if (NT_SUCCESS(status)) {
-        status = STATUS_SUCCESS;
-    } else {
-        status = STATUS_NOT_SUPPORTED;
+        return STATUS_SUCCESS;
     }
 
-    ExFreePoolWithTag(buf, 'Acpi');
-    buf = NULL;
-
-    return status;
+    return STATUS_NOT_SUPPORTED;
 }
 
 /* ---------------------------------------------------------------------------
  * I2cHwPowerOffAcpi - ACPI power-off helper (_PS3 / _OFF)
- * XP/2003 BSOD-safe, WinDDK-compiler-safe, C89-compliant
+ * Updated to use 5-argument I2cCtrl_AcpiEvalMethod()
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2cHwPowerOffAcpi(PDEVICE_OBJECT Pdo)
 {
-    NTSTATUS           status;
-    PVOID              buf;
-    ULONG              outLen;
-    PI2CCTRL_PDO       childDx;
-    PI2CCTRL_FDO       parentFdo;
+    NTSTATUS status;
+    PI2CCTRL_PDO childDx;
+    PI2CCTRL_FDO parentFdo;
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER outBuf;
+    ULONG outLen;
 
+    /* C89 initialization */
     status    = STATUS_UNSUCCESSFUL;
-    buf       = NULL;
-    outLen    = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 256U;
     childDx   = NULL;
     parentFdo = NULL;
+    outBuf    = NULL;
+    outLen    = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 256U;
 
     if (Pdo == NULL) {
         return STATUS_INVALID_PARAMETER;
@@ -175,28 +196,47 @@ I2cHwPowerOffAcpi(PDEVICE_OBJECT Pdo)
         return STATUS_NOT_SUPPORTED;
     }
 
-    buf = ExAllocatePoolWithTag(PagedPool, outLen, 'Acpi');
-    if (buf == NULL) {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
+    /* Try _PS3 first */
+    status = I2cCtrl_AcpiEvalMethod(
+                 parentFdo->AcpiDeviceObject,   /* ACPI PDO */
+                 parentFdo->AcpiHandle,         /* ACPI handle */
+                 "_PS3",                         /* method */
+                 outBuf,                        /* OUT: allocated buffer */
+                 outLen                          /* IN: max size */
+             );
 
-    /* Try _PS3 first, then fall back to _OFF */
-    status = I2cCtrl_AcpiEvalMethod(parentFdo, L"_PS3", (PUCHAR)buf, &outLen);
     if (!NT_SUCCESS(status)) {
-        outLen = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 256U;
-        status = I2cCtrl_AcpiEvalMethod(parentFdo, L"_OFF", (PUCHAR)buf, &outLen);
+
+        /* Free buffer from _PS3 attempt */
+        if (outBuf != NULL) {
+            ExFreePoolWithTag(outBuf, 'Acpi');
+            outBuf = NULL;
+        }
+
+        /* Reset length and try _OFF */
+        outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 256U;
+
+        status = I2cCtrl_AcpiEvalMethod(
+                     parentFdo->AcpiDeviceObject,
+                     parentFdo->AcpiHandle,
+                     "_OFF",
+                     outBuf,
+                     outLen
+                 );
     }
 
+    /* Free ACPI output buffer */
+    if (outBuf != NULL) {
+        ExFreePoolWithTag(outBuf, 'Acpi');
+        outBuf = NULL;
+    }
+
+    /* Normalize return value */
     if (NT_SUCCESS(status)) {
-        status = STATUS_SUCCESS;
-    } else {
-        status = STATUS_NOT_SUPPORTED;
+        return STATUS_SUCCESS;
     }
 
-    ExFreePoolWithTag(buf, 'Acpi');
-    buf = NULL;
-
-    return status;
+    return STATUS_NOT_SUPPORTED;
 }
 
 
