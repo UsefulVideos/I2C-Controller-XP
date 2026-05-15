@@ -7,6 +7,7 @@
 #include "..\i2cctrl\i2cctrl_ioctl.h"  /* IOCTL_I2C_READ, IOCTL_I2C_WRITE, I2CCTRL_TRANSFER */
 #include "i2chid_DPI.h"
 #include "i2chid_acpi.h"
+#include "..\i2cctrl\i2cctrl_ext.h"   /* include ONLY for shared enums, logging, GUIDs */
 
 
 /* Walk ACPI output arguments safely */
@@ -21,7 +22,9 @@ AcpiGetArgument(PACPI_EVAL_OUTPUT_BUFFER Out, ULONG Index)
         return NULL;
     }
 
-    p = Out->Data;
+    /* ACPI_EVAL_OUTPUT_BUFFER has Argument[ANYSIZE_ARRAY], not Data[] */
+    p = (PUCHAR)&Out->Argument[0];
+
     for (i = 0; i < Out->Count; i++) {
         arg = (PACPI_METHOD_ARGUMENT)p;
         if (i == Index) {
@@ -29,36 +32,41 @@ AcpiGetArgument(PACPI_EVAL_OUTPUT_BUFFER Out, ULONG Index)
         }
         p += sizeof(ACPI_METHOD_ARGUMENT) + arg->DataLength;
     }
+
     return NULL;
 }
+
 
 /* Evaluate _DSM(UUID, rev, func, arg) → returns buffer/integer */
 static NTSTATUS
 AcpiEvalDsm(
-    IN PDEVICE_OBJECT Pdo,
-    IN const GUID* Uuid,
-    IN ULONG Revision,
-    IN ULONG FunctionIndex,
-    IN ULONG ArgInteger,
+    IN PDEVICE_OBJECT            Pdo,
+    IN const GUID*               Uuid,
+    IN ULONG                     Revision,
+    IN ULONG                     FunctionIndex,
+    IN ULONG                     ArgInteger,
     OUT PACPI_EVAL_OUTPUT_BUFFER OutBuf,
-    IN ULONG OutBufLen
+    IN ULONG                     OutBufLen
     )
 {
     NTSTATUS status;
-    KEVENT   event;
+    KEVENT event;
     IO_STATUS_BLOCK iosb;
     PIRP irp;
     PIO_STACK_LOCATION isl;
     ACPI_EVAL_INPUT_BUFFER_COMPLEX* inBuf;
     ULONG inSize;
-    ULONG* p32;
+    PACPI_METHOD_ARGUMENT arg;
 
     if (Pdo == NULL || Uuid == NULL || OutBuf == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
-    inSize = sizeof(ACPI_EVAL_INPUT_BUFFER_COMPLEX) + (sizeof(ULONG) * 32);
-    inBuf = (ACPI_EVAL_INPUT_BUFFER_COMPLEX*)ExAllocatePoolWithTag(NonPagedPool, inSize, 'cpsA');
+    inSize = sizeof(ACPI_EVAL_INPUT_BUFFER_COMPLEX) +
+             (sizeof(ACPI_METHOD_ARGUMENT) * 4);
+
+    inBuf = (ACPI_EVAL_INPUT_BUFFER_COMPLEX*)
+            ExAllocatePoolWithTag(NonPagedPool, inSize, 'cpsA');
     if (inBuf == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -72,27 +80,45 @@ AcpiEvalDsm(
     inBuf->Size          = inSize;
     inBuf->ArgumentCount = 4;
 
-    p32 = &inBuf->Data[0];
-    RtlCopyMemory(p32, Uuid, sizeof(GUID));
-    p32 += (sizeof(GUID) / sizeof(ULONG));
-    *p32++ = Revision;
-    *p32++ = FunctionIndex;
-    *p32++ = ArgInteger;
+    /* Arg0: UUID buffer */
+    arg = &inBuf->Argument[0];
+    arg->Type       = ACPI_METHOD_ARGUMENT_BUFFER;
+    arg->DataLength = sizeof(GUID);
+    RtlCopyMemory(arg->Data, Uuid, sizeof(GUID));
+    ACPI_METHOD_NEXT_ARGUMENT(arg);
+
+    /* Arg1: Revision */
+    arg->Type       = ACPI_METHOD_ARGUMENT_INTEGER;
+    arg->DataLength = sizeof(ULONG);
+    arg->Argument   = Revision;
+    ACPI_METHOD_NEXT_ARGUMENT(arg);
+
+    /* Arg2: FunctionIndex */
+    arg->Type       = ACPI_METHOD_ARGUMENT_INTEGER;
+    arg->DataLength = sizeof(ULONG);
+    arg->Argument   = FunctionIndex;
+    ACPI_METHOD_NEXT_ARGUMENT(arg);
+
+    /* Arg3: ArgInteger */
+    arg->Type       = ACPI_METHOD_ARGUMENT_INTEGER;
+    arg->DataLength = sizeof(ULONG);
+    arg->Argument   = ArgInteger;
 
     RtlZeroMemory(OutBuf, OutBufLen);
     OutBuf->Signature = ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE;
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
 
-    irp = IoBuildDeviceIoControlRequest(IOCTL_ACPI_EVAL_METHOD,
-                                        Pdo,
-                                        inBuf,
-                                        inSize,
-                                        OutBuf,
-                                        OutBufLen,
-                                        FALSE,
-                                        &event,
-                                        &iosb);
+    irp = IoBuildDeviceIoControlRequest(
+              IOCTL_ACPI_EVAL_METHOD,
+              Pdo,
+              inBuf,
+              inSize,
+              OutBuf,
+              OutBufLen,
+              FALSE,
+              &event,
+              &iosb);
     if (irp == NULL) {
         ExFreePoolWithTag(inBuf, 'cpsA');
         return STATUS_INSUFFICIENT_RESOURCES;
