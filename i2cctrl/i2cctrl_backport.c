@@ -611,7 +611,7 @@ I2CCTRL_WdmTimerStartCompat(
         return FALSE;
     }
 
-    /* Period == 0 → one-shot via KeSetTimer; otherwise periodic via KeSetTimerEx */
+    /* Period == 0 -> one-shot via KeSetTimer; otherwise periodic via KeSetTimerEx */
     if (Period == 0UL) {
         wasSet = KeSetTimer(Timer, DueTime, DpcOptional);
     } else {
