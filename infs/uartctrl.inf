@@ -9,7 +9,6 @@ Class       = System
 ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
 Provider    = %ManufacturerName%
 DriverVer   = 11/13/2025,1.0.0.0
-CatalogFile = uartctrl.cat
 
 ; -----------------------------------------------------------------------
 ; Source disk declarations
@@ -21,47 +20,423 @@ CatalogFile = uartctrl.cat
 uartctrl.sys = 1
 
 [DestinationDirs]
-UARTCTRL.CopyFiles = 12 ; system32\drivers
+uartctrl.CopyFiles = 12 ; system32\drivers
 
 [Manufacturer]
 %ManufacturerName% = UsefulAGKHelper,NTx86.5.1,NTx86.5.2,NTamd64.5.2
 
 [UsefulAGKHelper.NTx86.5.1]
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+;-------------------iaLPSS2_UART2_ADL&ADP_S
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AFE
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7ADC
+
+;-------------------iaLPSS2_UART2_BDW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3434
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3435
+
+;-------------------iaLPSS2_UART2_BXT
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AEE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AEE
+
+;-------------------iaLPSS2_UART2_BXT_P
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABC
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABE
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AC0
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AEE
+
+;-------------------iaLPSS2_UART2_CNL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DC7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A328
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A329
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A347
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06C7
+
+;-------------------iaLPSS2_UART2_EHL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B4D
+
+;-------------------iaLPSS2_UART2_GLK
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31C0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31EE
+
+;-------------------iaLPSS2_UART2_HSW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C4
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C5
+%uartctrl.DeviceDesc% = uartctrl_Install,  ACPI\INTC1029
+
+;-------------------iaLPSS2_UART2_ICL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DAF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38C7
+
+;-------------------iaLPSS2_UART2_KBL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+
+;-------------------iaLPSS2_UART2_LKF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98C7
+
+;-------------------iaLPSS2_UART2_RPL_S
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A28			
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A7E
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A5C
+
+;-------------------iaLPSS2_UART2_SKL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A127
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A128
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A166
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2E6
+
+;-------------------iaLPSS2_UART2_TGL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DA
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DB
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DD
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A7
+
+;-------------------iaLPSS2_UART2_ADL_P
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DD
+
+;-------------------iaLPSS2_UART2_ADL_N
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DD
 
 [UsefulAGKHelper.NTx86.5.2]
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+;-------------------iaLPSS2_UART2_ADL&ADP_S
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AFE
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7ADC
+
+;-------------------iaLPSS2_UART2_BDW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3434
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3435
+
+;-------------------iaLPSS2_UART2_BXT
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AEE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AEE
+
+;-------------------iaLPSS2_UART2_BXT_P
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABC
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABE
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AC0
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AEE
+
+;-------------------iaLPSS2_UART2_CNL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DC7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A328
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A329
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A347
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06C7
+
+;-------------------iaLPSS2_UART2_EHL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B4D
+
+;-------------------iaLPSS2_UART2_GLK
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31C0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31EE
+
+;-------------------iaLPSS2_UART2_HSW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C4
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C5
+%uartctrl.DeviceDesc% = uartctrl_Install,  ACPI\INTC1029
+
+;-------------------iaLPSS2_UART2_ICL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DAF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38C7
+
+;-------------------iaLPSS2_UART2_KBL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+
+;-------------------iaLPSS2_UART2_LKF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98C7
+
+;-------------------iaLPSS2_UART2_RPL_S
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A28			
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A7E
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A5C
+
+;-------------------iaLPSS2_UART2_SKL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A127
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A128
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A166
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2E6
+
+;-------------------iaLPSS2_UART2_TGL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DA
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DB
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DD
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A7
+
+;-------------------iaLPSS2_UART2_ADL_P
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DD
+
+;-------------------iaLPSS2_UART2_ADL_N
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DD
+
+
 
 [UsefulAGKHelper.NTamd64.5.2]
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C4
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT33C5
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3434
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INT3435
-%UARTCTRL.DeviceDesc% = UARTCTRL_Install, ACPI\INTC1029
+;-------------------iaLPSS2_UART2_ADL&ADP_S
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AA9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7AFE
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_7ADC
 
-[UARTCTRL_Install]
-CopyFiles     = UARTCTRL.CopyFiles
-AddReg        = UARTCTRL.AddReg
-ServiceInstall= UARTCTRL_Service
+;-------------------iaLPSS2_UART2_BDW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3434
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT3435
 
-[UARTCTRL.CopyFiles]
+;-------------------iaLPSS2_UART2_BXT
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_0AEE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1ABE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AC0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_1AEE
+
+;-------------------iaLPSS2_UART2_BXT_P
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABC
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5ABE
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AC0
+%iaLPSS2_UART2.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_5AEE
+
+;-------------------iaLPSS2_UART2_CNL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9DC7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A328
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A329
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A347
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_02C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_06C7
+
+;-------------------iaLPSS2_UART2_EHL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_4B4D
+
+;-------------------iaLPSS2_UART2_GLK
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31BE
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31C0
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_31EE
+
+;-------------------iaLPSS2_UART2_HSW-LP
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C4
+%uartctrl.DeviceDesc% = uartctrl_Install,   ACPI\INT33C5
+%uartctrl.DeviceDesc% = uartctrl_Install,  ACPI\INTC1029
+
+;-------------------iaLPSS2_UART2_ICL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_34C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DA9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_3DAF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_38C7
+
+;-------------------iaLPSS2_UART2_KBL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+
+;-------------------iaLPSS2_UART2_LKF
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_98C7
+
+;-------------------iaLPSS2_UART2_RPL_S
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A28			
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A29
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A7E
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_7A5C
+
+;-------------------iaLPSS2_UART2_SKL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D27
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D28
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_9D66
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A127
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A128
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A166
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A2E6
+
+;-------------------iaLPSS2_UART2_TGL
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0C7
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DA
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DB
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DC
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_A0DD
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A8
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A9
+%uartctrl.DeviceDesc% = uartctrl_Install,   PCI\VEN_8086&DEV_43A7
+
+;-------------------iaLPSS2_UART2_ADL_P
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_51DD
+
+;-------------------iaLPSS2_UART2_ADL_N
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A8
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54A9
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54C7
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DA
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DB
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DC
+%uartctrl.DeviceDesc% = uartctrl_Install, PCI\VEN_8086&DEV_54DD
+
+
+
+[uartctrl_Install.NTx86]
+CopyFiles     = uartctrl.CopyFiles
+AddReg        = uartctrl.AddReg.NTx86
+ServiceInstall= uartctrl_Service
+
+[uartctrl_Install.NTamd64]
+CopyFiles     = uartctrl.CopyFiles
+AddReg        = uartctrl.AddReg.NTamd64
+ServiceInstall= uartctrl_Service
+
+
+[uartctrl.CopyFiles]
 uartctrl.sys
 
-[UARTCTRL.AddReg]
+[uartctrl.AddReg.NTx86]
 HKR,,DevLoader,,*ntkern
 HKR,,NTMPDriver,,uartctrl.sys
-HKR,Parameters,FifoDepth,0x00010001,64
 
-[UARTCTRL_Service]
-DisplayName   = %UARTCTRL.ServiceDesc%
+[uartctrl.AddReg.NTamd64]
+HKR,,DevLoader,,*ntkern
+HKR,,NTMPDriver,,uartctrl.sys
+
+[uartctrl_Service]
+DisplayName   = %uartctrl.ServiceDesc%
 ServiceType   = 1 ; SERVICE_KERNEL_DRIVER
 StartType     = 3 ; SERVICE_DEMAND_START
 ErrorControl  = 1 ; SERVICE_ERROR_NORMAL
@@ -71,15 +446,15 @@ ServiceBinary = %12%\uartctrl.sys
 ; Right-click installation support
 ; -----------------------------------------------------------------------
 [DefaultInstall]
-CopyFiles     = UARTCTRL.CopyFiles
-AddReg        = UARTCTRL.AddReg
-ServiceInstall= UARTCTRL_Service
+CopyFiles     = uartctrl.CopyFiles
+AddReg        = uartctrl.AddReg
+ServiceInstall= uartctrl_Service
 
 [DefaultInstall.Services]
-AddService = UARTCTRL,0,UARTCTRL_Service
+AddService = uartctrl,0,uartctrl_Service
 
 [Strings]
-ManufacturerName    = "UsefulAGKHelper"
-UARTCTRL.DeviceDesc = "UART Controller Driver"
-UARTCTRL.ServiceDesc= "UARTCTRL Kernel Service"
-DiskName            = "UARTCTRL Installation Disk"
+ManufacturerName     = "UsefulAGKHelper"
+uartctrl.DeviceDesc  = "UART Controller Driver"
+uartctrl.ServiceDesc = "UART Controller Service"
+DiskName             = "UART Controller Installation Files"
