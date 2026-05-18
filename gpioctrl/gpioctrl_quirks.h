@@ -14,7 +14,7 @@
 
 
 //
-// GPIO controller BSOD‑workaround quirks
+// GPIO controller BSOD-workaround quirks
 //
 #define BSOD_NONE                       0x00000000
 #define BSOD_FORCE_PIO                  0x00000001

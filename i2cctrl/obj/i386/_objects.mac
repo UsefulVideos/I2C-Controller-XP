@@ -1,0 +1,37 @@
+
+
+386_OBJECTS=\
+ $(OBJ_PATH)\$O\i2cctrl.obj \
+ $(OBJ_PATH)\$O\i2cctrl_zw.obj \
+ $(OBJ_PATH)\$O\i2cctrl_backport.obj \
+ $(OBJ_PATH)\$O\i2cctrl_bsod.obj \
+ $(OBJ_PATH)\$O\i2cctrl_detect.obj \
+ $(OBJ_PATH)\$O\i2cctrl_extra.obj \
+ $(OBJ_PATH)\$O\i2cctrl_dump.obj \
+ $(OBJ_PATH)\$O\i2cctrl_etw.obj \
+ $(OBJ_PATH)\$O\i2cctrl_fdo.obj \
+ $(OBJ_PATH)\$O\i2cctrl_guid.obj \
+ $(OBJ_PATH)\$O\i2cctrl_i2c.obj \
+ $(OBJ_PATH)\$O\i2cctrl_isr.obj \
+ $(OBJ_PATH)\$O\i2cctrl_pdo.obj \
+ $(OBJ_PATH)\$O\i2cctrl_queue.obj \
+ $(OBJ_PATH)\$O\i2cctrl_smbus.obj \
+ $(OBJ_PATH)\$O\i2cctrl_spbcx.obj \
+ $(OBJ_PATH)\$O\i2cctrl_acpiex.obj \
+ $(OBJ_PATH)\$O\i2cctrl_i2chid.obj \
+ $(OBJ_PATH)\$O\i2cctrl_dpi.obj \
+ $(OBJ_PATH)\$O\i2cctrl_wdm_compat.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_intel.obj \
+
+
+_RES_FILE=$(OBJ_PATH)\$O\i2cctrl_version.res
+
+
+
+# lowercased
+BASEDIR=d:\winddk\7600.16385.1
+OBJECT_ROOT=d:\winddk\7600.16385.1
+MAKEDIR_LOWERCASE=d:\kituri_programe\i2c-controller-xp\i2cctrl
+OBJ_PATH=d:\kituri_programe\i2c-controller-xp\i2cctrl
+CONCURRENT_MIDL=0
+CONCURRENT_MANIFEST_BUILD=0
