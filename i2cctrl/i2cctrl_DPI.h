@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   i2cctrl_DPI.h - Device Properties Interface (DPI) for HID‑over‑I²C (clean, no GUID redefs)
+   i2cctrl_DPI.h - Device Properties Interface (DPI) for HID-over-I²C (clean, no GUID redefs)
    ----------------------------------------------------------------------- */
 
 #ifndef _I2CCTRL_DPI_H_
@@ -40,7 +40,7 @@ typedef struct _I2CCTRL_DPI {
     ULONG  ReportLength;
 
     /* I²C addressing */
-    UCHAR  I2cAddr7Bit;              /* 7‑bit I²C address of HID device */
+    UCHAR  I2cAddr7Bit;              /* 7-bit I²C address of HID device */
 
     /* Interrupt resources */
     PKINTERRUPT     InterruptObject;
@@ -51,7 +51,7 @@ typedef struct _I2CCTRL_DPI {
     KINTERRUPT_MODE InterruptMode;
     BOOLEAN         InterruptSharable;
 
-    /* ISR → DPC handoff */
+    /* ISR -> DPC handoff */
     KDPC            InterruptDpc;
     volatile LONG   PendingInputFlag;
 
@@ -90,10 +90,10 @@ typedef struct _I2CCTRL_DPI {
     /* Registry path (for parameters) */
     UNICODE_STRING  RegistryPath;
 
-    /* Symbolic link for user‑mode access */
+    /* Symbolic link for user-mode access */
     UNICODE_STRING  Symlink;
 
-    /* Device‑specific defaults */
+    /* Device-specific defaults */
     ULONG MaxX;
     ULONG MaxY;
     ULONG Sensitivity;
