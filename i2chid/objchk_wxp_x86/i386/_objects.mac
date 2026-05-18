@@ -1,0 +1,26 @@
+
+
+386_OBJECTS=\
+ $(OBJ_PATH)\$O\i2chid.obj \
+ $(OBJ_PATH)\$O\i2chid_guids.obj \
+ $(OBJ_PATH)\$O\i2chid_acpi.obj \
+ $(OBJ_PATH)\$O\i2chid_hid.obj \
+ $(OBJ_PATH)\$O\i2chid_power.obj \
+ $(OBJ_PATH)\$O\i2chid_hw_shim.obj \
+ $(OBJ_PATH)\$O\i2chid_spbcx.obj \
+ $(OBJ_PATH)\$O\i2chid_pt.obj \
+ $(OBJ_PATH)\$O\i2chid_i2cctrl.obj \
+ $(OBJ_PATH)\$O\i2chid_dpi.obj \
+
+
+_RES_FILE=$(OBJ_PATH)\$O\i2chid_version.res
+
+
+
+# lowercased
+BASEDIR=d:\winddk\7600.16385.1
+OBJECT_ROOT=d:\winddk\7600.16385.1
+MAKEDIR_LOWERCASE=d:\kituri_programe\i2c-controller-xp\i2chid
+OBJ_PATH=d:\kituri_programe\i2c-controller-xp\i2chid
+CONCURRENT_MIDL=0
+CONCURRENT_MANIFEST_BUILD=0
