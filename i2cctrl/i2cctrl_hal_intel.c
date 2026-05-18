@@ -194,7 +194,7 @@ Intel_SetSpeed(
 
     switch (speed) {
     case I2C_SPEED_STANDARD:
-        /* 100 kHz – larger high-count */
+        /* 100 kHz - larger high-count */
         clk = 0x00000100U;
         break;
     case I2C_SPEED_FAST:
@@ -485,7 +485,7 @@ Intel_EmitStopIfNeeded(
     }
 
     /* Issue a STOP on the next command (STOP bit in DATA_CMD). */
-    cmd = 0x00000200U; /* STOP flag – adjust to your controller */
+    cmd = 0x00000200U; /* STOP flag - adjust to your controller */
     IntelWriteReg(devctx, INTEL_REG_DATA_CMD, cmd);
     return STATUS_SUCCESS;
 }
@@ -714,7 +714,7 @@ I2C_HW_OPS IntelI2cOps = {
     Intel_WriteTxByte,
 
     /* Capabilities */
-    { 0 }, /* Caps – will be overwritten below */
+    { 0 }, /* Caps - will be overwritten below */
 
     /* FIFO management */
     Intel_QuiesceFifos,
@@ -751,7 +751,7 @@ Intel_InitOpsCaps(VOID)
 }
 
 /* ---------------------------------------------------------------------------
- * Backend installer – called from FDO init / AddDevice
+ * Backend installer - called from FDO init / AddDevice
  * --------------------------------------------------------------------------- */
 
 VOID
