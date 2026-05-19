@@ -1,8 +1,8 @@
 // i2cctrl_detect.c (after improvements)
 #include <ntddk.h>
 #include "i2cctrl_ext.h"      // defines I2CCTRL_FDO
-#include "i2cctrl_detect.h"   // detection API + HID descriptor layout
 #include "i2cctrl_bsod.h"
+#include "i2cctrl_detect.h"
 
 /* ---------------------------------------------------------------------------
    Read HID register from a device at given I²C address (generic, HAL-based, XP-safe)
@@ -162,7 +162,7 @@ I2cCtrl_ReadReportDescriptor(
     )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    USHORT expectedLen = 0;   /* <-- declare here (C89‑safe) */
+    USHORT expectedLen = 0;   /* <-- declare here (C89-safe) */
 
     /* Defensive parameter validation */
     if (!devctx || !hidpdo || !buf || len == 0) {
@@ -457,19 +457,58 @@ I2cCtrl_DetectTouchpad(
     ULONG    i;
 
     if (dx == NULL || result == NULL) {
+        I2cCtrl_Log("DetectTouchpad: invalid parameters\n");
         return STATUS_INVALID_PARAMETER;
     }
 
     RtlZeroMemory(result, sizeof(*result));
 
+    //
+    // NEW: If controller is NOT started, we must NOT probe the bus.
+    // Instead, we call the redirector which safely starts the controller.
+    //
+    if (!dx->Started) {
+        I2cCtrl_Log("DetectTouchpad: controller not started -> using redirector\n");
+        return I2cCtrl_DetectTouchpadRedirect(dx, result);
+    }
+
+    //
+    // NEW: ACPI-first model
+    // If ACPI already enumerated a HID child (ETPD -> ELAN1200/PNP0C50),
+    // we MUST NOT probe the bus. ACPI is authoritative.
+    //
+    if (!IsListEmpty(&dx->ChildList)) {
+
+        result->Found      = TRUE;
+        result->Present    = TRUE;
+        result->IsTouchpad = TRUE;
+
+        // If ACPI saved the I2C address, propagate it
+        result->Address = (UCHAR)(dx->SavedBusAddress & 0xFF);
+        result->HidDescLength = 0;
+        result->VendorID      = 0;
+        result->ProductID     = 0;
+        result->VersionID     = 0;
+
+        I2cCtrl_Log("DetectTouchpad: ACPI child present -> skipping legacy probing\n");
+        return STATUS_SUCCESS;
+    }
+
+    //
+    // LEGACY PATH (only used when ACPI gave us nothing)
+    //
+    I2cCtrl_Log("DetectTouchpad: no ACPI child, running legacy HID probing\n");
+
     /* Step 1: Probe common candidate addresses */
     for (i = 0; i < ARRAYSIZE(g_HidI2cCommonCandidates); i++) {
+
         addr = g_HidI2cCommonCandidates[i];
         RtlZeroMemory(buf, sizeof(buf));
         RtlZeroMemory(&dsc, sizeof(dsc));
 
         status = I2cCtrl_ReadAndValidateHidDescriptor(dx, addr, buf, sizeof(buf), &dsc);
         if (NT_SUCCESS(status)) {
+
             result->Found         = TRUE;
             result->Present       = TRUE;
             result->IsTouchpad    = TRUE;
@@ -479,19 +518,20 @@ I2cCtrl_DetectTouchpad(
             result->ProductID     = dsc.wProductID;
             result->VersionID     = dsc.wVersionID;
 
-            DbgPrint("I2CCTRL(detect): HID device found at 0x%02X "
-                     "VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u\n",
-                     addr,
-                     (unsigned)dsc.wVendorID,
-                     (unsigned)dsc.wProductID,
-                     (unsigned)dsc.wVersionID,
-                     (unsigned)dsc.wHIDDescLength);
+            I2cCtrl_Log("DetectTouchpad: HID device found at 0x%02X (VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u)\n",
+                        addr,
+                        (unsigned)dsc.wVendorID,
+                        (unsigned)dsc.wProductID,
+                        (unsigned)dsc.wVersionID,
+                        (unsigned)dsc.wHIDDescLength);
+
             return STATUS_SUCCESS;
         }
     }
 
     /* Step 2: Fallback sweep 0x10..0x2F (skip already tried addresses) */
     for (addr = 0x10; addr <= 0x2F; addr++) {
+
         BOOLEAN alreadyTried = FALSE;
 
         for (i = 0; i < ARRAYSIZE(g_HidI2cCommonCandidates); i++) {
@@ -509,6 +549,7 @@ I2cCtrl_DetectTouchpad(
 
         status = I2cCtrl_ReadAndValidateHidDescriptor(dx, addr, buf, sizeof(buf), &dsc);
         if (NT_SUCCESS(status)) {
+
             result->Found         = TRUE;
             result->Present       = TRUE;
             result->IsTouchpad    = TRUE;
@@ -518,13 +559,13 @@ I2cCtrl_DetectTouchpad(
             result->ProductID     = dsc.wProductID;
             result->VersionID     = dsc.wVersionID;
 
-            DbgPrint("I2CCTRL(detect): HID device found at 0x%02X "
-                     "VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u\n",
-                     addr,
-                     (unsigned)dsc.wVendorID,
-                     (unsigned)dsc.wProductID,
-                     (unsigned)dsc.wVersionID,
-                     (unsigned)dsc.wHIDDescLength);
+            I2cCtrl_Log("DetectTouchpad: HID device found at 0x%02X (VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u)\n",
+                        addr,
+                        (unsigned)dsc.wVendorID,
+                        (unsigned)dsc.wProductID,
+                        (unsigned)dsc.wVersionID,
+                        (unsigned)dsc.wHIDDescLength);
+
             return STATUS_SUCCESS;
         }
     }
@@ -534,6 +575,6 @@ I2cCtrl_DetectTouchpad(
     result->Present    = FALSE;
     result->IsTouchpad = FALSE;
 
-    DbgPrint("I2CCTRL(detect): No HID touchpad detected in 0x10..0x2F\n");
+    I2cCtrl_Log("DetectTouchpad: no HID touchpad detected in 0x10..0x2F\n");
     return STATUS_NOT_FOUND;
 }
