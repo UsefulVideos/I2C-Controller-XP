@@ -13,7 +13,10 @@
 #ifndef STATUS_DEVICE_HARDWARE_ERROR
 #define STATUS_DEVICE_HARDWARE_ERROR ((NTSTATUS)0xC0000368L)
 #endif
-
+#define TAG_PDO 'odpI'
+#ifndef TAG_FDO
+#define TAG_FDO 'odfI'   // "I fdo"
+#endif
 /* ---------------------------------------------------------------------------
  * Registry knobs (policy/quirks)
  * --------------------------------------------------------------------------- */
@@ -239,5 +242,12 @@ VOID     I2CctrlHw_Flush(PDEVICE_OBJECT DevObj);
 #define I2CCTRL_CLK_DISABLE_MASK    0x00000001U
 #define I2CCTRL_CLK_ENABLE_MASK     0x00000000U
 
+#define WHL_PMC_PWMR_SIZE          0x1E30
+#define WHL_PMC_PMC4_OFFSET        0x18E8   // from DSDT
+#define WHL_PMC_PMC4_FULL_MASK     0x7FFFFFFF  // 31 bits
+#define WHL_PMC_CECE_BIT           (1u << 31)  // CECE follows PMC4
+
+#define WHL_PMC_ENABLE_TIMEOUT_US  1000000    // 1s total
+#define WHL_PMC_POLL_STEP_US       10
 
 #endif /* _I2CCTRL_HW_H_ */
