@@ -82,7 +82,7 @@ typedef struct _I2CCTRL_PROBE {
     UCHAR   Reserved1[3];
 } I2CCTRL_PROBE, *PI2CCTRL_PROBE;
 
-/* Note: I2CCTRL_TRANSFER is defined in i2cctrl_ioctl.h, so we don’t re‑define it here. */
+/* Note: I2CCTRL_TRANSFER is defined in i2cctrl_ioctl.h, so we don’t re-define it here. */
 
 /* ---------------------------------------------------------------------------
    Forward declarations for driver internals
