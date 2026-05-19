@@ -14,6 +14,7 @@
 #include <cpl.h>        // for CPL_INIT, CPL_GETCOUNT, CPL_INQUIRE, CPLINFO
 #include "i2chid_helper_ioctl.h"
 #include "resource.h"
+#include "i2chid_targetver.h"
 
 // Global instance handle
 HINSTANCE g_hInst;
@@ -210,38 +211,45 @@ static INT_PTR CALLBACK HelperDlgProc(HWND hDlg, UINT message, WPARAM wParam, LP
  * --------------------------------------------------------------------------- */
 LONG CALLBACK CPlApplet(HWND hwndCPL, UINT uMsg, LPARAM lParam1, LPARAM lParam2)
 {
-    switch (uMsg) {
-    case CPL_INIT: {
-        INITCOMMONCONTROLSEX icc;
-        icc.dwSize = sizeof(icc);
-        icc.dwICC  = ICC_BAR_CLASSES | ICC_STANDARD_CLASSES;
-        InitCommonControlsEx(&icc);
-        return TRUE;
-    }
-    case CPL_GETCOUNT:
-        return 1;
+    switch (uMsg)
+    {
+        case CPL_INIT:
+        {
+            INITCOMMONCONTROLSEX icc;
+            icc.dwSize = sizeof(icc);
+            icc.dwICC  = ICC_BAR_CLASSES | ICC_STANDARD_CLASSES;
+            InitCommonControlsEx(&icc);
+            return TRUE;    // XP requires TRUE here
+        }
 
-    case CPL_INQUIRE: {
-        CPLINFO* info = (CPLINFO*)lParam2;
-        info->idIcon = IDI_APPLET;
-        info->idName = IDS_NAME;
-        info->idInfo = IDS_INFO;
-        info->lData  = 0;
-        return 0;
+        case CPL_GETCOUNT:
+            return 1;       // One applet
+
+        case CPL_INQUIRE:
+        {
+            CPLINFO* info = (CPLINFO*)lParam2;
+            info->idIcon = IDI_APPLET;
+            info->idName = IDS_NAME;
+            info->idInfo = IDS_INFO;
+            info->lData  = 0;
+            return TRUE;    // <-- CRITICAL FIX
+        }
+
+        case CPL_DBLCLK:
+            DialogBoxParamW(
+                g_hInst,
+                MAKEINTRESOURCEW(IDD_DIALOG),
+                hwndCPL,
+                HelperDlgProc,
+                0
+            );
+            return TRUE;    // XP expects TRUE, not 0
+
+        case CPL_EXIT:
+            return TRUE;    // XP expects TRUE, not 0
     }
 
-    case CPL_DBLCLK:
-        DialogBoxParamW(g_hInst,
-                        MAKEINTRESOURCEW(IDD_DIALOG),
-                        hwndCPL,
-                        (DLGPROC)HelperDlgProc,
-                        0);
-        return 0;
-
-    case CPL_EXIT:
-        return 0;
-    }
-    return 0;
+    return FALSE;           // Default: not handled
 }
 
 static DWORD ReadRegDword(LPCWSTR name, DWORD defVal)
