@@ -7,7 +7,7 @@
 #include "i2cctrl_bsod.h"
 
 /* ---------------------------------------------------------------------------
-   Abort source → NTSTATUS mapping (conservative, portable across DW_apb_i2c)
+   Abort source -> NTSTATUS mapping (conservative, portable across DW_apb_i2c)
    --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_MapAbortSource(ULONG abrtSrc)
