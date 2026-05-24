@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DEFECTS>
+<OACRDEFECTCOUNT>4</OACRDEFECTCOUNT>
+<OACRERRORCOUNT>0</OACRERRORCOUNT>
+<DEFECT _seq="1"><SFA><LINE>36</LINE><COLUMN>0</COLUMN><FILENAME>i2cctrl_pdo.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2cctrl\</FILEPATH></SFA><DEFECTCODE>28172</DEFECTCODE><DESCRIPTION>The function 'I2cCtrl_SurpriseRemoveQuiesce' has PAGED_CODE or PAGED_CODE_LOCKED but is not declared to be in a paged segment.</DESCRIPTION><FUNCTION>I2cCtrl_SurpriseRemoveQuiesce</FUNCTION><FUNCLINE>36</FUNCLINE><PATH/></DEFECT>
+<DEFECT _seq="2"><SFA><LINE>184</LINE><COLUMN>0</COLUMN><FILENAME>i2cctrl_pdo.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2cctrl\</FILEPATH></SFA><DEFECTCODE>28172</DEFECTCODE><DESCRIPTION>The function 'I2cCtrl_PdoDispatchPower' has PAGED_CODE or PAGED_CODE_LOCKED but is not declared to be in a paged segment.</DESCRIPTION><FUNCTION>I2cCtrl_PdoDispatchPower</FUNCTION><FUNCLINE>184</FUNCLINE><PATH/></DEFECT>
+<DEFECT _seq="3"><SFA><LINE>234</LINE><COLUMN>0</COLUMN><FILENAME>i2cctrl_pdo.c</FILENAME><FILEPATH>d:\kituri_programe\i2c-controller-xp\i2cctrl\</FILEPATH></SFA><DEFECTCODE>28172</DEFECTCODE><DESCRIPTION>The function 'I2cCtrl_PdoDispatch' has PAGED_CODE or PAGED_CODE_LOCKED but is not declared to be in a paged segment.</DESCRIPTION><FUNCTION>I2cCtrl_PdoDispatch</FUNCTION><FUNCLINE>234</FUNCLINE><PATH/></DEFECT>
+<DEFECT _seq="4"><SFA><LINE></LINE><COLUMN></COLUMN><FILENAME>no_file</FILENAME><FILEPATH>\</FILEPATH></SFA><DEFECTCODE>28146</DEFECTCODE><DESCRIPTION>Kernel Mode drivers should use ntstrsafe.h, not strsafe.h. Found in source file d:\KITURI~1\I2C-CO~1\i2cctrl\i2cctrl_pdo.c:  The header ntstrsafe.h contains versions of the functions found in strsafe.h that are suitable for use in kernel mode code.</DESCRIPTION><FUNCTION></FUNCTION><FUNCLINE>0</FUNCLINE><PATH/></DEFECT>
+</DEFECTS>

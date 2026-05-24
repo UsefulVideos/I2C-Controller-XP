@@ -54,7 +54,7 @@ I2cCtrl_DetectTouchpad(
 NTSTATUS
 I2cCtrl_ReadAndValidateHidDescriptor(
     PI2CCTRL_FDO          dx,        /* bus/device extension */
-    UCHAR                 addr,      /* 7‑bit I²C address of HID device */
+    UCHAR                 addr,      /* 7-bit I²C address of HID device */
     PUCHAR                outBuf,    /* caller-supplied buffer for raw bytes */
     ULONG                 outBufLen, /* length of buffer in bytes */
     PHID_I2C_DESCRIPTOR_V10 parsed   /* parsed descriptor structure */

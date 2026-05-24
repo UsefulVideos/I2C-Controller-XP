@@ -1,6 +1,6 @@
 /* gpioctrl_isr.c
- * GPIO Controller Driver (gpioctrl.sys) – ISR/DPC implementation
- * WinDDK 7.1.0 – XP/2003 build environment – C89 compliant
+ * GPIO Controller Driver (gpioctrl.sys) - ISR/DPC implementation
+ * WinDDK 7.1.0 - XP/2003 build environment - C89 compliant
  *
  * Implements:
  *  - GpioCtrl_Isr: top-half interrupt service routine

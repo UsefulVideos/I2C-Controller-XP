@@ -214,7 +214,7 @@ I2CctrlHw_EnableController(
 /*
  * Wait until the I2C controller reports idle or until timeout expires.
  * Returns STATUS_SUCCESS if idle, STATUS_IO_TIMEOUT otherwise.
- * BSOD‑safe: uses I2cCtrl_ReadRegisterSafe for all MMIO access.
+ * BSOD-safe: uses I2cCtrl_ReadRegisterSafe for all MMIO access.
  */
 NTSTATUS
 I2CctrlHw_WaitForIdle(
@@ -485,7 +485,7 @@ case IOCTL_GET_PT_SAMPLE:
         repLen = hidpdo->HidReportDescLen;
 
         /*
-         * 6. Decode HID report → PT_RAW_SAMPLE
+         * 6. Decode HID report -> PT_RAW_SAMPLE
          *    This is a minimal decoder. You can expand it later.
          *    Assumes: [0]=ID, [1]=X, [2]=Y, [3]=Buttons, [4]=Flags
          */
