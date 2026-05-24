@@ -1,55 +1,61 @@
 ###############################################
-# WinDDK 7.1.0 build output
+# WDK / WinDDK build output
 ###############################################
 
-# Build output directories
-obj/
-objchk_*/
-objfre_*/
-chkfre_*/
+# Ignore all build output folders
+bin/**/i386/
+bin/**/amd64/
 
-# Intermediate objects (safe to ignore)
+# Ignore unexpected arch folders
+bin/i386/
+bin/amd64/
+
+# Ignore driver binaries
+*.sys
+*.pdb
+*.cat
+
+# Ignore release archives
+*.7z
+*.zip
+
+# Ignore Windows ADS metadata
+*:Zone.Identifier
+
+###############################################
+# Visual Studio / WDK intermediates
+###############################################
 *.obj
-*.res
 *.lib
 *.exp
 *.ilk
-
-# Logs
-*.log
-*.wrn
-*.err
-
-# Build description artifacts
 *.idb
 *.ipch
+*.pch
+*.manifest
+*.dep
 *.tlog
 *.cache
 
 ###############################################
-# Visual Studio 2008 (VC9) build output
+# Logs
 ###############################################
+*.log
+*.wrn
+*.err
 
-# Build directories
-Debug/
-Release/
-
-# VS2008 project user files
+###############################################
+# VS user files
+###############################################
 *.suo
 *.user
 *.ncb
 *.sdf
 *.opensdf
 
-# VS2008 intermediate files
-*.pch
-*.manifest
-*.dep
-
 ###############################################
 # Editor / tooling
 ###############################################
-
 .vscode/
 *.bak
 *~
