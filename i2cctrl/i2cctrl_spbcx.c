@@ -25,7 +25,7 @@ I2cCtrl_DispatchCreate(
     I2CCTRL_REQUIRE_PASSIVE();
     I2CCTRL_REQUIRE_PTR(dx);
 
-    /* Allocate per‑handle target binding context */
+    /* Allocate per-handle target binding context */
     tgt = (PI2CCTRL_TARGET)I2cCtrl_Alloc(NonPagedPool,
                                          sizeof(I2CCTRL_TARGET),
                                          TAG_I2C_MISC);
@@ -64,7 +64,7 @@ I2cCtrl_DispatchClose(
     I2CCTRL_REQUIRE_PASSIVE();
 
     if (tgt != NULL) {
-        /* Free the per‑handle target binding context */
+        /* Free the per-handle target binding context */
         I2cCtrl_Free(tgt, TAG_I2C_MISC);
         isl->FileObject->FsContext = NULL;
     }
@@ -78,7 +78,7 @@ I2cCtrl_DispatchClose(
 
 /* -----------------------------------------------------------------------
  * I2cCtrl_IoctlSetTarget - Hardened target configuration
- * XP/2003‑safe, ACPI‑safe, C89‑compliant.
+ * XP/2003-safe, ACPI-safe, C89-compliant.
  * ----------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_IoctlSetTarget(
@@ -116,7 +116,7 @@ I2cCtrl_IoctlSetTarget(
     cfg = (PI2CCTRL_TARGET_CONFIG)InBuf;
 
     /* ---- Normalize and clamp address ---- */
-    addr = (cfg->Address & 0x03FF);   /* allow 7‑bit or 10‑bit */
+    addr = (cfg->Address & 0x03FF);   /* allow 7-bit or 10-bit */
     Tgt->Address = (USHORT)addr;
 
     /* ---- Clamp speed to safe range ---- */
@@ -153,18 +153,24 @@ I2cCtrl_IoctlSetTarget(
     Dx->SavedTimingHighNs = highNs;
     Dx->SavedTimingLowNs  = lowNs;
 
-    /* ---- Program controller defaults only if MMIO is valid ---- */
-    if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
+/* ---- Program controller defaults only if MMIO is valid ---- */
+if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
 
-        /* Enable controller */
-        (VOID)I2cCtrl_EnableController(Dx, TRUE);
+    NTSTATUS status;
 
-        /* Apply timing */
-        I2cCtrl_ApplyBusTiming(Dx,
-                               highNs,
-                               lowNs,
-                               speed);
+    /* Enable controller */
+    status = I2cCtrl_EnableController(Dx, TRUE);
+    if (!NT_SUCCESS(status)) {
+        KdPrint(("I2CCTRL: IoctlSetTarget: EnableController failed, status=0x%08lx\n", status));
+        return status;
     }
+
+    /* Apply timing */
+    I2cCtrl_ApplyBusTiming(Dx,
+                           highNs,
+                           lowNs,
+                           speed);
+}
 
     /* ---- Configure addressing mode ---- */
     Dx->Use10BitAddrDefault =
@@ -667,8 +673,8 @@ I2cCtrl_ContinueTransferDpc(
 
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_StartSequence - Hardened multi‑phase I2C sequence starter
- * HAL‑generic, XP/2003‑safe, ACPI‑safe, C89‑compliant.
+ * I2cCtrl_StartSequence - Hardened multi-phase I2C sequence starter
+ * HAL-generic, XP/2003-safe, ACPI-safe, C89-compliant.
  *
  *  - Initializes transfer context from Compat + XferCtx
  *  - Primes HW via HAL ops only if MMIO/ops are valid
@@ -1111,8 +1117,8 @@ I2cCtrl_IoctlTransfer(
 
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_IoctlSequence - Hardened SPBCX‑style sequence bridge
- * XP/2003‑safe, ACPI‑safe, C89‑compliant.
+ * I2cCtrl_IoctlSequence - Hardened SPBCX-style sequence bridge
+ * XP/2003-safe, ACPI-safe, C89-compliant.
  * ----------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_IoctlSequence(
@@ -1217,8 +1223,8 @@ I2cCtrl_IoctlSequence(
 }
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_IoctlProbe - Hardened SPBCX‑style probe bridge
- * XP/2003‑safe, ACPI‑safe, C89‑compliant.
+ * I2cCtrl_IoctlProbe - Hardened SPBCX-style probe bridge
+ * XP/2003-safe, ACPI-safe, C89-compliant.
  * ----------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_IoctlProbe(
@@ -1260,7 +1266,7 @@ I2cCtrl_IoctlProbe(
 
     probe = (PI2CCTRL_PROBE)InOutBuf;
 
-    /* Normalize address to 7‑bit */
+    /* Normalize address to 7-bit */
     addr7 = (UCHAR)(probe->Address & 0x7FU);
 
     /* ---- Fill SPBCX compatibility context ---- */
