@@ -453,7 +453,7 @@ I2CCTRL_WdmGetDeviceObject(IN PI2CCTRL_WDM_DEVICE Device)
 
 
 /* -----------------------------------------------------------------------
- * Backport: WdfRequestComplete → I2CCTRL_WdmRequestComplete
+ * Backport: WdfRequestComplete -> I2CCTRL_WdmRequestComplete
  * ----------------------------------------------------------------------- */
 VOID
 I2CCTRL_WdmRequestComplete(
@@ -470,7 +470,7 @@ I2CCTRL_WdmRequestComplete(
 }
 
 /* -----------------------------------------------------------------------
- * Backport: KeDelayExecutionThread → I2CCTRL_WdmDelayExecution
+ * Backport: KeDelayExecutionThread -> I2CCTRL_WdmDelayExecution
  * ----------------------------------------------------------------------- */
 NTSTATUS
 I2CCTRL_WdmDelayExecution(
