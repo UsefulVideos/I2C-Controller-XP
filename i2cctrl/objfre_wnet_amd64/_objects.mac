@@ -1,0 +1,108 @@
+MUI_386_OBJECTS= \
+    $(_OBJ_DIR)\i386\i2cctrl_version.res
+
+386_OBJECTS= \
+    $(_OBJ_DIR)\i386\i2cctrl_version.res \
+    $(_OBJ_DIR)\i386\i2cctrl.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_zw.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_backport.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_bsod.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_detect.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_extra.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_dump.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_etw.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_fdo.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_guid.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_i2c.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_isr.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_pdo.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_queue.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_smbus.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_spbcx.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_acpiex.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_i2chid.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_dpi.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_wdm_compat.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_hal_intel.obj
+
+MUI_IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\i2cctrl_version.res
+
+IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\i2cctrl_version.res \
+    $(_OBJ_DIR)\ia64\i2cctrl.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_zw.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_backport.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_bsod.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_detect.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_extra.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_dump.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_etw.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_fdo.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_guid.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_i2c.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_isr.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_pdo.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_queue.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_smbus.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_spbcx.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_acpiex.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_i2chid.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_dpi.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_wdm_compat.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_hal_intel.obj
+
+MUI_AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\i2cctrl_version.res
+
+AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\i2cctrl_version.res \
+    $(_OBJ_DIR)\amd64\i2cctrl.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_zw.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_backport.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_bsod.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_detect.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_extra.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_dump.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_etw.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_fdo.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_guid.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_i2c.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_isr.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_pdo.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_queue.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_smbus.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_spbcx.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_acpiex.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_i2chid.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_dpi.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_wdm_compat.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_hal_intel.obj
+
+MUI_ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\i2cctrl_version.res
+
+ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\i2cctrl_version.res \
+    $(_OBJ_DIR)\arm\i2cctrl.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_zw.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_backport.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_bsod.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_detect.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_extra.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_dump.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_etw.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_fdo.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_guid.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_i2c.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_isr.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_pdo.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_queue.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_smbus.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_spbcx.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_acpiex.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_i2chid.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_dpi.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_wdm_compat.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_hal_intel.obj
+
