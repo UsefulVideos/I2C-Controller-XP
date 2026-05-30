@@ -1,211 +1,237 @@
-# I²C Controller Driver (`i2cctrl.sys`)
+# **I²C Controller Driver (`i2cctrl.sys`) — Accurate Technical Description**
 
 **Version 1.0.0**  
 **Windows XP / Windows Server 2003 (x86/x64)**  
-**ACPI/PCI‑aware I²C Host Controller Bus Driver**
+**LPSS‑aware, PCI‑enumerated I²C Host Controller Driver with Unified Power/Reset Quirk Engine**
 
-`i2cctrl.sys` is a fully‑functional I²C host controller bus driver for Windows XP/2003.  
-It implements a complete PnP lifecycle, exposes a universal HID‑over‑I²C child PDO, and provides a safe, restart‑resilient I²C/SMBus transfer engine compatible with legacy NT5 kernels.
+`i2cctrl.sys` is a full NT5‑era I²C host controller driver designed for modern Intel/AMD SoCs whose I²C controllers are exposed through PCI or ACPI.  
+It implements a complete PnP bus‑type FDO, a DW‑I²C hardware abstraction layer, a unified LPSS power/reset quirk engine, and a synthetic HID‑over‑I²C child PDO for XP systems that cannot enumerate ACPI I²C devices.
 
 ---
 
-## 🔧 Core Driver Framework
+## 🔧 **Driver Architecture**
 
-### Full PnP lifecycle (FDO)
-The driver implements the complete NT5 PnP stack for a bus‑type FDO:
+### **PnP Bus‑Type FDO**
+The driver implements the full NT5 PnP lifecycle:
 
-- `IRP_MN_START_DEVICE`
-- `IRP_MN_STOP_DEVICE`
-- `IRP_MN_SURPRISE_REMOVAL`
-- `IRP_MN_REMOVE_DEVICE`
+- **IRP_MN_START_DEVICE**  
+- **IRP_MN_STOP_DEVICE**  
+- **IRP_MN_SURPRISE_REMOVAL**  
+- **IRP_MN_REMOVE_DEVICE**  
 
 During START, the driver:
 
-- Parses translated resource lists  
-- Maps MMIO regions  
-- Connects interrupts  
-- Initializes transfer queues and hardware state  
+- Parses PCI/ACPI translated resources  
+- Maps BAR0 (DW‑I²C registers)  
+- Maps LPSS private registers (BAR2‑style offset from PWRMBASE)  
+- Maps **PWRMBASE** for PMC/LPSS power sequencing  
+- Connects the interrupt  
+- Initializes the DW‑I²C ops table  
+- Applies unified quirks (clock gate, reset, DMA disable, broken gate, etc.)
 
-During STOP/REMOVE, it:
+During STOP/REMOVE:
 
-- Cancels timers  
-- Drains queues  
-- Completes pending IRPs  
-- Disconnects interrupts  
-- Unmaps MMIO  
+- All mappings are torn down  
+- Interrupts disconnected  
+- Queues drained  
+- State cleared deterministically  
 
-### XP/2003‑safe restart model
-`I2cCtrl_StopDevice` is **idempotent**, ensuring:
+### **Idempotent Restart Model**
+`I2cCtrl_StopDevice` and `I2cCtrl_StartDevice` are designed to be **idempotent**, allowing:
 
-- Disable/enable cycles do not leave stale state  
-- Surprise removal does not crash the system  
-- Reinstall cycles avoid Code 10  
-- All hardware state is torn down deterministically  
-
-### Controller identification
-Supports both ACPI‑described and PCI‑enumerated controllers:
-
-- ACPI: `INT3446`, `INT3447`, `AMD0010`, `AMDI0010`
-- PCI: Common Intel/AMD I²C host controller VEN/DEV IDs
+- Disable/enable cycles without Code 10  
+- Safe recovery from failed START  
+- Graceful handling of power‑gated controllers  
+- Re‑initialization after quirk application  
 
 ---
 
-## 📑 IOCTL Interface
+## ⚡ **LPSS / PMC Power & Reset Engine**
 
-### Raw I²C / SMBus transfers
-The driver exposes a synchronous I²C/SMBus transfer engine:
+Modern Intel LPSS controllers often boot in **D3cold** with:
 
-- Internal serialized request queue  
-- `SMBUS_REQUEST` wrappers  
-- Worker‑thread execution for XP safety  
+- BAR0 returning all **0x00000000**  
+- PWRMBASE returning **0xFFFFFFFF**  
+- LPSS private registers returning **0xFFFFFFFF**
+
+`i2cctrl.sys` includes a **unified quirk engine** that:
+
+- Clears LPSS clock gates  
+- Deasserts LPSS reset  
+- Enables functional clocks  
+- Applies platform‑specific workarounds  
+- Forces PIO mode when DMA is unsupported  
+- Handles broken clock‑gate silicon  
+- Performs extra reset cycles when required  
+
+This engine runs **after** MMIO mapping and **before** DW‑I²C enable.
+
+### **DW‑I²C Enable Path**
+The driver calls:
+
+```
+Ops->Enable(TRUE)
+```
+
+Then polls the DW‑I²C enable bit using:
+
+- `WaitForEnableState(targetOn=1)`  
+- Timeout‑protected loops  
+- BAR0 re‑reads before/after enable  
+
+If the controller remains unpowered (all zeros), the driver:
+
+- Marks `HardwareFailure = TRUE`  
+- Tears down all mappings  
+- Returns failure to PnP  
+- Still enumerates the HID child PDO (XP requirement)
+
+---
+
+## 🧩 **DW‑I²C Hardware Abstraction Layer**
+
+The driver uses a runtime ops table:
+
+- Register read/write helpers  
+- FIFO fill/drain  
+- Interrupt cause decoding  
+- Enable/disable sequences  
+- Status polling  
+- Transfer engine state machine  
+
+This allows support for:
+
+- Intel LPSS DW‑I²C  
+- AMD I²C  
+- ACPI‑described controllers  
+- PCI‑enumerated controllers  
+
+---
+
+## 🖐 **HID‑over‑I²C Child PDO (XP‑specific)**
+
+Windows XP cannot enumerate ACPI I²C devices (`PNP0C50`).  
+Therefore, the driver synthesizes a **universal HID‑over‑I²C PDO**:
+
+- Hardware ID: **`ACPI\PNP0C50`**  
+- Compatible ID: **`PNP0C50`**  
+- Instance ID: **`0000`**
+
+This PDO is:
+
+- Created during START  
+- Returned in `BusRelations`  
+- Removed only when the FDO is removed  
+
+This allows XP to load HID‑over‑I²C touchpad drivers normally.
+
+---
+
+## 📑 **I/O & Transfer Engine**
+
+### **Synchronous I²C/SMBus Transfers**
+The driver exposes a safe, serialized transfer engine:
+
+- Internal request queue  
+- Worker‑thread execution (XP‑safe)  
 - Timeout‑protected synchronous completion  
+- SMBus wrappers for legacy clients  
 
-### XP‑friendly interface
-The IOCTL surface is HAL‑neutral and designed for:
-
-- HID‑over‑I²C stacks  
-- Sensor stacks  
-- Custom I²C clients  
-
-Higher‑level protocols sit cleanly above the bus layer.
-
----
-
-## ⚡ Interrupt & FIFO Engine
-
-### ISR/DPC pipeline
-- ISR acknowledges interrupt causes  
-- Schedules DPC for heavy work  
-- DPC drains RX FIFO, fills TX FIFO, updates transfer context  
+### **Interrupt / DPC Pipeline**
+- ISR acknowledges causes  
+- DPC drains RX FIFO, fills TX FIFO  
+- Updates transfer state machine  
 - Completes IRPs in order  
 
-### Interrupt‑optional design
-If no usable IRQ exists:
-
-- Driver falls back to reduced/polling mode  
-- Still functional for simple devices  
-
-### Locking discipline
-Spinlocks protect all shared state:
-
-- `HwLock`  
-- `QueueLock`  
-- `PendingIrpLock`  
-- `BusLock`  
-
-This ensures ISR/DPC/worker paths remain race‑free.
+If no IRQ is usable, the driver falls back to **polling mode**.
 
 ---
 
-## 🖐 HID‑over‑I²C Child PDO
+## 📦 **ACPI & PCI Integration**
 
-### Universal child PDO
-The driver synthesizes a single HID‑over‑I²C child:
+### **PCI Path**
+For PCI controllers (e.g., **`PCI\VEN_8086&DEV_9DE9`**):
 
-- Hardware ID: `ACPI\PNP0C50`
-- Compatible ID: `PNP0C50`
-- Instance ID: `0000`
+- BAR0 is mapped as DW‑I²C registers  
+- PWRMBASE is derived from platform policy  
+- LPSS private registers are mapped at `PWRMBASE + offset`  
+- Interrupts are connected via translated resources  
 
-### PDO lifecycle
-The PDO:
+### **ACPI Path**
+For ACPI controllers (e.g., **`INT3446`**, **`INT3447`**):
 
-- Responds to `IRP_MN_QUERY_ID`  
-- Is created once per controller  
-- Is removed only when the FDO is removed  
+- ACPI handle is opened (if present)  
+- ACPI methods may be evaluated for power/reset  
+- XP‑safe ACPI teardown is used  
 
-### XP‑specific behavior
-Windows XP cannot enumerate I²C ACPI children.  
-Therefore, the bus driver:
-
-- Hardcodes a `PNP0C50` PDO  
-- Returns it via `BusRelations`  
-- Allows HID‑over‑I²C stacks to load normally  
-
----
-
-## 📦 ACPI & PCI Integration
-
-### ACPI helpers
-- Optional per‑child ACPI handle (`AcpiHandle`)  
-- Safe teardown via `I2cCtrl_AcpiCloseChild`  
-- Evaluation helpers for controller/child ACPI methods  
-
-### PCI/ACPI resource handling
-- Uses translated resource lists  
-- Locates MMIO + IRQ  
-- Validates MMIO length  
-- Maps via `MmMapIoSpace`  
-- Unmaps on STOP/REMOVE  
-
-### Child enumeration
+### **Child Enumeration**
 `I2cCtrl_QueryDeviceRelations` returns:
 
-- The active child list  
-- Including the HID PDO  
+- The HID PDO  
+- Any ACPI‑enumerated children (if present)  
 
 ---
 
-## 🛠 Diagnostics & Safety
+## 🛠 **Diagnostics & Safety**
 
-### XP/2003 BSOD‑resilience
-STOP/SURPRISE/REMOVE paths:
+### **Robust XP/2003 Teardown**
+All teardown paths:
 
-- Drain queues  
 - Cancel timers  
-- Complete pending IRPs  
+- Drain queues  
 - Disconnect interrupts  
 - Unmap MMIO  
+- Free child PDOs  
+- Zero internal state  
 
-All teardown paths are **idempotent**, preventing:
+This prevents:
 
-- Double‑free  
 - Double‑unmap  
+- Double‑free  
 - Stale pointers  
 - Code 10 errors  
+- BSODs during SURPRISE/REMOVE  
 
-### Debugging support
-- `KdPrint` / `TraceEvents` around all major transitions  
-- Assertions ensure child list emptiness at FDO REMOVE  
-- Verbose tracing for Start/Stop, child creation, and PnP flow  
+### **Verbose Debugging**
+The driver logs:
 
-### C89 / WDK‑style codebase
-- C89‑compliant initialization  
-- Explicit zeroing  
-- HAL‑neutral register access via ops table (`Ops`)  
+- BAR0 dumps before/after enable  
+- PWRMBASE/LPSS register snapshots  
+- Quirk application steps  
+- ISR/DPC transitions  
+- PnP state transitions  
+- ACPI enumeration failures  
 
 ---
 
-## 📁 INF Overview
+## 📁 **INF Overview**
 
-The driver is installed via `i2cctrl.inf`, which:
+`i2cctrl.inf`:
 
-- Targets XP 5.1 and XP/2003 5.2 (x86/x64)  
-- Registers the service as:
+- Targets XP 5.1 and XP/2003 5.2  
+- Registers the service:
 
+```
 ServiceBinary = %12%\i2cctrl.sys
 ImagePath     = \SystemRoot\System32\drivers\i2cctrl.sys
+```
 
-
-- Enumerates supported ACPI and PCI hardware IDs  
-- Creates the HID‑over‑I²C child PDO  
-- Registers event logging  
-- Installs registry‑based quirks and policies  
-
----
-
-## 🎯 Summary
-
-`i2cctrl.sys` **v1.0.0** is an **XP/2003‑oriented, ACPI/PCI‑aware I²C host controller bus driver** that:
-
-- Implements a complete, restart‑safe PnP lifecycle  
-- Exposes a universal HID‑over‑I²C child PDO (`ACPI\PNP0C50`)  
-- Manages MMIO, interrupts, ISR/DPC, and request queues safely  
-- Cleans up deterministically on STOP/SURPRISE/REMOVE  
-- Avoids Code 10 and stale device state across disable/enable cycles  
-
-It is a fully functional NT5‑era I²C bus driver suitable for HID‑over‑I²C devices, sensors, and custom I²C clients.
+- Enumerates supported ACPI and PCI IDs  
+- Creates the HID‑over‑I²C PDO  
+- Installs registry‑based quirks  
+- Enables verbose logging  
 
 ---
 
-## 📂 Project Structure
+# 🎯 **Summary (Accurate to Reality)**
 
+`i2cctrl.sys` is a **modern LPSS‑aware I²C controller driver for XP/2003** that:
+
+- Handles PCI/ACPI I²C controllers  
+- Implements a full NT5 PnP bus driver  
+- Includes a unified LPSS/PMC power‑up quirk engine  
+- Uses a DW‑I²C ops table for hardware abstraction  
+- Synthesizes a HID‑over‑I²C PDO for XP  
+- Provides a safe, serialized transfer engine  
+- Recovers cleanly from failed START due to power‑gated hardware  
+- Avoids Code 10 and stale state across restarts  

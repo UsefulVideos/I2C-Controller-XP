@@ -1,0 +1,44 @@
+MUI_386_OBJECTS= \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_version.res
+
+386_OBJECTS= \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_version.res \
+    $(_OBJ_DIR)\i386\i2cctrl_emu.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_acpi.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_ops.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_hid.obj \
+    $(_OBJ_DIR)\i386\i2cctrl_emu_ioctl.obj
+
+MUI_IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_version.res
+
+IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_version.res \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_acpi.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_ops.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_hid.obj \
+    $(_OBJ_DIR)\ia64\i2cctrl_emu_ioctl.obj
+
+MUI_AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_version.res
+
+AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_version.res \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_acpi.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_ops.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_hid.obj \
+    $(_OBJ_DIR)\amd64\i2cctrl_emu_ioctl.obj
+
+MUI_ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_version.res
+
+ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_version.res \
+    $(_OBJ_DIR)\arm\i2cctrl_emu.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_acpi.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_ops.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_hid.obj \
+    $(_OBJ_DIR)\arm\i2cctrl_emu_ioctl.obj
+
