@@ -8,30 +8,50 @@
 #include "uartctrl_hw.h"
 
 /* -----------------------------------------------------------------------
-   Power Dispatch
-   ----------------------------------------------------------------------- */
+ * UARTCTRL_DispatchPower – handle power IRPs (XP/2003-safe)
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_DispatchPower(PDEVICE_OBJECT DevObj, PIRP Irp)
+UARTCTRL_DispatchPower(
+    PDEVICE_OBJECT DevObj,
+    PIRP           Irp
+    )
 {
-    PUARTCTRL_DEVEXT ext;
+    PUARTCTRL_FDO      ext;
     PIO_STACK_LOCATION isl;
 
-    ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
+    /* XP/2003 requirement */
     PoStartNextPowerIrp(Irp);
+
+    UartCtrl_Log("Power: minor=0x%02X\n", isl->MinorFunction);
 
     switch (isl->MinorFunction) {
 
+    /* -------------------------------------------------------------
+     * QUERY_POWER – always allow
+     * ------------------------------------------------------------- */
     case IRP_MN_QUERY_POWER:
-        /* Allow all queries; could add checks if hardware cannot support certain states */
+        UartCtrl_Log("Power: IRP_MN_QUERY_POWER\n");
         Irp->IoStatus.Status = STATUS_SUCCESS;
         break;
 
+    /* -------------------------------------------------------------
+     * SET_POWER – handle D0/Dx transitions
+     * ------------------------------------------------------------- */
     case IRP_MN_SET_POWER:
-        /* Handle transitions to D0/Dx */
-        if (isl->Parameters.Power.State.DeviceState == PowerDeviceD0) {
-            /* Re‑enable UART hardware after resume */
+    {
+        DEVICE_POWER_STATE newState =
+            isl->Parameters.Power.State.DeviceState;
+
+        UartCtrl_Log("Power: IRP_MN_SET_POWER -> D%u\n", newState);
+
+        if (newState == PowerDeviceD0) {
+
+            UartCtrl_Log("Power: entering D0, reinitializing UART\n");
+
+            /* Re-enable UART hardware after resume */
             UartEnableFifo(ext, FCR_TRIG_8);
             UartSetLineControl(ext,
                                ext->Config.DataBits,
@@ -39,20 +59,35 @@ UARTCTRL_DispatchPower(PDEVICE_OBJECT DevObj, PIRP Irp)
                                ext->Config.Parity);
             UartSetBaud(ext, ext->ClockHz, ext->Config.BaudRate);
             UartSetModemControl(ext, MCR_RTS | MCR_OUT2);
-            UartEnableInterrupts(ext, IER_RDA | IER_THRE | IER_RLS);
+            UartEnableInterrupts(ext,
+                                 IER_RDA | IER_THRE | IER_RLS);
+
         } else {
-            /* Transitioning to low‑power state: disable interrupts */
+
+            UartCtrl_Log("Power: entering Dx, disabling interrupts\n");
+
+            /* Suspend: disable interrupts */
             UartDisableInterrupts(ext);
         }
+
         Irp->IoStatus.Status = STATUS_SUCCESS;
         break;
+    }
 
+    /* -------------------------------------------------------------
+     * WAIT_WAKE – optional, unsupported
+     * ------------------------------------------------------------- */
     case IRP_MN_WAIT_WAKE:
-        /* Optional: support wake‑on‑RX if hardware allows */
+        UartCtrl_Log("Power: IRP_MN_WAIT_WAKE (not supported)\n");
         Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
         break;
 
+    /* -------------------------------------------------------------
+     * Default – pass through
+     * ------------------------------------------------------------- */
     default:
+        UartCtrl_Log("Power: passing minor 0x%02X down\n",
+                     isl->MinorFunction);
         Irp->IoStatus.Status = STATUS_SUCCESS;
         break;
     }

@@ -11,16 +11,21 @@
 DRIVER_UNLOAD  UARTCTRL_DriverUnload;
 DRIVER_ADD_DEVICE UARTCTRL_AddDevice;
 
+/* ---------------------------------------------------------------------------
+   Global driver context definition
+   --------------------------------------------------------------------------- */
+UARTCTRL_GLOBAL g_UartCtrlGlobal = {0};
+
 /* -----------------------------------------------------------------------
    Create/Close dispatch – track open count
    ----------------------------------------------------------------------- */
 NTSTATUS
 UARTCTRL_DispatchCreateClose(PDEVICE_OBJECT DevObj, PIRP Irp)
 {
-    PUARTCTRL_DEVEXT ext;
+    PUARTCTRL_FDO ext;
     PIO_STACK_LOCATION isl;
 
-    ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
     isl = IoGetCurrentIrpStackLocation(Irp);
 
     if (isl->MajorFunction == IRP_MJ_CREATE) {
@@ -41,13 +46,13 @@ UARTCTRL_DispatchCreateClose(PDEVICE_OBJECT DevObj, PIRP Irp)
 VOID
 UARTCTRL_ReadCancelRoutine(PDEVICE_OBJECT DevObj, PIRP Irp)
 {
-    PUARTCTRL_DEVEXT ext;
+    PUARTCTRL_FDO ext;
     KIRQL irql;
     PLIST_ENTRY le;
 
     UNREFERENCED_PARAMETER(DevObj);
 
-    ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
 
     // Release cancel spinlock first
     IoReleaseCancelSpinLock(Irp->CancelIrql);
@@ -75,7 +80,7 @@ UARTCTRL_ReadCancelRoutine(PDEVICE_OBJECT DevObj, PIRP Irp)
 NTSTATUS
 UARTCTRL_DispatchRead(PDEVICE_OBJECT DevObj, PIRP Irp)
 {
-    PUARTCTRL_DEVEXT ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    PUARTCTRL_FDO ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
     PIO_STACK_LOCATION isl = IoGetCurrentIrpStackLocation(Irp);
     PUCHAR outBuf;
     ULONG outLen, copied = 0;
@@ -131,7 +136,7 @@ UARTCTRL_DispatchRead(PDEVICE_OBJECT DevObj, PIRP Irp)
 NTSTATUS
 UARTCTRL_DispatchWrite(PDEVICE_OBJECT DevObj, PIRP Irp)
 {
-    PUARTCTRL_DEVEXT ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    PUARTCTRL_FDO ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
     PIO_STACK_LOCATION isl = IoGetCurrentIrpStackLocation(Irp);
     PUCHAR inBuf;
     ULONG inLen, written = 0;
@@ -175,33 +180,64 @@ UARTCTRL_DispatchWrite(PDEVICE_OBJECT DevObj, PIRP Irp)
 
 
 /* -----------------------------------------------------------------------
-   DriverEntry – initialize driver object and dispatch table
-   ----------------------------------------------------------------------- */
+ * DriverEntry – UART Controller driver entry point (WDM, XP/2003-safe)
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
+DriverEntry(
+    IN PDRIVER_OBJECT  DriverObject,
+    IN PUNICODE_STRING RegistryPath
+    )
 {
-    ULONG i;
+    NTSTATUS status;
+    ULONG    i;
+
+    /* C89 initialization */
+    status = STATUS_SUCCESS;
+    i      = 0U;
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    /* Register unload and AddDevice routines */
-    DriverObject->DriverUnload             = UARTCTRL_DriverUnload;
-    DriverObject->DriverExtension->AddDevice = UARTCTRL_AddDevice;
+    /* Must run at PASSIVE_LEVEL */
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
 
-    /* Default all major functions to pass‑through */
-    for (i = 0; i <= IRP_MJ_MAXIMUM_FUNCTION; i++) {
+    if (DriverObject == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Initialize any global UART state here if you have it */
+    RtlZeroMemory(&g_UartCtrlGlobal, sizeof(g_UartCtrlGlobal));
+
+    /* Default all IRP major functions to a safe pass-through handler */
+    for (i = 0U; i <= IRP_MJ_MAXIMUM_FUNCTION; i++) {
         DriverObject->MajorFunction[i] = UARTCTRL_PT_DispatchPass;
     }
 
     /* Core dispatch routines */
-    DriverObject->MajorFunction[IRP_MJ_CREATE]  = UARTCTRL_DispatchCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_CLOSE]   = UARTCTRL_DispatchCreateClose;
-    DriverObject->MajorFunction[IRP_MJ_READ]    = UARTCTRL_DispatchRead;
-    DriverObject->MajorFunction[IRP_MJ_WRITE]   = UARTCTRL_DispatchWrite;
-    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]          = UARTCTRL_DispatchIoctl;
-    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = UARTCTRL_DispatchIoctl;
-    DriverObject->MajorFunction[IRP_MJ_PNP]     = UARTCTRL_DispatchPnP;
-    DriverObject->MajorFunction[IRP_MJ_POWER]   = UARTCTRL_DispatchPower;
+    DriverObject->MajorFunction[IRP_MJ_CREATE]                 = UARTCTRL_DispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_CLOSE]                  = UARTCTRL_DispatchCreateClose;
+    DriverObject->MajorFunction[IRP_MJ_READ]                   = UARTCTRL_DispatchRead;
+    DriverObject->MajorFunction[IRP_MJ_WRITE]                  = UARTCTRL_DispatchWrite;
+    DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]         = UARTCTRL_DispatchIoctl;
+    DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL]= UARTCTRL_DispatchIoctl;
+    DriverObject->MajorFunction[IRP_MJ_PNP]                    = UARTCTRL_DispatchPnP;
+    DriverObject->MajorFunction[IRP_MJ_POWER]                  = UARTCTRL_DispatchPower;
+
+    /* Set unload routine early */
+    DriverObject->DriverUnload = UARTCTRL_DriverUnload;
+
+    /* AddDevice must be available */
+    if (DriverObject->DriverExtension == NULL) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    /* Assign AddDevice (PnP entry point) */
+    DriverObject->DriverExtension->AddDevice = UARTCTRL_AddDevice;
+
+    /* Optional: register lifecycle helpers in a global struct, if you have them */
+    g_UartCtrlGlobal.StartDevice = UARTCTRL_StartDevice;
+    g_UartCtrlGlobal.StopDevice  = UARTCTRL_StopDevice;
 
     return STATUS_SUCCESS;
 }
@@ -241,72 +277,178 @@ static const PWSTR UartCtrlHardwareIds[] = {
 };
 
 /* -----------------------------------------------------------------------
-   AddDevice – create FDO and attach to stack
-   ----------------------------------------------------------------------- */
+ * AddDevice – create FDO, attach to PDO, initialize PDO extension
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject)
+UARTCTRL_AddDevice(
+    PDRIVER_OBJECT  DriverObject,
+    PDEVICE_OBJECT  PhysicalDeviceObject
+    )
 {
-    NTSTATUS status;
-    PDEVICE_OBJECT fdo;
-    PWSTR hwidBuffer;
-    ULONG hwidLength;
-    ULONG i;
+    NTSTATUS        status;
+    PDEVICE_OBJECT  fdo;
+    PUARTCTRL_FDO   fdoExt;
+    PUARTCTRL_PDO   pdoExt;
+    PWSTR           hwidBuffer;
+    ULONG           hwidLength;
+    PWSTR           p;
+    ULONG           idIndex;
 
-    // Query hardware IDs from the PDO (REG_MULTI_SZ)
-    status = IoGetDeviceProperty(PhysicalDeviceObject,
-                                 DevicePropertyHardwareID,
-                                 0,
-                                 NULL,
-                                 &hwidLength);
+    UartCtrl_Log("AddDevice: PDO=%p\n", PhysicalDeviceObject);
+
+    /* -------------------------------------------------------------
+     * Get PDO extension (we now use PUARTCTRL_PDO)
+     * ------------------------------------------------------------- */
+    pdoExt = (PUARTCTRL_PDO)PhysicalDeviceObject->DeviceExtension;
+
+    /* PDO may not be ours yet — initialize minimal fields */
+    if (pdoExt->Self == NULL) {
+        pdoExt->Self      = PhysicalDeviceObject;
+        pdoExt->ParentFdo = NULL;
+        pdoExt->Present   = TRUE;
+        pdoExt->Removed   = FALSE;
+        pdoExt->Started   = FALSE;
+        IoInitializeRemoveLock(&pdoExt->RemoveLock, 'URTP', 0, 0);
+        UartCtrl_Log("AddDevice: initialized PDO extension\n");
+    }
+
+    /* -------------------------------------------------------------
+     * Query required buffer size for hardware IDs
+     * ------------------------------------------------------------- */
+    status = IoGetDeviceProperty(
+                 PhysicalDeviceObject,
+                 DevicePropertyHardwareID,
+                 0,
+                 NULL,
+                 &hwidLength);
+
     if (status != STATUS_BUFFER_TOO_SMALL) {
+        UartCtrl_Log("AddDevice: IoGetDeviceProperty(size) failed (0x%08lx)\n", status);
         return status;
     }
 
     hwidBuffer = (PWSTR)ExAllocatePoolWithTag(NonPagedPool, hwidLength, 'hdiU');
-    if (!hwidBuffer) {
+    if (hwidBuffer == NULL) {
+        UartCtrl_Log("AddDevice: failed to allocate HWID buffer\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    status = IoGetDeviceProperty(PhysicalDeviceObject,
-                                 DevicePropertyHardwareID,
-                                 hwidLength,
-                                 hwidBuffer,
-                                 &hwidLength);
+    /* -------------------------------------------------------------
+     * Retrieve the actual REG_MULTI_SZ hardware ID list
+     * ------------------------------------------------------------- */
+    status = IoGetDeviceProperty(
+                 PhysicalDeviceObject,
+                 DevicePropertyHardwareID,
+                 hwidLength,
+                 hwidBuffer,
+                 &hwidLength);
+
     if (!NT_SUCCESS(status)) {
+        UartCtrl_Log("AddDevice: IoGetDeviceProperty(data) failed (0x%08lx)\n", status);
         ExFreePoolWithTag(hwidBuffer, 'hdiU');
         return status;
     }
 
-    // Compare against our supported list
-    for (i = 0; UartCtrlHardwareIds[i] != NULL; i++) {
-        UNICODE_STRING idStr, targetStr;
-        RtlInitUnicodeString(&idStr, UartCtrlHardwareIds[i]);
-        RtlInitUnicodeString(&targetStr, hwidBuffer);
+    /* -------------------------------------------------------------
+     * REG_MULTI_SZ: iterate through each null‑terminated string
+     * ------------------------------------------------------------- */
+    p = hwidBuffer;
 
-        if (RtlEqualUnicodeString(&idStr, &targetStr, TRUE)) {
-            status = IoCreateDevice(DriverObject,
-                                    sizeof(UARTCTRL_DEVEXT),
-                                    NULL,
-                                    FILE_DEVICE_SERIAL_PORT,
-                                    0,
-                                    FALSE,
-                                    &fdo);
-            ExFreePoolWithTag(hwidBuffer, 'hdiU');
-            return status;
+    while (*p != UNICODE_NULL) {
+
+        UNICODE_STRING hwid;
+        RtlInitUnicodeString(&hwid, p);
+
+        UartCtrl_Log("AddDevice: checking HWID '%ws'\n", p);
+
+        /* Compare against our supported list */
+        for (idIndex = 0; UartCtrlHardwareIds[idIndex] != NULL; idIndex++) {
+
+            UNICODE_STRING target;
+            RtlInitUnicodeString(&target, UartCtrlHardwareIds[idIndex]);
+
+            if (RtlEqualUnicodeString(&hwid, &target, TRUE)) {
+
+                UartCtrl_Log("AddDevice: matched supported HWID '%ws'\n",
+                             UartCtrlHardwareIds[idIndex]);
+
+                /* -----------------------------------------------------
+                 * Create FDO
+                 * ----------------------------------------------------- */
+                status = IoCreateDevice(
+                             DriverObject,
+                             sizeof(UARTCTRL_FDO),
+                             NULL,
+                             FILE_DEVICE_SERIAL_PORT,
+                             0,
+                             FALSE,
+                             &fdo);
+
+                if (!NT_SUCCESS(status)) {
+                    UartCtrl_Log("AddDevice: IoCreateDevice FAILED (0x%08lx)\n", status);
+                    ExFreePoolWithTag(hwidBuffer, 'hdiU');
+                    return status;
+                }
+
+                fdoExt = (PUARTCTRL_FDO)fdo->DeviceExtension;
+                RtlZeroMemory(fdoExt, sizeof(UARTCTRL_FDO));
+
+                /* -----------------------------------------------------
+                 * Attach to device stack
+                 * ----------------------------------------------------- */
+                fdoExt->LowerDevice = IoAttachDeviceToDeviceStack(fdo, PhysicalDeviceObject);
+
+                if (fdoExt->LowerDevice == NULL) {
+                    UartCtrl_Log("AddDevice: IoAttachDeviceToDeviceStack FAILED\n");
+                    IoDeleteDevice(fdo);
+                    ExFreePoolWithTag(hwidBuffer, 'hdiU');
+                    return STATUS_NO_SUCH_DEVICE;
+                }
+
+                /* -----------------------------------------------------
+                 * Initialize remove lock
+                 * ----------------------------------------------------- */
+                IoInitializeRemoveLock(&fdoExt->RemoveLock, 'URTF', 0, 0);
+
+                /* -----------------------------------------------------
+                 * Link PDO <-> FDO
+                 * ----------------------------------------------------- */
+                pdoExt->ParentFdo = fdo;
+                fdoExt->Started   = FALSE;
+                fdoExt->Removed   = FALSE;
+
+                /* -----------------------------------------------------
+                 * Initialize FDO flags
+                 * ----------------------------------------------------- */
+                fdo->Flags |= DO_POWER_PAGABLE;
+                fdo->Flags &= ~DO_DEVICE_INITIALIZING;
+
+                UartCtrl_Log("AddDevice: FDO created and attached successfully\n");
+
+                ExFreePoolWithTag(hwidBuffer, 'hdiU');
+                return STATUS_SUCCESS;
+            }
         }
+
+        /* Move to next string in REG_MULTI_SZ */
+        p += wcslen(p) + 1;
     }
+
+    UartCtrl_Log("AddDevice: no supported HWID matched\n");
 
     ExFreePoolWithTag(hwidBuffer, 'hdiU');
     return STATUS_NO_SUCH_DEVICE;
 }
 
 /* -----------------------------------------------------------------------
-   UARTCTRL_StartDevice – parse resources, map MMIO, connect ISR, init hardware
-   ----------------------------------------------------------------------- */
+ * UARTCTRL_StartDevice – parse resources, map MMIO, connect ISR, init HW
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_StartDevice(PUARTCTRL_DEVEXT ext,
-                     PCM_RESOURCE_LIST raw,
-                     PCM_RESOURCE_LIST translated)
+UARTCTRL_StartDevice(
+    PUARTCTRL_FDO        ext,
+    PCM_RESOURCE_LIST    raw,
+    PCM_RESOURCE_LIST    translated
+    )
 {
     PCM_PARTIAL_RESOURCE_LIST prl;
     ULONG i;
@@ -314,55 +456,92 @@ UARTCTRL_StartDevice(PUARTCTRL_DEVEXT ext,
 
     UNREFERENCED_PARAMETER(raw);
 
+    UartCtrl_Log("StartDevice: begin\n");
+
     if (translated == NULL) {
+        UartCtrl_Log("StartDevice: translated resource list is NULL\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     prl = &translated->List[0].PartialResourceList;
 
+    UartCtrl_Log("StartDevice: parsing %lu resources\n", prl->Count);
+
+    /* -------------------------------------------------------------
+     * Parse resources
+     * ------------------------------------------------------------- */
     for (i = 0; i < prl->Count; i++) {
-        PCM_PARTIAL_RESOURCE_DESCRIPTOR prd = &prl->PartialDescriptors[i];
+
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR prd =
+            &prl->PartialDescriptors[i];
 
         switch (prd->Type) {
+
+        /* ---------------------------------------------------------
+         * MMIO resource
+         * --------------------------------------------------------- */
         case CmResourceTypeMemory:
-            ext->MmioBase = MmMapIoSpace(prd->u.Memory.Start,
-                                         prd->u.Memory.Length,
-                                         MmNonCached);
-            if (!ext->MmioBase) {
+
+            UartCtrl_Log("StartDevice: MMIO @ %08lx%08lx len=%lu\n",
+                         prd->u.Memory.Start.HighPart,
+                         prd->u.Memory.Start.LowPart,
+                         prd->u.Memory.Length);
+
+            ext->MmioBase = MmMapIoSpace(
+                                prd->u.Memory.Start,
+                                prd->u.Memory.Length,
+                                MmNonCached);
+
+            if (ext->MmioBase == NULL) {
+                UartCtrl_Log("StartDevice: MmMapIoSpace FAILED\n");
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
+
             ext->MmioLength = prd->u.Memory.Length;
             break;
 
+        /* ---------------------------------------------------------
+         * Interrupt resource
+         * --------------------------------------------------------- */
         case CmResourceTypeInterrupt:
         {
             KIRQL irql = (KIRQL)prd->u.Interrupt.Level;
             KINTERRUPT_MODE mode =
-                (prd->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ? Latched : LevelSensitive;
+                (prd->Flags & CM_RESOURCE_INTERRUPT_LATCHED)
+                    ? Latched
+                    : LevelSensitive;
 
-            status = IoConnectInterrupt(&ext->InterruptObject,
-                                        UARTCTRL_InterruptServiceRoutine,
-                                        ext,
-                                        NULL,
-                                        prd->u.Interrupt.Vector,
-                                        irql,
-                                        irql,
-                                        mode,
-                                        TRUE,
-                                        prd->u.Interrupt.Affinity,
-                                        FALSE);
+            UartCtrl_Log("StartDevice: IRQ vector=%lu level=%lu mode=%s\n",
+                         prd->u.Interrupt.Vector,
+                         prd->u.Interrupt.Level,
+                         (mode == Latched) ? "Latched" : "LevelSensitive");
+
+            status = IoConnectInterrupt(
+                         &ext->InterruptObject,
+                         UARTCTRL_InterruptServiceRoutine,
+                         ext,
+                         NULL,
+                         prd->u.Interrupt.Vector,
+                         irql,
+                         irql,
+                         mode,
+                         TRUE,
+                         prd->u.Interrupt.Affinity,
+                         FALSE);
+
             if (!NT_SUCCESS(status)) {
+                UartCtrl_Log("StartDevice: IoConnectInterrupt FAILED (0x%08lx)\n",
+                             status);
                 return status;
             }
 
             ext->InterruptConnected = TRUE;
 
-            /* Initialize DPC for deferred work */
+            /* Initialize DPC + timer */
             KeInitializeDpc(&ext->PollDpc, UARTCTRL_DpcRoutine, ext);
-
-            /* Initialize timer for optional polling fallback */
             KeInitializeTimer(&ext->PollTimer);
             ext->Polling = FALSE;
+
             break;
         }
 
@@ -371,32 +550,54 @@ UARTCTRL_StartDevice(PUARTCTRL_DEVEXT ext,
         }
     }
 
-    /* Initialize spin locks and queues */
+    /* -------------------------------------------------------------
+     * Initialize locks and queues
+     * ------------------------------------------------------------- */
     KeInitializeSpinLock(&ext->RxLock);
     KeInitializeSpinLock(&ext->TxLock);
     KeInitializeSpinLock(&ext->ReadQueueLock);
     InitializeListHead(&ext->ReadQueue);
 
-    /* Allocate RX/TX buffers */
+    UartCtrl_Log("StartDevice: spinlocks + queues initialized\n");
+
+    /* -------------------------------------------------------------
+     * Allocate RX/TX buffers
+     * ------------------------------------------------------------- */
     status = UARTCTRL_ExtAllocateBuffers(ext, 4096, 2048);
     if (!NT_SUCCESS(status)) {
+        UartCtrl_Log("StartDevice: buffer allocation FAILED (0x%08lx)\n",
+                     status);
         return status;
     }
 
-    /* Reset counters and state */
-    ext->RxErrors = 0;
-    ext->TxErrors = 0;
-    ext->OpenCount = 0;
-    ext->Started = FALSE;
-    ext->Removed = FALSE;
+    UartCtrl_Log("StartDevice: buffers allocated\n");
 
-    /* Default UART configuration */
+    /* -------------------------------------------------------------
+     * Reset counters and state
+     * ------------------------------------------------------------- */
+    ext->RxErrors  = 0;
+    ext->TxErrors  = 0;
+    ext->OpenCount = 0;
+    ext->Started   = FALSE;
+    ext->Removed   = FALSE;
+
+    /* -------------------------------------------------------------
+     * Default UART configuration
+     * ------------------------------------------------------------- */
     ext->Config.BaudRate = 115200;
     ext->Config.DataBits = 8;
     ext->Config.StopBits = 1;
     ext->Config.Parity   = 0;
 
-    /* Program hardware */
+    UartCtrl_Log("StartDevice: default config: %u baud, %u data, %u stop, parity=%u\n",
+                 ext->Config.BaudRate,
+                 ext->Config.DataBits,
+                 ext->Config.StopBits,
+                 ext->Config.Parity);
+
+    /* -------------------------------------------------------------
+     * Program hardware
+     * ------------------------------------------------------------- */
     UartEnableFifo(ext, FCR_TRIG_8);
     UartSetLineControl(ext,
                        ext->Config.DataBits,
@@ -406,115 +607,341 @@ UARTCTRL_StartDevice(PUARTCTRL_DEVEXT ext,
     UartSetModemControl(ext, MCR_RTS | MCR_OUT2);
     UartEnableInterrupts(ext, IER_RDA | IER_THRE | IER_RLS);
 
+    UartCtrl_Log("StartDevice: hardware initialized\n");
+
     ext->Started = TRUE;
+
+    UartCtrl_Log("StartDevice: SUCCESS\n");
+
     return STATUS_SUCCESS;
 }
 
 
 /* -----------------------------------------------------------------------
-   UARTCTRL_StopDevice – disconnect ISR, free buffers, unmap MMIO, flush queues
-   ----------------------------------------------------------------------- */
+ * UARTCTRL_StopDevice – disconnect ISR, free buffers, unmap MMIO, flush queues
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_StopDevice(PUARTCTRL_DEVEXT ext)
+UARTCTRL_StopDevice(
+    PUARTCTRL_FDO ext
+    )
 {
     KIRQL irql;
 
-    /* Cancel polling timer if active */
+    UartCtrl_Log("StopDevice: begin\n");
+
+    /* -------------------------------------------------------------
+     * Cancel polling timer if active
+     * ------------------------------------------------------------- */
     if (ext->Polling) {
+        UartCtrl_Log("StopDevice: cancelling polling timer\n");
         KeCancelTimer(&ext->PollTimer);
         ext->Polling = FALSE;
     }
 
-    /* Disconnect interrupt if connected */
+    /* -------------------------------------------------------------
+     * Disconnect interrupt if connected
+     * ------------------------------------------------------------- */
     if (ext->InterruptConnected) {
+        UartCtrl_Log("StopDevice: disconnecting interrupt\n");
         IoDisconnectInterrupt(ext->InterruptObject);
-        ext->InterruptObject = NULL;
+        ext->InterruptObject    = NULL;
         ext->InterruptConnected = FALSE;
     }
 
-    /* Unmap MMIO region if mapped */
-    if (ext->MmioBase) {
+    /* -------------------------------------------------------------
+     * Unmap MMIO region
+     * ------------------------------------------------------------- */
+    if (ext->MmioBase != NULL) {
+        UartCtrl_Log("StopDevice: unmapping MMIO (len=%lu)\n",
+                     ext->MmioLength);
+
         MmUnmapIoSpace(ext->MmioBase, ext->MmioLength);
-        ext->MmioBase = NULL;
+
+        ext->MmioBase   = NULL;
         ext->MmioLength = 0;
     }
 
-    /* Flush and complete any queued read IRPs */
+    /* -------------------------------------------------------------
+     * Flush queued read IRPs
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("StopDevice: flushing read queue\n");
+
     KeAcquireSpinLock(&ext->ReadQueueLock, &irql);
+
     while (!IsListEmpty(&ext->ReadQueue)) {
+
         PLIST_ENTRY le = RemoveHeadList(&ext->ReadQueue);
         PIRP irp = CONTAINING_RECORD(le, IRP, Tail.Overlay.ListEntry);
 
-        irp->IoStatus.Status = STATUS_CANCELLED;
+        UartCtrl_Log("StopDevice: completing pending read IRP %p\n", irp);
+
+        irp->IoStatus.Status      = STATUS_CANCELLED;
         irp->IoStatus.Information = 0;
+
         KeReleaseSpinLock(&ext->ReadQueueLock, irql);
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         KeAcquireSpinLock(&ext->ReadQueueLock, &irql);
     }
+
     KeReleaseSpinLock(&ext->ReadQueueLock, irql);
 
-    /* Free RX/TX buffers */
+    /* -------------------------------------------------------------
+     * Free RX/TX buffers
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("StopDevice: freeing RX/TX buffers\n");
     UARTCTRL_ExtFreeBuffers(ext);
 
-    /* Reset counters and flags */
-    ext->RxErrors = 0;
-    ext->TxErrors = 0;
+    /* -------------------------------------------------------------
+     * Reset counters and flags
+     * ------------------------------------------------------------- */
+    ext->RxErrors  = 0;
+    ext->TxErrors  = 0;
     ext->OpenCount = 0;
-    ext->Started = FALSE;
+    ext->Started   = FALSE;
+
+    UartCtrl_Log("StopDevice: complete\n");
 
     return STATUS_SUCCESS;
 }
 
 
 /* -----------------------------------------------------------------------
-   UARTCTRL_RemoveDevice – full cleanup on device removal
-   ----------------------------------------------------------------------- */
+ * UARTCTRL_RemoveDevice – full cleanup on device removal
+ * ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_RemoveDevice(PDEVICE_OBJECT DevObj)
+UARTCTRL_RemoveDevice(
+    PDEVICE_OBJECT DevObj
+    )
 {
-    PUARTCTRL_DEVEXT ext;
+    PUARTCTRL_FDO ext;
     KIRQL irql;
 
-    ext = (PUARTCTRL_DEVEXT)DevObj->DeviceExtension;
+    ext = (PUARTCTRL_FDO)DevObj->DeviceExtension;
 
-    /* Mark state */
+    UartCtrl_Log("RemoveDevice: begin (FDO=%p)\n", DevObj);
+
+    /* -------------------------------------------------------------
+     * Mark state
+     * ------------------------------------------------------------- */
     ext->Removed = TRUE;
     ext->Started = FALSE;
 
-    /* Stop hardware and free buffers */
+    /* -------------------------------------------------------------
+     * Stop hardware and free buffers
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("RemoveDevice: calling StopDevice\n");
     UARTCTRL_StopDevice(ext);
 
-    /* Cancel any queued read IRPs */
+    /* -------------------------------------------------------------
+     * Flush queued read IRPs
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("RemoveDevice: flushing read queue\n");
+
     KeAcquireSpinLock(&ext->ReadQueueLock, &irql);
+
     while (!IsListEmpty(&ext->ReadQueue)) {
+
         PLIST_ENTRY le = RemoveHeadList(&ext->ReadQueue);
         PIRP irp = CONTAINING_RECORD(le, IRP, Tail.Overlay.ListEntry);
 
-        irp->IoStatus.Status = STATUS_CANCELLED;
+        UartCtrl_Log("RemoveDevice: completing pending read IRP %p\n", irp);
+
+        irp->IoStatus.Status      = STATUS_CANCELLED;
         irp->IoStatus.Information = 0;
+
         KeReleaseSpinLock(&ext->ReadQueueLock, irql);
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         KeAcquireSpinLock(&ext->ReadQueueLock, &irql);
     }
+
     KeReleaseSpinLock(&ext->ReadQueueLock, irql);
 
-    /* Delete symbolic link if present */
-    if (ext->Symlink.Buffer) {
+    /* -------------------------------------------------------------
+     * Delete symbolic link if present
+     * ------------------------------------------------------------- */
+    if (ext->Symlink.Buffer != NULL) {
+        UartCtrl_Log("RemoveDevice: deleting symbolic link '%wZ'\n",
+                     &ext->Symlink);
+
         IoDeleteSymbolicLink(&ext->Symlink);
         RtlZeroMemory(&ext->Symlink, sizeof(ext->Symlink));
     }
 
-    /* Detach from lower device */
-    if (ext->LowerDevice) {
+    /* -------------------------------------------------------------
+     * Detach from lower device
+     * ------------------------------------------------------------- */
+    if (ext->LowerDevice != NULL) {
+        UartCtrl_Log("RemoveDevice: detaching from lower device %p\n",
+                     ext->LowerDevice);
+
         IoDetachDevice(ext->LowerDevice);
         ext->LowerDevice = NULL;
     }
 
-    /* Release remove lock and wait for outstanding I/O */
+    /* -------------------------------------------------------------
+     * Release remove lock and wait for outstanding I/O
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("RemoveDevice: releasing remove lock and waiting\n");
+
     IoReleaseRemoveLockAndWait(&ext->RemoveLock, NULL);
 
-    /* Finally delete our device object */
+    /* -------------------------------------------------------------
+     * Delete our device object
+     * ------------------------------------------------------------- */
+    UartCtrl_Log("RemoveDevice: deleting FDO %p\n", DevObj);
+
     IoDeleteDevice(DevObj);
 
+    UartCtrl_Log("RemoveDevice: complete\n");
+
     return STATUS_SUCCESS;
+}
+
+
+/* -----------------------------------------------------------------------
+ * kernel logger with printf-style formatting + timestamp prefix
+ * ----------------------------------------------------------------------- */
+VOID
+UartCtrl_Log(
+    PCSTR Format,
+    ...
+    )
+{
+    CHAR  buffer[512];
+    CHAR  final[600];
+    va_list args;
+    NTSTATUS status;
+
+    UNICODE_STRING      path;
+    OBJECT_ATTRIBUTES   oa;
+    IO_STATUS_BLOCK     iosb;
+    HANDLE              hFile;
+
+    LARGE_INTEGER       sysTime, localTime;
+    TIME_FIELDS         tf;
+
+    PAGED_CODE();
+
+    if (Format == NULL) {
+        return;
+    }
+
+    /* Format the caller's message */
+    va_start(args, Format);
+    status = RtlStringCbVPrintfA(buffer, sizeof(buffer), Format, args);
+    va_end(args);
+
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
+
+    /* Get local time */
+    KeQuerySystemTime(&sysTime);
+    ExSystemTimeToLocalTime(&sysTime, &localTime);
+    RtlTimeToTimeFields(&localTime, &tf);
+
+    /* Format timestamp prefix: [DD/MM/YYYY, HH:MM AM/PM] */
+    {
+        CHAR ts[64];
+        ULONG hour = tf.Hour;
+        BOOLEAN pm = FALSE;
+
+        if (hour == 0) {
+            hour = 12;
+            pm = FALSE;
+        } else if (hour == 12) {
+            pm = TRUE;
+        } else if (hour > 12) {
+            hour -= 12;
+            pm = TRUE;
+        }
+
+        RtlStringCbPrintfA(
+            ts,
+            sizeof(ts),
+            "[%02u/%02u/%04u, %02u:%02u %s] ",
+            tf.Day,
+            tf.Month,
+            tf.Year,
+            hour,
+            tf.Minute,
+            pm ? "PM" : "AM"
+        );
+
+        /* Combine timestamp + message */
+        RtlStringCbPrintfA(
+            final,
+            sizeof(final),
+            "%s%s",
+            ts,
+            buffer
+        );
+    }
+
+    /* Open log file */
+    RtlInitUnicodeString(&path, L"\\SystemRoot\\System32\\uartctrl.log");
+
+    InitializeObjectAttributes(
+        &oa,
+        &path,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
+    );
+
+    status = ZwCreateFile(
+                 &hFile,
+                 FILE_APPEND_DATA | SYNCHRONIZE,
+                 &oa,
+                 &iosb,
+                 NULL,
+                 FILE_ATTRIBUTE_NORMAL,
+                 0,
+                 FILE_OPEN_IF,
+                 FILE_SYNCHRONOUS_IO_NONALERT,
+                 NULL,
+                 0
+             );
+
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
+
+    /* Write timestamped line */
+    ZwWriteFile(
+        hFile,
+        NULL,
+        NULL,
+        NULL,
+        &iosb,
+        final,
+        (ULONG)strlen(final),
+        NULL,
+        NULL
+    );
+
+    ZwClose(hFile);
+}
+
+/* -----------------------------------------------------------------------
+ * UartCtrl_LogIsr – lightweight ISR/DPC-safe logger (DbgPrint only)
+ * ----------------------------------------------------------------------- */
+VOID
+UartCtrl_LogIsr(
+    PCSTR Format,
+    ...
+    )
+{
+    va_list args;
+
+    if (Format == NULL) {
+        return;
+    }
+
+    va_start(args, Format);
+    vDbgPrintEx(DPFLTR_IHVDRIVER_ID,
+                DPFLTR_INFO_LEVEL,
+                Format,
+                args);
+    va_end(args);
 }
