@@ -8,7 +8,7 @@
 
 /* Configure baud rate: divisor = inputClock / (16 * baud) */
 VOID
-UartSetBaud(PUARTCTRL_DEVEXT ext, ULONG inputClockHz, ULONG baud)
+UartSetBaud(PUARTCTRL_FDO ext, ULONG inputClockHz, ULONG baud)
 {
     USHORT divisor = (USHORT)(inputClockHz / (16 * baud));
     UCHAR lcr = UartRead8(ext, UART_LCR);
@@ -24,7 +24,7 @@ UartSetBaud(PUARTCTRL_DEVEXT ext, ULONG inputClockHz, ULONG baud)
 
 /* Configure line control: data bits, stop bits, parity */
 VOID
-UartSetLineControl(PUARTCTRL_DEVEXT ext, UCHAR dataBits, UCHAR stopBits, UCHAR parity)
+UartSetLineControl(PUARTCTRL_FDO ext, UCHAR dataBits, UCHAR stopBits, UCHAR parity)
 {
     UCHAR lcr = 0;
 
@@ -46,49 +46,49 @@ UartSetLineControl(PUARTCTRL_DEVEXT ext, UCHAR dataBits, UCHAR stopBits, UCHAR p
 
 /* Enable FIFO and set RX trigger level */
 VOID
-UartEnableFifo(PUARTCTRL_DEVEXT ext, UCHAR trigger)
+UartEnableFifo(PUARTCTRL_FDO ext, UCHAR trigger)
 {
     UartWrite8(ext, UART_FCR, FCR_FIFO_EN | FCR_RXRST | FCR_TXRST | trigger);
 }
 
 /* Enable interrupts with mask (IER bits) */
 VOID
-UartEnableInterrupts(PUARTCTRL_DEVEXT ext, UCHAR mask)
+UartEnableInterrupts(PUARTCTRL_FDO ext, UCHAR mask)
 {
     UartWrite8(ext, UART_IER, mask);
 }
 
 /* Disable all interrupts */
 VOID
-UartDisableInterrupts(PUARTCTRL_DEVEXT ext)
+UartDisableInterrupts(PUARTCTRL_FDO ext)
 {
     UartWrite8(ext, UART_IER, 0);
 }
 
 /* Set modem control (RTS/CTS, OUT2 for IRQ enable) */
 VOID
-UartSetModemControl(PUARTCTRL_DEVEXT ext, UCHAR mcr)
+UartSetModemControl(PUARTCTRL_FDO ext, UCHAR mcr)
 {
     UartWrite8(ext, UART_MCR, mcr);
 }
 
 /* Read line status register */
 UCHAR
-UartReadLineStatus(PUARTCTRL_DEVEXT ext)
+UartReadLineStatus(PUARTCTRL_FDO ext)
 {
     return UartRead8(ext, UART_LSR);
 }
 
 /* Read received byte */
 UCHAR
-UartReadByte(PUARTCTRL_DEVEXT ext)
+UartReadByte(PUARTCTRL_FDO ext)
 {
     return UartRead8(ext, UART_RBR);
 }
 
 /* Write transmit byte */
 VOID
-UartWriteByte(PUARTCTRL_DEVEXT ext, UCHAR value)
+UartWriteByte(PUARTCTRL_FDO ext, UCHAR value)
 {
     UartWrite8(ext, UART_THR, value);
 }

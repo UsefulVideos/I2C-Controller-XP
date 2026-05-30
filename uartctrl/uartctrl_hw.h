@@ -95,39 +95,39 @@
 #endif
 
 // Basic register access helpers (inline)
-__forceinline UCHAR UartRead8(PUARTCTRL_DEVEXT ext, ULONG off)
+__forceinline UCHAR UartRead8(PUARTCTRL_FDO ext, ULONG off)
 {
     return READ_REGISTER_UCHAR((PUCHAR)ext->MmioBase + off);
 }
 
-__forceinline VOID UartWrite8(PUARTCTRL_DEVEXT ext, ULONG off, UCHAR v)
+__forceinline VOID UartWrite8(PUARTCTRL_FDO ext, ULONG off, UCHAR v)
 {
     WRITE_REGISTER_UCHAR((PUCHAR)ext->MmioBase + off, v);
 }
 
 // Convenience: line status and data
-__forceinline UCHAR UartReadLSR(PUARTCTRL_DEVEXT ext)
+__forceinline UCHAR UartReadLSR(PUARTCTRL_FDO ext)
 {
     return UartRead8(ext, UART_LSR);
 }
 
-__forceinline UCHAR UartReadRBR(PUARTCTRL_DEVEXT ext)
+__forceinline UCHAR UartReadRBR(PUARTCTRL_FDO ext)
 {
     return UartRead8(ext, UART_RBR);
 }
 
-__forceinline VOID UartWriteTHR(PUARTCTRL_DEVEXT ext, UCHAR v)
+__forceinline VOID UartWriteTHR(PUARTCTRL_FDO ext, UCHAR v)
 {
     UartWrite8(ext, UART_THR, v);
 }
 
 // Prototypes for higher-level helpers (implemented in uartctrl_hw.c)
-VOID UartSetBaud(PUARTCTRL_DEVEXT ext, ULONG inputClockHz, ULONG baud);
-VOID UartSetLineControl(PUARTCTRL_DEVEXT ext, UCHAR dataBits, UCHAR stopBits, UCHAR parity);
-VOID UartEnableFifo(PUARTCTRL_DEVEXT ext, UCHAR trigger);
-VOID UartEnableInterrupts(PUARTCTRL_DEVEXT ext, UCHAR mask);
-VOID UartDisableInterrupts(PUARTCTRL_DEVEXT ext);
-VOID UartSetModemControl(PUARTCTRL_DEVEXT ext, UCHAR mcr);
-UCHAR UartReadLineStatus(PUARTCTRL_DEVEXT ext);
-UCHAR UartReadByte(PUARTCTRL_DEVEXT ext);
-VOID  UartWriteByte(PUARTCTRL_DEVEXT ext, UCHAR value);
+VOID UartSetBaud(PUARTCTRL_FDO ext, ULONG inputClockHz, ULONG baud);
+VOID UartSetLineControl(PUARTCTRL_FDO ext, UCHAR dataBits, UCHAR stopBits, UCHAR parity);
+VOID UartEnableFifo(PUARTCTRL_FDO ext, UCHAR trigger);
+VOID UartEnableInterrupts(PUARTCTRL_FDO ext, UCHAR mask);
+VOID UartDisableInterrupts(PUARTCTRL_FDO ext);
+VOID UartSetModemControl(PUARTCTRL_FDO ext, UCHAR mcr);
+UCHAR UartReadLineStatus(PUARTCTRL_FDO ext);
+UCHAR UartReadByte(PUARTCTRL_FDO ext);
+VOID  UartWriteByte(PUARTCTRL_FDO ext, UCHAR value);
