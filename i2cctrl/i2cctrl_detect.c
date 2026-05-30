@@ -1,8 +1,8 @@
 // i2cctrl_detect.c (after improvements)
 #include <ntddk.h>
 #include "i2cctrl_ext.h"      // defines I2CCTRL_FDO
-#include "i2cctrl_detect.h"   // detection API + HID descriptor layout
 #include "i2cctrl_bsod.h"
+#include "i2cctrl_detect.h"
 
 /* ---------------------------------------------------------------------------
    Read HID register from a device at given I²C address (generic, HAL-based, XP-safe)
@@ -162,7 +162,7 @@ I2cCtrl_ReadReportDescriptor(
     )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    USHORT expectedLen = 0;   /* <-- declare here (C89‑safe) */
+    USHORT expectedLen = 0;   /* <-- declare here (C89-safe) */
 
     /* Defensive parameter validation */
     if (!devctx || !hidpdo || !buf || len == 0) {
@@ -438,102 +438,3 @@ static const UCHAR g_HidI2cCommonCandidates[] = {
     0x1C, 0x1D, 0x1E, 0x1F, /* lower HID addresses */
     0x5C, 0x5D        /* additional HID candidates seen in newer devices */
 };
-
-
-
-// ---------------------------------------------------------------------------
-// Main detection entry point for HID-over-I²C touchpads (HAL-based, controller-agnostic, XP-safe)
-// ---------------------------------------------------------------------------
-NTSTATUS
-I2cCtrl_DetectTouchpad(
-    PI2CCTRL_FDO dx,
-    PI2CCTRL_DETECT_RESULT result
-    )
-{
-    NTSTATUS status = STATUS_SUCCESS;
-    UCHAR    buf[64];
-    HID_I2C_DESCRIPTOR_V10 dsc;
-    UCHAR    addr;
-    ULONG    i;
-
-    if (dx == NULL || result == NULL) {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    RtlZeroMemory(result, sizeof(*result));
-
-    /* Step 1: Probe common candidate addresses */
-    for (i = 0; i < ARRAYSIZE(g_HidI2cCommonCandidates); i++) {
-        addr = g_HidI2cCommonCandidates[i];
-        RtlZeroMemory(buf, sizeof(buf));
-        RtlZeroMemory(&dsc, sizeof(dsc));
-
-        status = I2cCtrl_ReadAndValidateHidDescriptor(dx, addr, buf, sizeof(buf), &dsc);
-        if (NT_SUCCESS(status)) {
-            result->Found         = TRUE;
-            result->Present       = TRUE;
-            result->IsTouchpad    = TRUE;
-            result->Address       = addr;
-            result->HidDescLength = dsc.wHIDDescLength;
-            result->VendorID      = dsc.wVendorID;
-            result->ProductID     = dsc.wProductID;
-            result->VersionID     = dsc.wVersionID;
-
-            DbgPrint("I2CCTRL(detect): HID device found at 0x%02X "
-                     "VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u\n",
-                     addr,
-                     (unsigned)dsc.wVendorID,
-                     (unsigned)dsc.wProductID,
-                     (unsigned)dsc.wVersionID,
-                     (unsigned)dsc.wHIDDescLength);
-            return STATUS_SUCCESS;
-        }
-    }
-
-    /* Step 2: Fallback sweep 0x10..0x2F (skip already tried addresses) */
-    for (addr = 0x10; addr <= 0x2F; addr++) {
-        BOOLEAN alreadyTried = FALSE;
-
-        for (i = 0; i < ARRAYSIZE(g_HidI2cCommonCandidates); i++) {
-            if (g_HidI2cCommonCandidates[i] == addr) {
-                alreadyTried = TRUE;
-                break;
-            }
-        }
-        if (alreadyTried) {
-            continue;
-        }
-
-        RtlZeroMemory(buf, sizeof(buf));
-        RtlZeroMemory(&dsc, sizeof(dsc));
-
-        status = I2cCtrl_ReadAndValidateHidDescriptor(dx, addr, buf, sizeof(buf), &dsc);
-        if (NT_SUCCESS(status)) {
-            result->Found         = TRUE;
-            result->Present       = TRUE;
-            result->IsTouchpad    = TRUE;
-            result->Address       = addr;
-            result->HidDescLength = dsc.wHIDDescLength;
-            result->VendorID      = dsc.wVendorID;
-            result->ProductID     = dsc.wProductID;
-            result->VersionID     = dsc.wVersionID;
-
-            DbgPrint("I2CCTRL(detect): HID device found at 0x%02X "
-                     "VID=0x%04X PID=0x%04X Ver=0x%04X Len=%u\n",
-                     addr,
-                     (unsigned)dsc.wVendorID,
-                     (unsigned)dsc.wProductID,
-                     (unsigned)dsc.wVersionID,
-                     (unsigned)dsc.wHIDDescLength);
-            return STATUS_SUCCESS;
-        }
-    }
-
-    /* No device found */
-    result->Found      = FALSE;
-    result->Present    = FALSE;
-    result->IsTouchpad = FALSE;
-
-    DbgPrint("I2CCTRL(detect): No HID touchpad detected in 0x10..0x2F\n");
-    return STATUS_NOT_FOUND;
-}
