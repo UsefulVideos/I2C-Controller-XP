@@ -1,0 +1,52 @@
+MUI_386_OBJECTS=
+
+386_OBJECTS= \
+    $(_OBJ_DIR)\i386\uartctrl.obj \
+    $(_OBJ_DIR)\i386\uartctrl_ext.obj \
+    $(_OBJ_DIR)\i386\uartctrl_hw.obj \
+    $(_OBJ_DIR)\i386\uartctrl_ioctl.obj \
+    $(_OBJ_DIR)\i386\uartctrl_isr.obj \
+    $(_OBJ_DIR)\i386\uartctrl_pnp.obj \
+    $(_OBJ_DIR)\i386\uartctrl_power.obj \
+    $(_OBJ_DIR)\i386\uartctrl_pt.obj \
+    $(_OBJ_DIR)\i386\uartctrl_ringbuf.obj
+
+MUI_IA64_OBJECTS=
+
+IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\uartctrl.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_ext.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_hw.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_ioctl.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_isr.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_pnp.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_power.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_pt.obj \
+    $(_OBJ_DIR)\ia64\uartctrl_ringbuf.obj
+
+MUI_AMD64_OBJECTS=
+
+AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\uartctrl.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_ext.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_hw.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_ioctl.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_isr.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_pnp.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_power.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_pt.obj \
+    $(_OBJ_DIR)\amd64\uartctrl_ringbuf.obj
+
+MUI_ARM_OBJECTS=
+
+ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\uartctrl.obj \
+    $(_OBJ_DIR)\arm\uartctrl_ext.obj \
+    $(_OBJ_DIR)\arm\uartctrl_hw.obj \
+    $(_OBJ_DIR)\arm\uartctrl_ioctl.obj \
+    $(_OBJ_DIR)\arm\uartctrl_isr.obj \
+    $(_OBJ_DIR)\arm\uartctrl_pnp.obj \
+    $(_OBJ_DIR)\arm\uartctrl_power.obj \
+    $(_OBJ_DIR)\arm\uartctrl_pt.obj \
+    $(_OBJ_DIR)\arm\uartctrl_ringbuf.obj
+

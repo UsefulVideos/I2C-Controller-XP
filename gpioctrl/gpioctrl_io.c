@@ -1,6 +1,6 @@
 /* gpioctrl_io.c
- * GPIO Controller Driver (gpioctrl.sys) – IOCTL handlers
- * WinDDK 7.1.0 – XP/2003 build environment – C89 compliant
+ * GPIO Controller Driver (gpioctrl.sys) - IOCTL handlers
+ * WinDDK 7.1.0 - XP/2003 build environment - C89 compliant
  *
  * Implements:
  *  - GpioCtrl_IoctlReadPin
