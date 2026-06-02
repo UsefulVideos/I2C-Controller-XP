@@ -10,17 +10,25 @@
    Returns TRUE if successful, FALSE if buffer full
    ----------------------------------------------------------------------- */
 BOOLEAN
-RingPut(PUCHAR buf, ULONG size,
-        volatile ULONG* head, volatile ULONG* tail,
-        UCHAR value)
+RingPut(
+    PUCHAR          buf,
+    ULONG           size,
+    volatile ULONG *head,
+    volatile ULONG *tail,
+    UCHAR           value
+    )
 {
     ULONG next = (*head + 1) % size;
+
     if (next == *tail) {
-        // buffer full
+        /* buffer full */
+        UartCtrl_Log("RingPut: buffer FULL (size=%lu)\n", size);
         return FALSE;
     }
+
     buf[*head] = value;
     *head = next;
+
     return TRUE;
 }
 
@@ -29,16 +37,23 @@ RingPut(PUCHAR buf, ULONG size,
    Returns TRUE if successful, FALSE if buffer empty
    ----------------------------------------------------------------------- */
 BOOLEAN
-RingGet(PUCHAR buf, ULONG size,
-        volatile ULONG* head, volatile ULONG* tail,
-        UCHAR* value)
+RingGet(
+    PUCHAR          buf,
+    ULONG           size,
+    volatile ULONG *head,
+    volatile ULONG *tail,
+    UCHAR          *value
+    )
 {
     if (*tail == *head) {
-        // buffer empty
+        /* buffer empty */
+        UartCtrl_Log("RingGet: buffer EMPTY\n");
         return FALSE;
     }
+
     *value = buf[*tail];
-    *tail = (*tail + 1) % size;
+    *tail  = (*tail + 1) % size;
+
     return TRUE;
 }
 
@@ -46,34 +61,49 @@ RingGet(PUCHAR buf, ULONG size,
    Count available bytes in the ring buffer
    ----------------------------------------------------------------------- */
 ULONG
-RingAvail(PUCHAR buf, ULONG size,
-          volatile ULONG head, volatile ULONG tail)
+RingAvail(
+    PUCHAR buf,
+    ULONG  size,
+    volatile ULONG head,
+    volatile ULONG tail
+    )
 {
     UNREFERENCED_PARAMETER(buf);
+
     if (head >= tail) {
         return head - tail;
-    } else {
-        return size - (tail - head);
     }
+
+    return size - (tail - head);
 }
 
 /* -----------------------------------------------------------------------
    Count free space in the ring buffer
    ----------------------------------------------------------------------- */
 ULONG
-RingFree(PUCHAR buf, ULONG size,
-         volatile ULONG head, volatile ULONG tail)
+RingFree(
+    PUCHAR buf,
+    ULONG  size,
+    volatile ULONG head,
+    volatile ULONG tail
+    )
 {
     UNREFERENCED_PARAMETER(buf);
-    return size - 1 - RingAvail(buf, size, head, tail);
+
+    return (size - 1) - RingAvail(buf, size, head, tail);
 }
 
 /* -----------------------------------------------------------------------
    Reset ring buffer indices
    ----------------------------------------------------------------------- */
 VOID
-RingReset(volatile ULONG* head, volatile ULONG* tail)
+RingReset(
+    volatile ULONG *head,
+    volatile ULONG *tail
+    )
 {
     *head = 0;
     *tail = 0;
+
+    UartCtrl_Log("RingReset: head=0 tail=0\n");
 }

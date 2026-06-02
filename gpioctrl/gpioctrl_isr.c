@@ -1,6 +1,6 @@
 /* gpioctrl_isr.c
- * GPIO Controller Driver (gpioctrl.sys) – ISR/DPC implementation
- * WinDDK 7.1.0 – XP/2003 build environment – C89 compliant
+ * GPIO Controller Driver (gpioctrl.sys) - ISR/DPC implementation
+ * WinDDK 7.1.0 - XP/2003 build environment - C89 compliant
  *
  * Implements:
  *  - GpioCtrl_Isr: top-half interrupt service routine
@@ -29,7 +29,7 @@
    --------------------------------------------------------------------------- */
 static __inline ULONG
 GpioIsr_RecheckPending(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN ULONG PendingMask
     )
 {
@@ -53,7 +53,7 @@ GpioIsr_RecheckPending(
    --------------------------------------------------------------------------- */
 VOID
 GpioCtrl_LogIsr(
-    PGPIOCTRL_FDO_EXT Ext,
+    PGPIOCTRL_FDO Ext,
     PCCHAR Format,
     ULONG Value
     )
@@ -63,12 +63,12 @@ GpioCtrl_LogIsr(
 
     KeAcquireSpinLock(&Ext->IsrLogLock, &oldIrql);
 
-    index = Ext->IsrLogHead % GPIO_LOG_SIZE;
+    index = Ext->IsrLogHead % GPIOCTRL_LOG_SIZE;
     _snprintf(Ext->IsrLog[index], 63, Format, Value);
     Ext->IsrLog[index][63] = '\0';
 
     Ext->IsrLogHead++;
-    if (Ext->IsrLogHead - Ext->IsrLogTail > GPIO_LOG_SIZE) {
+    if (Ext->IsrLogHead - Ext->IsrLogTail > GPIOCTRL_LOG_SIZE) {
         Ext->IsrLogTail++;
     }
 
@@ -85,11 +85,11 @@ GpioCtrl_Isr(
     PVOID ServiceContext
     )
 {
-    PGPIOCTRL_FDO_EXT ext;
+    PGPIOCTRL_FDO ext;
     ULONG pending;
 
     UNREFERENCED_PARAMETER(Interrupt);
-    ext = (PGPIOCTRL_FDO_EXT)ServiceContext;
+    ext = (PGPIOCTRL_FDO)ServiceContext;
 
     if (!ext->Started || ext->MmioBase == NULL) {
         return FALSE;
@@ -126,7 +126,7 @@ GpioCtrl_Dpc(
     IN PVOID  Arg2
     )
 {
-    PGPIOCTRL_FDO_EXT ext;
+    PGPIOCTRL_FDO ext;
     KIRQL oldIrql;
     ULONG mask;
 
@@ -134,7 +134,7 @@ GpioCtrl_Dpc(
     UNREFERENCED_PARAMETER(Arg1);
     UNREFERENCED_PARAMETER(Arg2);
 
-    ext = (PGPIOCTRL_FDO_EXT)DeferredContext;
+    ext = (PGPIOCTRL_FDO)DeferredContext;
 
     /* Drain latched mask atomically */
     KeAcquireSpinLock(&ext->RegLock, &oldIrql);
