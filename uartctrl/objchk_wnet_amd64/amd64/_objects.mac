@@ -1,0 +1,24 @@
+
+
+AMD64_OBJECTS=\
+ $(OBJ_PATH)\$O\uartctrl.obj \
+ $(OBJ_PATH)\$O\uartctrl_ext.obj \
+ $(OBJ_PATH)\$O\uartctrl_hw.obj \
+ $(OBJ_PATH)\$O\uartctrl_ioctl.obj \
+ $(OBJ_PATH)\$O\uartctrl_isr.obj \
+ $(OBJ_PATH)\$O\uartctrl_pnp.obj \
+ $(OBJ_PATH)\$O\uartctrl_power.obj \
+ $(OBJ_PATH)\$O\uartctrl_pt.obj \
+ $(OBJ_PATH)\$O\uartctrl_ringbuf.obj \
+
+
+
+
+
+# lowercased
+BASEDIR=d:\winddk\7600.16385.1
+OBJECT_ROOT=d:\winddk\7600.16385.1
+MAKEDIR_LOWERCASE=d:\kituri_programe\i2c-controller-xp\uartctrl
+OBJ_PATH=d:\kituri_programe\i2c-controller-xp\uartctrl
+CONCURRENT_MIDL=0
+CONCURRENT_MANIFEST_BUILD=0
