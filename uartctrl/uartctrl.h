@@ -22,12 +22,12 @@ NTSTATUS UARTCTRL_PT_DispatchPass(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 /* Lifecycle helpers */
 NTSTATUS UARTCTRL_StartDevice(
-    PUARTCTRL_DEVEXT Ext,
+    PUARTCTRL_FDO Ext,
     PCM_RESOURCE_LIST RawResources,
     PCM_RESOURCE_LIST TranslatedResources
     );
 
-NTSTATUS UARTCTRL_StopDevice(PUARTCTRL_DEVEXT Ext);
+NTSTATUS UARTCTRL_StopDevice(PUARTCTRL_FDO Ext);
 NTSTATUS UARTCTRL_RemoveDevice(PDEVICE_OBJECT DeviceObject);
 
 /* Interrupt/DPC */
