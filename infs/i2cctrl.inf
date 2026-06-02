@@ -1,4 +1,4 @@
-; i2cctrl.inf
+ i2cctrl.inf
 ; Standard I2C Host Controller Bus Driver (i2cctrl.sys)
 ; Windows XP / Server 2003 (x86/x64)
 
@@ -144,9 +144,27 @@ HKR,,EventMessageFile,0x00020000,"%SystemRoot%\System32\IoLogMsg.dll;%SystemRoot
 HKR,,TypesSupported,0x00010001,7
 
 [I2CCTRL_AddReg]
+
+; -------------------------
+; Hardware Quirks (original)
+; -------------------------
 HKR,,"Quirk.ResetWorkaround",0x00010001,1
 HKR,,"Quirk.ClockGate",0x00010001,1
 HKR,,"Quirk.NoDma",0x00010001,1
+
+; -------------------------
+; UI-driven settings (new)
+; -------------------------
+HKR,,"WakeCapable",0x00010001,0
+HKR,,"MultiMasterEnabled",0x00010001,1
+HKR,,"ArbBackoffBaseUs",0x00010001,100
+HKR,,"ArbBackoffMaxUs",0x00010001,5000
+HKR,,"ArbBackoffJitterUs",0x00010001,50
+HKR,,"ForceCrashOnError",0x00010001,0
+
+; -------------------------
+; INF-driven policy overrides (original names preserved)
+; -------------------------
 HKR,,"Policy.BusSpeedHz",0x00010001,400000
 HKR,,"Policy.MaxRetries",0x00010001,3
 HKR,,"Policy.TransactionTimeoutMs",0x00010001,1000
@@ -154,6 +172,7 @@ HKR,,"Policy.BackoffInitialUs",0x00010001,10
 HKR,,"Policy.BackoffMaxUs",0x00010001,5000
 HKR,,"Policy.UsePec",0x00010001,0
 HKR,,"Policy.Force10BitAddr",0x00010001,0
+
 
 ; =====================================================================
 ;  DEFAULT INSTALL (right‑click → Install)
@@ -188,6 +207,6 @@ i2cctrl.sys = 1
 
 [Strings]
 MfgName           = "UsefulAGKHelper"
-I2CControllerDesc = "Standard I²C Host Controller Bus Driver"
+I2CControllerDesc = "Standard I2C Host Controller Bus Driver"
 ServiceDesc       = "Standard I2C Host Controller Service"
 DiskName          = "Standard I2C Host Controller Driver Disk"
