@@ -1,13 +1,18 @@
 /* I2cCtrl_Isr.c - C89 compliant */
 
 #include <ntddk.h>
+#include "i2cctrl_isr.h"
 #include "i2cctrl_ext.h"
 #include "i2cctrl_hw.h"
 #include "i2cctrl.h"
 #include "i2cctrl_bsod.h"
 
+CHAR  I2cCtrl_IsrLogBuffer[I2CCTRL_ISRLOG_SIZE];
+ULONG I2cCtrl_IsrLogIndex = 0;
+KSPIN_LOCK I2cCtrl_IsrLogLock;
+
 /* ---------------------------------------------------------------------------
-   Abort source → NTSTATUS mapping (conservative, portable across DW_apb_i2c)
+   Abort source -> NTSTATUS mapping (conservative, portable across DW_apb_i2c)
    --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_MapAbortSource(ULONG abrtSrc)
@@ -357,6 +362,21 @@ I2cCtrl_DpcRoutine(
         /* Spurious DPC queue or already fully handled */
         return;
     }
+
+/* -------------------------------------------------------------
+ * HID wakeup hook for IOAPIC-based touchpads (ETPD/TPL0)
+ * -------------------------------------------------------------
+ * If this controller has a bound touchpad PDO, notify it that
+ * an interrupt occurred so it can read a HID input report.
+ */
+if (dx->TouchpadPdo != NULL) {
+    PI2CCTRL_PDO p = dx->TouchpadPdo;
+
+    /* Only if the PDO is started and not removed */
+    if (p->Started && !p->Removed) {
+        KeSetEvent(&p->HidReportEvent, IO_NO_INCREMENT, FALSE);
+    }
+}
 
     maxIter      = 128U;
     iter         = 0U;
