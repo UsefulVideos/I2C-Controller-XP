@@ -1,6 +1,6 @@
 /* gpioctrl_io.c
- * GPIO Controller Driver (gpioctrl.sys) – IOCTL handlers
- * WinDDK 7.1.0 – XP/2003 build environment – C89 compliant
+ * GPIO Controller Driver (gpioctrl.sys) - IOCTL handlers
+ * WinDDK 7.1.0 - XP/2003 build environment - C89 compliant
  *
  * Implements:
  *  - GpioCtrl_IoctlReadPin
@@ -22,7 +22,7 @@
    --------------------------------------------------------------------------- */
 static NTSTATUS
 GpioIo_ValidateReady(
-    IN PGPIOCTRL_FDO_EXT Ext
+    IN PGPIOCTRL_FDO Ext
     )
 {
     if (!Ext->Started || Ext->MmioBase == NULL) {
@@ -33,7 +33,7 @@ GpioIo_ValidateReady(
 
 static NTSTATUS
 GpioIo_ValidatePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN ULONG Pin
     )
 {
@@ -48,7 +48,7 @@ GpioIo_ValidatePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlReadPin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
@@ -95,7 +95,7 @@ GpioCtrl_IoctlReadPin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlWritePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
@@ -150,7 +150,7 @@ GpioCtrl_IoctlWritePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlConfigurePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
@@ -235,7 +235,7 @@ GpioCtrl_IoctlConfigurePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlQueryCaps(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {

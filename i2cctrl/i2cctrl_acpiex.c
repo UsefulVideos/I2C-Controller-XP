@@ -241,7 +241,7 @@ I2cCtrl_AcpiexProbe(
 
 /*
  * I2cCtrl_AcpiexCloseHandle - Hardened ACPI handle close
- * XP/2003‑safe, ACPI‑safe, idempotent.
+ * XP/2003-safe, ACPI-safe, idempotent.
  * - PASSIVE_LEVEL only
  * - Validates FDO and handle
  * - SEH around ACPI close
