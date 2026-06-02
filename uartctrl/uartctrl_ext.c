@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   uartctrl_ext.c – helpers for UARTCTRL_DEVEXT lifecycle and utilities
+   uartctrl_ext.c – helpers for UARTCTRL_FDO lifecycle and utilities
    ----------------------------------------------------------------------- */
 
 #include <ntddk.h>
@@ -10,9 +10,9 @@
    Initialize the device extension fields
    ----------------------------------------------------------------------- */
 VOID
-UARTCTRL_ExtInitialize(PUARTCTRL_DEVEXT ext)
+UARTCTRL_ExtInitialize(PUARTCTRL_FDO ext)
 {
-    RtlZeroMemory(ext, sizeof(UARTCTRL_DEVEXT));
+    RtlZeroMemory(ext, sizeof(UARTCTRL_FDO));
 
     IoInitializeRemoveLock(&ext->RemoveLock, 'traU', 0, 0);
     InitializeListHead(&ext->ReadQueue);
@@ -39,7 +39,7 @@ UARTCTRL_ExtInitialize(PUARTCTRL_DEVEXT ext)
    Allocate RX/TX ring buffers
    ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_ExtAllocateBuffers(PUARTCTRL_DEVEXT ext, ULONG rxSize, ULONG txSize)
+UARTCTRL_ExtAllocateBuffers(PUARTCTRL_FDO ext, ULONG rxSize, ULONG txSize)
 {
     ext->RxBuf = (PUCHAR)ExAllocatePoolWithTag(NonPagedPoolNx, rxSize, 'RxUA');
     ext->TxBuf = (PUCHAR)ExAllocatePoolWithTag(NonPagedPoolNx, txSize, 'TxUA');
@@ -68,7 +68,7 @@ UARTCTRL_ExtAllocateBuffers(PUARTCTRL_DEVEXT ext, ULONG rxSize, ULONG txSize)
    Free RX/TX ring buffers
    ----------------------------------------------------------------------- */
 VOID
-UARTCTRL_ExtFreeBuffers(PUARTCTRL_DEVEXT ext)
+UARTCTRL_ExtFreeBuffers(PUARTCTRL_FDO ext)
 {
     if (ext->RxBuf) {
         ExFreePoolWithTag(ext->RxBuf, 'RxUA');
@@ -88,7 +88,7 @@ UARTCTRL_ExtFreeBuffers(PUARTCTRL_DEVEXT ext)
    Reset UART hardware state
    ----------------------------------------------------------------------- */
 NTSTATUS
-UARTCTRL_ExtResetHardware(PUARTCTRL_DEVEXT ext)
+UARTCTRL_ExtResetHardware(PUARTCTRL_FDO ext)
 {
     // Reset FIFOs, clear errors, disable interrupts
     UartDisableInterrupts(ext);

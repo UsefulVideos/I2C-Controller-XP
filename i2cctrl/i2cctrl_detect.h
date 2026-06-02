@@ -43,18 +43,11 @@ typedef struct _I2CCTRL_DETECT_RESULT {
    Public entry points
    --------------------------------------------------------------------------- */
 
-/* Probe bus for HID-over-I²C touchpad and fill result */
-NTSTATUS
-I2cCtrl_DetectTouchpad(
-    PI2CCTRL_FDO dx,
-    PI2CCTRL_DETECT_RESULT result
-    );
-
 /* Read and validate HID-over-I²C descriptor at given slave address */
 NTSTATUS
 I2cCtrl_ReadAndValidateHidDescriptor(
     PI2CCTRL_FDO          dx,        /* bus/device extension */
-    UCHAR                 addr,      /* 7‑bit I²C address of HID device */
+    UCHAR                 addr,      /* 7-bit I²C address of HID device */
     PUCHAR                outBuf,    /* caller-supplied buffer for raw bytes */
     ULONG                 outBufLen, /* length of buffer in bytes */
     PHID_I2C_DESCRIPTOR_V10 parsed   /* parsed descriptor structure */
