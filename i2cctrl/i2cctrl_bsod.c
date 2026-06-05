@@ -124,9 +124,9 @@ I2cCtrl_SafeDuplicateUnicode(
 }
 
 /* ---------------------------------------------------------------------------
-   Safe child PDO deletion stub (ACPI‑safe, XP/2003‑safe)
+   Safe child PDO deletion stub (ACPI-safe, XP/2003-safe)
    - DO NOT delete the PDO here.
-   - DO NOT free ACPI‑visible strings.
+   - DO NOT free ACPI-visible strings.
    - DO NOT close ACPI handles.
    - Only mark the PDO as Removed; real deletion happens in IRP_MN_REMOVE_DEVICE.
    --------------------------------------------------------------------------- */
@@ -157,7 +157,7 @@ I2cCtrl_SafeDeleteChild(
     }
 
     //
-    // ACPI‑safe behavior:
+    // ACPI-safe behavior:
     // Mark the PDO as removed, but DO NOT delete it.
     // ACPI may still reference the namespace node for 30-120 seconds.
     //
@@ -214,7 +214,7 @@ I2cCtrl_Free(
 }
 
 /* ---------------------------------------------------------------------------
-   Guarded user copy (from user → kernel), with probe + SEH
+   Guarded user copy (from user -> kernel), with probe + SEH
    --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_SafeCopyFromUser(
@@ -247,7 +247,7 @@ I2cCtrl_SafeCopyFromUser(
 }
 
 /* ---------------------------------------------------------------------------
-   Guarded user copy (kernel → user), with probe + SEH
+   Guarded user copy (kernel -> user), with probe + SEH
    --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_SafeCopyToUser(
