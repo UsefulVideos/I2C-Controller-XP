@@ -26,10 +26,10 @@ typedef struct _I2CCTRL_FDO I2CCTRL_FDO, *PI2CCTRL_FDO;
 #define I2C_STALL_US        5
 
 /* ACPI power-on helper (_PS0) */
-NTSTATUS I2cHwPowerOnAcpi(PDEVICE_OBJECT Pdo);
+NTSTATUS I2cCtrl_PowerOnTouchpad(PDEVICE_OBJECT Pdo);
 
 /* ACPI power-off helper (_PS3) */
-NTSTATUS I2cHwPowerOffAcpi(PDEVICE_OBJECT Pdo);
+NTSTATUS I2cCtrl_PowerOffTouchpad(PDEVICE_OBJECT Pdo);
 
 /* Timing calculator (optional): compute HCNT/LCNT from clock and target tHIGH/tLOW us */
 VOID I2cHwComputeTimings(ULONG FclkHz, I2C_SPEED_MODE Speed, ULONG* Hcnt, ULONG* Lcnt);

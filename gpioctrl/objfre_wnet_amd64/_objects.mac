@@ -1,0 +1,40 @@
+MUI_386_OBJECTS= \
+    $(_OBJ_DIR)\i386\gpioctrl_version.res
+
+386_OBJECTS= \
+    $(_OBJ_DIR)\i386\gpioctrl_version.res \
+    $(_OBJ_DIR)\i386\gpioctrl.obj \
+    $(_OBJ_DIR)\i386\gpioctrl_io.obj \
+    $(_OBJ_DIR)\i386\gpioctrl_isr.obj \
+    $(_OBJ_DIR)\i386\gpioctrl_reg.obj
+
+MUI_IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\gpioctrl_version.res
+
+IA64_OBJECTS= \
+    $(_OBJ_DIR)\ia64\gpioctrl_version.res \
+    $(_OBJ_DIR)\ia64\gpioctrl.obj \
+    $(_OBJ_DIR)\ia64\gpioctrl_io.obj \
+    $(_OBJ_DIR)\ia64\gpioctrl_isr.obj \
+    $(_OBJ_DIR)\ia64\gpioctrl_reg.obj
+
+MUI_AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\gpioctrl_version.res
+
+AMD64_OBJECTS= \
+    $(_OBJ_DIR)\amd64\gpioctrl_version.res \
+    $(_OBJ_DIR)\amd64\gpioctrl.obj \
+    $(_OBJ_DIR)\amd64\gpioctrl_io.obj \
+    $(_OBJ_DIR)\amd64\gpioctrl_isr.obj \
+    $(_OBJ_DIR)\amd64\gpioctrl_reg.obj
+
+MUI_ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\gpioctrl_version.res
+
+ARM_OBJECTS= \
+    $(_OBJ_DIR)\arm\gpioctrl_version.res \
+    $(_OBJ_DIR)\arm\gpioctrl.obj \
+    $(_OBJ_DIR)\arm\gpioctrl_io.obj \
+    $(_OBJ_DIR)\arm\gpioctrl_isr.obj \
+    $(_OBJ_DIR)\arm\gpioctrl_reg.obj
+
