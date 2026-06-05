@@ -101,7 +101,7 @@ GpioReg_BuildParametersPath(
    --------------------------------------------------------------------------- */
 VOID
 GpioCtrl_LoadRegistryPolicy(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PUNICODE_STRING   RegistryPath /* service key from DriverEntry, optional */
     )
 {
