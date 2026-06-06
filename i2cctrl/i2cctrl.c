@@ -12666,8 +12666,7 @@ I2cCtrl_FindAcpiPdoForPciDevice(
             /* =======================================================
                FALLBACK: ACPI namespace search using _ADR matching
                ======================================================= */
-            //	acpiPdoFallback = I2cCtrl_FindAcpiPdoByAdr(Fdo);
-			acpiPdoFallback = NULL;
+            acpiPdoFallback = I2cCtrl_FindAcpiPdoByAdr(Fdo);
             if (acpiPdoFallback != NULL) {
                 I2cCtrl_Log("FindAcpiPdo: FALLBACK SUCCESS - ACPI PDO=%p\n",
                             acpiPdoFallback);
@@ -12717,6 +12716,16 @@ I2cCtrl_FindAcpiPdoByAdr(
     PAGED_CODE();
 
     fdoExt = (PI2CCTRL_FDO)Fdo->DeviceExtension;
+    if (fdoExt == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: fdoExt=NULL\n");
+        return NULL;
+    }
+
+    /* Require ACPI already bound to avoid recursion with I2cCtrl_AcpiOpen */
+    if (!fdoExt->AcpiBound || fdoExt->AcpiDeviceObject == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: ACPI not bound, skipping fallback\n");
+        return NULL;
+    }
 
     /* Get PCI PDO */
     pciPdo = IoGetDeviceAttachmentBaseRef(Fdo);
@@ -12741,14 +12750,7 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     I2cCtrl_Log("FindAcpiPdoByAdr: expected _ADR = 0x%08lx\n", adrValue);
 
-    /* Open ACPI */
-    status = I2cCtrl_AcpiOpen(fdoExt);
-    if (!NT_SUCCESS(status) || fdoExt->AcpiDeviceObject == NULL) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: AcpiOpen failed (0x%08lx)\n", status);
-        return NULL;
-    }
-
-    /* Evaluate _ADR */
+    /* Evaluate _ADR on already-bound ACPI PDO */
     outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
 
     outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
