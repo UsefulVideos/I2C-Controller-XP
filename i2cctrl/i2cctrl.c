@@ -12595,8 +12595,10 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     PDEVICE_OBJECT Fdo
     )
 {
+    PDEVICE_OBJECT top;
     PDEVICE_OBJECT current;
     PDEVICE_OBJECT lower;
+    PDEVICE_OBJECT acpiPdo = NULL;
     PDEVICE_OBJECT acpiPdoFallback;
 
     if (Fdo == NULL) {
@@ -12611,57 +12613,63 @@ I2cCtrl_FindAcpiPdoForPciDevice(
 
     I2cCtrl_Log("FindAcpiPdo: begin (Fdo=%p)\n", Fdo);
 
-    /* Start at the top of the stack (referenced) */
-    current = IoGetAttachedDeviceReference(Fdo);
-    if (current == NULL) {
+    top = IoGetAttachedDeviceReference(Fdo);
+    if (top == NULL) {
         I2cCtrl_Log("FindAcpiPdo: IoGetAttachedDeviceReference returned NULL\n");
         return NULL;
     }
 
     I2cCtrl_Log("FindAcpiPdo: top device=%p driver=%wZ\n",
-                current, &current->DriverObject->DriverName);
+                top, &top->DriverObject->DriverName);
+
+    current = top;
 
     for (;;) {
 
-        /* Try to go lower in the stack */
-        lower = IoGetLowerDeviceObject(current);
+        if (I2cCtrl_IsAcpiDriver(current->DriverObject)) {
+            I2cCtrl_Log("FindAcpiPdo: SUCCESS - ACPI PDO=%p\n", current);
+            acpiPdo = current;
+            break;
+        }
 
+        lower = IoGetLowerDeviceObject(current);
         if (lower == NULL) {
 
-            /* current is the bottom-most device (PDO) */
             I2cCtrl_Log("FindAcpiPdo: bottom device=%p driver=%wZ\n",
                         current, &current->DriverObject->DriverName);
 
-            if (I2cCtrl_IsAcpiDriver(current->DriverObject)) {
-                I2cCtrl_Log("FindAcpiPdo: SUCCESS - ACPI PDO=%p\n", current);
-                return current; /* still referenced */
-            }
-
-            I2cCtrl_Log("FindAcpiPdo: FAIL - bottom PDO is NOT ACPI\n");
-            ObDereferenceObject(current);
-
-            /* =======================================================
-               FALLBACK: ACPI namespace search using _ADR matching
-               ======================================================= */
-            acpiPdoFallback = I2cCtrl_FindAcpiPdoByAdr(Fdo);
-            if (acpiPdoFallback != NULL) {
-                I2cCtrl_Log("FindAcpiPdo: FALLBACK SUCCESS - ACPI PDO=%p\n",
-                            acpiPdoFallback);
-                return acpiPdoFallback;
-            }
-
-            I2cCtrl_Log("FindAcpiPdo: FALLBACK FAILED - no ACPI PDO found\n");
-            return NULL;
+            ObDereferenceObject(current); /* fix: avoid ref leak */
+            break;
         }
 
-        /* Move down: drop ref on previous, keep ref on new */
         I2cCtrl_Log("FindAcpiPdo: stepping down %p -> %p (driver=%wZ)\n",
                     current, lower, &lower->DriverObject->DriverName);
 
         ObDereferenceObject(current);
         current = lower;
     }
+
+    if (acpiPdo != NULL) {
+
+        ObDereferenceObject(top);
+        return acpiPdo;
+    }
+
+    ObDereferenceObject(top);
+
+    I2cCtrl_Log("FindAcpiPdo: FAIL - no ACPI device in stack\n");
+
+    acpiPdoFallback = I2cCtrl_FindAcpiPdoByAdr(Fdo);
+    if (acpiPdoFallback != NULL) {
+        I2cCtrl_Log("FindAcpiPdo: FALLBACK SUCCESS - ACPI PDO=%p\n",
+                    acpiPdoFallback);
+        return acpiPdoFallback;
+    }
+
+    I2cCtrl_Log("FindAcpiPdo: FALLBACK FAILED - no ACPI PDO found\n");
+    return NULL;
 }
+
 
 PDEVICE_OBJECT
 I2cCtrl_FindAcpiPdoByAdr(
@@ -12669,15 +12677,13 @@ I2cCtrl_FindAcpiPdoByAdr(
     )
 {
     NTSTATUS status;
+    PDEVICE_OBJECT acpiPdo;
     PDEVICE_OBJECT pciPdo;
-    PDEVICE_OBJECT acpiRootPdo;
-    PFILE_OBJECT  acpiRootFo;
     ULONG bus = 0;
     ULONG dev = 0;
     ULONG fun = 0;
     ULONG adrValue = 0;
 
-    UNICODE_STRING acpiName;
     I2CCTRL_ACPI_ENUM_ENTRY info;
     ULONG next = 0;
 
@@ -12696,6 +12702,7 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     PAGED_CODE();
 
+    /* Get PCI BDF */
     pciPdo = IoGetDeviceAttachmentBaseRef(Fdo);
     if (pciPdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: IoGetDeviceAttachmentBaseRef returned NULL\n");
@@ -12715,28 +12722,23 @@ I2cCtrl_FindAcpiPdoByAdr(
     I2cCtrl_Log("FindAcpiPdoByAdr: PCI BDF=%lu:%lu.%lu expected _ADR=0x%08lx\n",
                 bus, dev, fun, adrValue);
 
-    RtlInitUnicodeString(&acpiName, L"\\Device\\ACPI");
-
-    status = IoGetDeviceObjectPointer(
-                 &acpiName,
-                 FILE_READ_DATA,
-                 &acpiRootFo,
-                 &acpiRootPdo
-             );
-
-    if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: cannot open \\Device\\ACPI (0x%08lx)\n", status);
+    /* Get the ACPI PDO from the device stack */
+    acpiPdo = I2cCtrl_FindAcpiPdoForPciDevice(Fdo);
+    if (acpiPdo == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: no ACPI PDO in stack\n");
         return NULL;
     }
 
+    /* Enumerate ACPI namespace via IOCTL */
     next = 0;
 
     for (;;) {
 
         RtlZeroMemory(&info, sizeof(info));
+        info.NextRequest = next;
 
         status = I2cCtrl_AcpiGetDeviceInformation(
-                     acpiRootPdo,
+                     acpiPdo,
                      NULL,
                      &info,
                      sizeof(info)
@@ -12766,7 +12768,7 @@ I2cCtrl_FindAcpiPdoByAdr(
                             info.DeviceObject);
 
                 ObReferenceObject(info.DeviceObject);
-                ObDereferenceObject(acpiRootFo);
+                ObDereferenceObject(acpiPdo);
                 return info.DeviceObject;
             }
         }
@@ -12776,7 +12778,7 @@ I2cCtrl_FindAcpiPdoByAdr(
         }
     }
 
-    ObDereferenceObject(acpiRootFo);
+    ObDereferenceObject(acpiPdo);
     I2cCtrl_Log("FindAcpiPdoByAdr: no ACPI node matched _ADR\n");
     return NULL;
 }
@@ -12831,8 +12833,6 @@ I2cCtrl_GetPciBusDevFun(
 BOOLEAN
 I2cCtrl_IsAcpiDriver(PDRIVER_OBJECT drv)
 {
-    PWSTR nameLower;
-
     if (drv == NULL || drv->DriverName.Buffer == NULL) {
         I2cCtrl_Log("IsAcpiDriver: drv or name=NULL\n");
         return FALSE;
@@ -12840,11 +12840,16 @@ I2cCtrl_IsAcpiDriver(PDRIVER_OBJECT drv)
 
     I2cCtrl_Log("IsAcpiDriver: checking driver=%wZ\n", &drv->DriverName);
 
-    /* Convert in-place to lowercase (safe: XP kernel names are writable) */
-    nameLower = _wcslwr(drv->DriverName.Buffer);
+    /* Case-insensitive match for "\Driver\ACPI" */
+    if (_wcsicmp(drv->DriverName.Buffer, L"\\Driver\\ACPI") == 0) {
+        I2cCtrl_Log("IsAcpiDriver: MATCH (exact '\\Driver\\ACPI')\n");
+        return TRUE;
+    }
 
-    if (wcsstr(nameLower, L"acpi") != NULL) {
-        I2cCtrl_Log("IsAcpiDriver: MATCH (contains 'acpi')\n");
+    /* Also allow substring match for safety (e.g. patched ACPI) */
+    if (wcsstr(drv->DriverName.Buffer, L"ACPI") != NULL ||
+        wcsstr(drv->DriverName.Buffer, L"acpi") != NULL) {
+        I2cCtrl_Log("IsAcpiDriver: MATCH (contains 'ACPI')\n");
         return TRUE;
     }
 
