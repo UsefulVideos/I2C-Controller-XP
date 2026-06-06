@@ -12686,6 +12686,8 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     }
 }
 
+#if 0   /* ===== DISABLED FOR DEBUGGING ===== */
+
 PDEVICE_OBJECT
 I2cCtrl_FindAcpiPdoByAdr(
     PDEVICE_OBJECT Fdo
@@ -12798,7 +12800,6 @@ I2cCtrl_FindAcpiPdoByAdr(
     return fdoExt->AcpiDeviceObject;
 }
 
-
 NTSTATUS
 I2cCtrl_GetPciBusDevFun(
     PDEVICE_OBJECT PciPdo,
@@ -12842,6 +12843,37 @@ I2cCtrl_GetPciBusDevFun(
     I2cCtrl_Log("GetPciBusDevFun: BDF = %lu:%lu.%lu\n", *Bus, *Dev, *Fun);
 
     return STATUS_SUCCESS;
+}
+
+#endif  /* ===== END DISABLED ===== */
+
+/* ===== DEBUG STUBS ===== */
+
+PDEVICE_OBJECT
+I2cCtrl_FindAcpiPdoByAdr(
+    PDEVICE_OBJECT Fdo
+    )
+{
+    UNREFERENCED_PARAMETER(Fdo);
+    I2cCtrl_Log("FindAcpiPdoByAdr: STUB\n");
+    return NULL;
+}
+
+NTSTATUS
+I2cCtrl_GetPciBusDevFun(
+    PDEVICE_OBJECT PciPdo,
+    ULONG *Bus,
+    ULONG *Dev,
+    ULONG *Fun
+    )
+{
+    UNREFERENCED_PARAMETER(PciPdo);
+    UNREFERENCED_PARAMETER(Bus);
+    UNREFERENCED_PARAMETER(Dev);
+    UNREFERENCED_PARAMETER(Fun);
+
+    I2cCtrl_Log("GetPciBusDevFun: STUB\n");
+    return STATUS_NOT_SUPPORTED;
 }
 
 
