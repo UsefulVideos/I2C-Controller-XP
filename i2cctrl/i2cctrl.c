@@ -1942,7 +1942,8 @@ I2cCtrl_EnumerateAcpiChildren(
                 }
 
                 RtlFreeUnicodeString(&hidUni);
-                break;
+				arg = ACPI_METHOD_NEXT_ARGUMENT(arg);
+				continue;
             }
         }
 
@@ -2007,7 +2008,7 @@ I2cCtrl_AcpiOpen(
         return STATUS_NOT_FOUND;
     }
 
-    ObReferenceObject(acpiPdo);
+    /* DO NOT ObReferenceObject(acpiPdo) — FindAcpiPdoForPciDevice already returns a referenced PDO */
 
     fdoExt->AcpiDeviceObject = acpiPdo;
     fdoExt->AcpiFileObject   = NULL;
@@ -2019,6 +2020,7 @@ I2cCtrl_AcpiOpen(
 
     return STATUS_SUCCESS;
 }
+
 
 VOID
 I2cCtrl_AcpiClose(
@@ -2039,11 +2041,13 @@ I2cCtrl_AcpiClose(
     I2cCtrl_Log("AcpiClose: unbinding ACPI for HWID=%ws\n",
                 fdoExt->PnpId ? fdoExt->PnpId : L"<null>");
 
+    /* Release the single reference held from AcpiOpen */
     if (fdoExt->AcpiDeviceObject != NULL) {
         ObDereferenceObject(fdoExt->AcpiDeviceObject);
         fdoExt->AcpiDeviceObject = NULL;
     }
 
+    /* Clear ACPI state */
     fdoExt->AcpiFileObject = NULL;
     fdoExt->AcpiHandle     = NULL;
     fdoExt->AcpiBound      = FALSE;
@@ -2103,7 +2107,7 @@ I2cCtrl_AcpiEvalMethod(
     }
 
     if (AcpiPdo == NULL || MethodName == NULL ||
-        OutBuf == NULL || OutBufLen < sizeof(PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
+        OutBuf == NULL || OutBufLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
     {
         I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Pdo=%p, Method=%s, OutLen=%lu)\n",
                     AcpiPdo, MethodName, OutBufLen);
@@ -11780,7 +11784,7 @@ I2cCtrl_AcpiGetHidDescriptorViaDsm(
 NTSTATUS
 I2cCtrl_AcpiGetDeviceInformation(
     PDEVICE_OBJECT             AcpiPdo,
-    PVOID                      DeviceHandle,   // reserved for future use
+    PVOID                      DeviceHandle,   // reserved
     PI2CCTRL_ACPI_ENUM_ENTRY   Info,
     ULONG                      InfoLength
     )
@@ -11794,30 +11798,17 @@ I2cCtrl_AcpiGetDeviceInformation(
     UNREFERENCED_PARAMETER(DeviceHandle);
 
     if (AcpiPdo == NULL || Info == NULL) {
-        I2cCtrl_Log(
-            "AcpiGetDevInfo: invalid parameters (Pdo=%p Info=%p Len=%lu)\n",
-            AcpiPdo,
-            Info,
-            InfoLength
-        );
+        I2cCtrl_Log("AcpiGetDevInfo: invalid parameters\n");
         return STATUS_INVALID_PARAMETER;
     }
 
     if (InfoLength < sizeof(I2CCTRL_ACPI_ENUM_ENTRY)) {
-        I2cCtrl_Log(
-            "AcpiGetDevInfo: buffer too small (Len=%lu, Min=%lu)\n",
-            InfoLength,
-            (ULONG)sizeof(I2CCTRL_ACPI_ENUM_ENTRY)
-        );
         return STATUS_BUFFER_TOO_SMALL;
     }
 
     RtlZeroMemory(&wireInfo, sizeof(wireInfo));
+    RtlZeroMemory(Info, sizeof(*Info));
 
-    //
-    // Hybrid idea: we drive enumeration by index (NextRequest) from the
-    // caller's small struct, but talk to ACPI using the wire format.
-    //
     wireInfo.Signature   = ACPI_DEVICE_INFORMATION_SIGNATURE;
     wireInfo.NextRequest = Info->NextRequest;
 
@@ -11826,7 +11817,7 @@ I2cCtrl_AcpiGetDeviceInformation(
     irp = IoBuildDeviceIoControlRequest(
               IOCTL_ACPI_GET_DEVICE_INFORMATION,
               AcpiPdo,
-              NULL,                         // no input buffer (root \_SB)
+              NULL,
               0,
               &wireInfo,
               sizeof(wireInfo),
@@ -11836,52 +11827,38 @@ I2cCtrl_AcpiGetDeviceInformation(
           );
 
     if (irp == NULL) {
-        I2cCtrl_Log("AcpiGetDevInfo: IoBuildDeviceIoControlRequest failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    I2cCtrl_Log(
-        "AcpiGetDevInfo: sending IOCTL_ACPI_GET_DEVICE_INFORMATION (NextRequest=%lu)\n",
-        wireInfo.NextRequest
-    );
-
     status = IoCallDriver(AcpiPdo, irp);
     if (status == STATUS_PENDING) {
-        KeWaitForSingleObject(
-            &event,
-            Executive,
-            KernelMode,
-            FALSE,
-            NULL
-        );
+        KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
         status = iosb.Status;
     }
 
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log(
-            "AcpiGetDevInfo: IOCTL failed (0x%08lx)\n",
-            status
-        );
         return status;
     }
 
     //
-    // Copy the bits the rest of the driver actually cares about into the
-    // small, public enum entry.
+    // Copy ONLY the fields that exist in the wire struct.
     //
     Info->NextRequest  = wireInfo.NextRequest;
     Info->DeviceHandle = wireInfo.DeviceHandle;
     Info->DeviceStatus = wireInfo.DeviceStatus;
 
-    I2cCtrl_Log(
-        "AcpiGetDevInfo: success, DeviceHandle=%p Status=0x%08lx NextRequest=%lu\n",
-        Info->DeviceHandle,
-        Info->DeviceStatus,
-        Info->NextRequest
-    );
+    //
+    // The remaining fields DO NOT exist in the wire struct.
+    // Leave them zeroed:
+    //
+    // Info->DeviceObject = NULL;
+    // Info->DeviceType   = 0;
+    // Info->Status       = 0;
+    //
 
     return STATUS_SUCCESS;
 }
+
 
 NTSTATUS
 I2cCtrl_ReportPwrmBaseInfo(
@@ -12693,15 +12670,19 @@ I2cCtrl_FindAcpiPdoByAdr(
 {
     NTSTATUS status;
     PDEVICE_OBJECT pciPdo;
+    PDEVICE_OBJECT acpiRootPdo;
+    PFILE_OBJECT  acpiRootFo;
     ULONG bus = 0;
     ULONG dev = 0;
     ULONG fun = 0;
     ULONG adrValue = 0;
 
-    PI2CCTRL_FDO fdoExt;
-    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER outBuf;
-    ULONG outLen;
-    ACPI_METHOD_ARGUMENT UNALIGNED* arg;
+    UNICODE_STRING acpiName;
+    I2CCTRL_ACPI_ENUM_ENTRY info;
+    ULONG next = 0;
+
+    ULONGLONG acpiAdr64 = 0;
+    ULONG     acpiAdr   = 0;
 
     if (Fdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: Fdo=NULL\n");
@@ -12715,26 +12696,12 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     PAGED_CODE();
 
-    fdoExt = (PI2CCTRL_FDO)Fdo->DeviceExtension;
-    if (fdoExt == NULL) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: fdoExt=NULL\n");
-        return NULL;
-    }
-
-    /* Require ACPI already bound to avoid recursion with I2cCtrl_AcpiOpen */
-    if (!fdoExt->AcpiBound || fdoExt->AcpiDeviceObject == NULL) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: ACPI not bound, skipping fallback\n");
-        return NULL;
-    }
-
-    /* Get PCI PDO */
     pciPdo = IoGetDeviceAttachmentBaseRef(Fdo);
     if (pciPdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: IoGetDeviceAttachmentBaseRef returned NULL\n");
         return NULL;
     }
 
-    /* Extract PCI BDF */
     status = I2cCtrl_GetPciBusDevFun(pciPdo, &bus, &dev, &fun);
     ObDereferenceObject(pciPdo);
 
@@ -12743,63 +12710,75 @@ I2cCtrl_FindAcpiPdoByAdr(
         return NULL;
     }
 
-    I2cCtrl_Log("FindAcpiPdoByAdr: PCI BDF = %lu:%lu.%lu\n", bus, dev, fun);
-
-    /* Compute expected ACPI _ADR */
     adrValue = (dev << 16) | fun;
 
-    I2cCtrl_Log("FindAcpiPdoByAdr: expected _ADR = 0x%08lx\n", adrValue);
+    I2cCtrl_Log("FindAcpiPdoByAdr: PCI BDF=%lu:%lu.%lu expected _ADR=0x%08lx\n",
+                bus, dev, fun, adrValue);
 
-    /* Evaluate _ADR on already-bound ACPI PDO */
-    outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
+    RtlInitUnicodeString(&acpiName, L"\\Device\\ACPI");
 
-    outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
-    if (outBuf == NULL) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: outBuf alloc failed\n");
-        return NULL;
-    }
-
-    RtlZeroMemory(outBuf, outLen);
-
-    status = I2cCtrl_AcpiEvalMethod(
-                 fdoExt->AcpiDeviceObject,
-                 fdoExt->AcpiHandle,
-                 "_ADR",
-                 outBuf,
-                 outLen
+    status = IoGetDeviceObjectPointer(
+                 &acpiName,
+                 FILE_READ_DATA,
+                 &acpiRootFo,
+                 &acpiRootPdo
              );
 
-    if (!NT_SUCCESS(status) || outBuf->Count == 0) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: _ADR eval failed (0x%08lx)\n", status);
-        ExFreePoolWithTag(outBuf, 'Acpi');
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: cannot open \\Device\\ACPI (0x%08lx)\n", status);
         return NULL;
     }
 
-    arg = (ACPI_METHOD_ARGUMENT UNALIGNED*)&outBuf->Data[0];
+    next = 0;
 
-    if (arg->Type != ACPI_METHOD_ARGUMENT_INTEGER) {
-        I2cCtrl_Log("FindAcpiPdoByAdr: _ADR not integer\n");
-        ExFreePoolWithTag(outBuf, 'Acpi');
-        return NULL;
-    }
+    for (;;) {
 
-    {
-        ULONG acpiAdr = (ULONG)arg->Argument;
-        ExFreePoolWithTag(outBuf, 'Acpi');
+        RtlZeroMemory(&info, sizeof(info));
 
-        I2cCtrl_Log("FindAcpiPdoByAdr: ACPI _ADR = 0x%08lx\n", acpiAdr);
+        status = I2cCtrl_AcpiGetDeviceInformation(
+                     acpiRootPdo,
+                     NULL,
+                     &info,
+                     sizeof(info)
+                 );
 
-        if (acpiAdr != adrValue) {
-            I2cCtrl_Log("FindAcpiPdoByAdr: _ADR mismatch\n");
-            return NULL;
+        if (!NT_SUCCESS(status)) {
+            break;
+        }
+
+        next = info.NextRequest;
+
+        acpiAdr64 = 0;
+
+        status = I2cCtrl_AcpiEvalInteger(
+                     info.DeviceObject,
+                     "_ADR",
+                     &acpiAdr64
+                 );
+
+        if (NT_SUCCESS(status)) {
+
+            acpiAdr = (ULONG)acpiAdr64;
+
+            if (acpiAdr == adrValue) {
+
+                I2cCtrl_Log("FindAcpiPdoByAdr: MATCH -> ACPI PDO %p\n",
+                            info.DeviceObject);
+
+                ObReferenceObject(info.DeviceObject);
+                ObDereferenceObject(acpiRootFo);
+                return info.DeviceObject;
+            }
+        }
+
+        if (next == 0) {
+            break;
         }
     }
 
-    I2cCtrl_Log("FindAcpiPdoByAdr: MATCH -> ACPI PDO %p\n",
-                fdoExt->AcpiDeviceObject);
-
-    ObReferenceObject(fdoExt->AcpiDeviceObject);
-    return fdoExt->AcpiDeviceObject;
+    ObDereferenceObject(acpiRootFo);
+    I2cCtrl_Log("FindAcpiPdoByAdr: no ACPI node matched _ADR\n");
+    return NULL;
 }
 
 

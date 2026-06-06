@@ -1361,9 +1361,12 @@ I2cCtrl_EnumerateAcpiNamespace(
 // IOCTL_ACPI_GET_DEVICE_INFORMATION (hybrid traversal root walk).
 //
 typedef struct _I2CCTRL_ACPI_ENUM_ENTRY {
-    ULONG NextRequest;     // IN: index to request (0,1,2,...)
-    PVOID DeviceHandle;    // OUT: opaque ACPI handle
-    ULONG DeviceStatus;    // OUT: _STA bits (if ACPI fills them)
+    ULONG          NextRequest;
+    PVOID          DeviceHandle;
+    PDEVICE_OBJECT DeviceObject;
+    ULONG          DeviceStatus;
+    ULONG          DeviceType;
+    NTSTATUS       Status;
 } I2CCTRL_ACPI_ENUM_ENTRY, *PI2CCTRL_ACPI_ENUM_ENTRY;
 
 NTSTATUS
