@@ -12854,10 +12854,114 @@ I2cCtrl_FindAcpiPdoByAdr(
     PDEVICE_OBJECT Fdo
     )
 {
-    UNREFERENCED_PARAMETER(Fdo);
-    I2cCtrl_Log("FindAcpiPdoByAdr: STUB\n");
-    return NULL;
+    NTSTATUS status;
+    PDEVICE_OBJECT pciPdo;
+    ULONG bus = 0;
+    ULONG dev = 0;
+    ULONG fun = 0;
+    ULONG adrValue = 0;
+
+    PI2CCTRL_FDO fdoExt;
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER outBuf;
+    ULONG outLen;
+    ACPI_METHOD_ARGUMENT UNALIGNED* arg;
+
+    if (Fdo == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: Fdo=NULL\n");
+        return NULL;
+    }
+
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: wrong IRQL\n");
+        return NULL;
+    }
+
+    PAGED_CODE();
+
+    fdoExt = (PI2CCTRL_FDO)Fdo->DeviceExtension;
+
+    /* Get PCI PDO */
+    pciPdo = IoGetDeviceAttachmentBaseRef(Fdo);
+    if (pciPdo == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: IoGetDeviceAttachmentBaseRef returned NULL\n");
+        return NULL;
+    }
+
+    /* Extract PCI BDF */
+    status = I2cCtrl_GetPciBusDevFun(pciPdo, &bus, &dev, &fun);
+    ObDereferenceObject(pciPdo);
+
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: GetPciBusDevFun failed (0x%08lx)\n", status);
+        return NULL;
+    }
+
+    I2cCtrl_Log("FindAcpiPdoByAdr: PCI BDF = %lu:%lu.%lu\n", bus, dev, fun);
+
+    /* Compute expected ACPI _ADR */
+    adrValue = (dev << 16) | fun;
+
+    I2cCtrl_Log("FindAcpiPdoByAdr: expected _ADR = 0x%08lx\n", adrValue);
+
+    /* Open ACPI */
+    status = I2cCtrl_AcpiOpen(fdoExt);
+    if (!NT_SUCCESS(status) || fdoExt->AcpiDeviceObject == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: AcpiOpen failed (0x%08lx)\n", status);
+        return NULL;
+    }
+
+    /* Evaluate _ADR */
+    outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
+
+    outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
+    if (outBuf == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: outBuf alloc failed\n");
+        return NULL;
+    }
+
+    RtlZeroMemory(outBuf, outLen);
+
+    status = I2cCtrl_AcpiEvalMethod(
+                 fdoExt->AcpiDeviceObject,
+                 fdoExt->AcpiHandle,
+                 "_ADR",
+                 outBuf,
+                 outLen
+             );
+
+    if (!NT_SUCCESS(status) || outBuf->Count == 0) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: _ADR eval failed (0x%08lx)\n", status);
+        ExFreePoolWithTag(outBuf, 'Acpi');
+        return NULL;
+    }
+
+    arg = (ACPI_METHOD_ARGUMENT UNALIGNED*)&outBuf->Data[0];
+
+    if (arg->Type != ACPI_METHOD_ARGUMENT_INTEGER) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: _ADR not integer\n");
+        ExFreePoolWithTag(outBuf, 'Acpi');
+        return NULL;
+    }
+
+    {
+        ULONG acpiAdr = (ULONG)arg->Argument;
+        ExFreePoolWithTag(outBuf, 'Acpi');
+
+        I2cCtrl_Log("FindAcpiPdoByAdr: ACPI _ADR = 0x%08lx\n", acpiAdr);
+
+        if (acpiAdr != adrValue) {
+            I2cCtrl_Log("FindAcpiPdoByAdr: _ADR mismatch\n");
+            return NULL;
+        }
+    }
+
+    I2cCtrl_Log("FindAcpiPdoByAdr: MATCH -> ACPI PDO %p\n",
+                fdoExt->AcpiDeviceObject);
+
+    ObReferenceObject(fdoExt->AcpiDeviceObject);
+    return fdoExt->AcpiDeviceObject;
 }
+
 
 NTSTATUS
 I2cCtrl_GetPciBusDevFun(
