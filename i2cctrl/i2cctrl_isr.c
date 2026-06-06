@@ -1,13 +1,14 @@
 /* I2cCtrl_Isr.c - C89 compliant */
 
 #include <ntddk.h>
+#include "i2cctrl_isr.h"
 #include "i2cctrl_ext.h"
 #include "i2cctrl_hw.h"
 #include "i2cctrl.h"
 #include "i2cctrl_bsod.h"
 
 /* ---------------------------------------------------------------------------
-   Abort source → NTSTATUS mapping (conservative, portable across DW_apb_i2c)
+   Abort source -> NTSTATUS mapping (conservative, portable across DW_apb_i2c)
    --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_MapAbortSource(ULONG abrtSrc)
@@ -212,16 +213,6 @@ I2cCtrl_HandleArbitrationLost(
 }
 
 
-/* ---------------------------------------------------------------------------
- * ISR: top-half - fast filter, HAL-ack, queues DPC
- * XP/2003-safe, HAL-generic, C89-compliant, WinDDK-compiler-safe
- *
- * Design:
- *   - Never assumes ServiceContext is valid
- *   - Bails out early on any invalid state
- *   - Only touches nonpaged memory
- *   - Returns FALSE aggressively on shared IRQs
- * --------------------------------------------------------------------------- */
 BOOLEAN
 I2cCtrl_Isr(
     PKINTERRUPT Interrupt,
@@ -241,8 +232,8 @@ I2cCtrl_Isr(
     masked = 0U;
     RtlZeroMemory(&hwst, sizeof(hwst));
 
-/* ISR must run at IRQL >= DISPATCH_LEVEL on XP/2003 */
-if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
+    /* ISR must run at IRQL >= DISPATCH_LEVEL on XP/2003 */
+    if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
         return FALSE;
     }
 
@@ -300,16 +291,6 @@ if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
 }
 
 
-/* ---------------------------------------------------------------------------
- * DPC: bottom-half - RX/TX progression, arbitration handling, single-source completion
- * XP/2003-safe, HAL-generic, C89-compliant, WinDDK-compiler-safe
- *
- * Design:
- *   - Validates DeferredContext and SystemArg1
- *   - Never assumes transfer context is sane
- *   - Serializes completion with an atomic guard
- *   - Masks IRQs during completion, restores only if device still active
- * --------------------------------------------------------------------------- */
 VOID
 I2cCtrl_DpcRoutine(
     PKDPC  Dpc,
@@ -354,8 +335,15 @@ I2cCtrl_DpcRoutine(
     /* SystemArg1 is the masked interrupt snapshot from ISR */
     intrSnapshot = (ULONG)(ULONG_PTR)SystemArg1;
     if (intrSnapshot == 0U) {
-        /* Spurious DPC queue or already fully handled */
         return;
+    }
+
+    /* HID wakeup hook */
+    if (dx->TouchpadPdo != NULL) {
+        PI2CCTRL_PDO p = dx->TouchpadPdo;
+        if (p->Started && !p->Removed) {
+            KeSetEvent(&p->HidReportEvent, IO_NO_INCREMENT, FALSE);
+        }
     }
 
     maxIter      = 128U;
@@ -372,7 +360,7 @@ I2cCtrl_DpcRoutine(
 
     xc = &dx->XferCtx;
 
-    /* Defensive: ensure transfer context is valid before any access */
+    /* Defensive: ensure transfer context is valid */
     if (xc == NULL ||
         xc->Buffer == NULL ||
         xc->Length == 0U ||
@@ -390,8 +378,9 @@ I2cCtrl_DpcRoutine(
         return;
     }
 
-    /* Arbitration lost handling (multi-master) */
+    /* Arbitration lost */
     if (xc->MultiMasterEnabled && I2cCtrl_IsArbitrationLost(dx, intrSnapshot)) {
+
         I2cCtrl_HandleArbitrationLost(dx, xc);
 
         if (xc->ArbAttempt < xc->ArbMaxRetries) {
@@ -421,8 +410,9 @@ I2cCtrl_DpcRoutine(
         }
     }
 
-    /* Handle TX_ABORT early (non-arbitration) */
+    /* TX_ABORT */
     if ((intrSnapshot & I2C_INT_TX_ABORT) != 0U) {
+
         if (dx->Ops->GetStatus != NULL) {
             st = dx->Ops->GetStatus(dx, &hwst);
             if (NT_SUCCESS(st)) {
@@ -443,7 +433,7 @@ I2cCtrl_DpcRoutine(
         goto CompleteXfer;
     }
 
-    /* Snapshot hardware status once; re-check inside tight loops only if needed */
+    /* Snapshot hardware status */
     if (dx->Ops->GetStatus != NULL) {
         st = dx->Ops->GetStatus(dx, &hwst);
         if (!NT_SUCCESS(st)) {
@@ -452,89 +442,14 @@ I2cCtrl_DpcRoutine(
         }
     }
 
-    rxPath = (xc->Direction == I2cDirRead) ? TRUE : FALSE;
-    txPath = (xc->Direction == I2cDirWrite) ? TRUE : FALSE;
+    rxPath = (xc->Direction == I2cDirRead);
+    txPath = (xc->Direction == I2cDirWrite);
 
-    /* RX path */
-    if (rxPath) {
-        while (iter < maxIter && xc->RxIndex < xc->Length) {
-            if (!hwst.RxFifoNotEmpty) {
-                if (dx->Ops->GetStatus != NULL) {
-                    st = dx->Ops->GetStatus(dx, &hwst);
-                    if (!NT_SUCCESS(st)) {
-                        xc->Status = st;
-                        goto CompleteXfer;
-                    }
-                    if (!hwst.RxFifoNotEmpty) {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            if (dx->Ops->ReadRxByte != NULL) {
-                st = dx->Ops->ReadRxByte(dx, &byte);
-                if (!NT_SUCCESS(st)) {
-                    xc->Status = st;
-                    goto CompleteXfer;
-                }
-
-                if (xc->RxIndex < xc->Length) {
-                    xc->Buffer[xc->RxIndex] = byte;
-                    xc->RxIndex++;
-                }
-                iter++;
-            } else if (dx->Ops->DrainRxBounded != NULL) {
-                dx->Ops->DrainRxBounded(dx);
-                break;
-            } else {
-                break;
-            }
-        }
-    }
-
-    /* TX path */
-    if (txPath) {
-        while (iter < maxIter && xc->TxIndex < xc->Length) {
-            if (!hwst.TxFifoNotFull) {
-                if (dx->Ops->GetStatus != NULL) {
-                    st = dx->Ops->GetStatus(dx, &hwst);
-                    if (!NT_SUCCESS(st)) {
-                        xc->Status = st;
-                        goto CompleteXfer;
-                    }
-                    if (!hwst.TxFifoNotFull) {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            if (dx->Ops->WriteTxByte != NULL) {
-                if (xc->TxIndex < xc->Length) {
-                    st = dx->Ops->WriteTxByte(dx, xc->Buffer[xc->TxIndex]);
-                    if (!NT_SUCCESS(st)) {
-                        xc->Status = st;
-                        goto CompleteXfer;
-                    }
-                    xc->TxIndex++;
-                }
-                iter++;
-            } else if (dx->Ops->FlushTxBounded != NULL) {
-                dx->Ops->FlushTxBounded(dx);
-                break;
-            } else {
-                break;
-            }
-        }
-    }
-
-    /* STOP detection (snapshot bit or hardware status) */
+    /* STOP detection */
     if (((intrSnapshot & I2C_INT_STOP_DETECTED) != 0U) || hwst.StopDetected) {
         stopSeen = TRUE;
         xc->StopSeen = TRUE;
+
         if (dx->Ops->AckInterrupts != NULL) {
             dx->Ops->AckInterrupts(dx, I2C_INT_STOP_DETECTED);
         }
@@ -553,7 +468,7 @@ I2cCtrl_DpcRoutine(
         }
     }
 
-    /* Not complete: keep interrupts enabled, acknowledge benign bits, and exit */
+    /* Not complete: re-enable IRQs and ack misc causes */
     if (dx->Ops->UnmaskInterrupts != NULL) {
         dx->Ops->UnmaskInterrupts(dx, dx->IntrMask);
     }
@@ -568,6 +483,7 @@ I2cCtrl_DpcRoutine(
     return;
 
 CompleteXfer:
+
     KeCancelTimer(&xc->TimeoutTimer);
 
     if (dx->Ops->MaskInterrupts != NULL) {
@@ -651,14 +567,17 @@ I2cCtrl_PollWorker(
 
     /* Defensive: validate device context and HAL ops before touching hardware */
     if (devctx == NULL || devctx->Ops == NULL) {
+        I2cCtrl_Log("Poll: invalid devctx/Ops\n");
         return;
     }
     if (devctx->Removed || !devctx->Started) {
+        I2cCtrl_Log("Poll: device not started or removed\n");
         return;
     }
 
     xc = &devctx->XferCtx;
     if (xc == NULL || xc->Irp == NULL || xc->Buffer == NULL || xc->Length == 0U) {
+        I2cCtrl_Log("Poll: invalid transfer context\n");
         return;
     }
 
@@ -677,6 +596,8 @@ I2cCtrl_PollWorker(
 
     if (xc->MultiMasterEnabled != FALSE &&
         (((raw & I2C_INT_TX_ABORT) != 0U) || ((raw & I2C_INT_STOP_DETECTED) != 0U))) {
+
+        I2cCtrl_Log("Poll: arbitration indication, raw=0x%08lx\n", raw);
 
         /* Prefer HAL-provided arbitration check; fallback to generic helper */
         if (devctx->Ops->IsArbitrationLost != NULL) {
@@ -717,6 +638,8 @@ I2cCtrl_PollWorker(
 
             xc->ArbAttempt += 1U;
 
+            I2cCtrl_Log("Poll: arb backoff=%lu us, attempt=%lu\n", delay, xc->ArbAttempt);
+
             /* Busy-wait at PASSIVE_LEVEL for short backoff */
             KeStallExecutionProcessor(delay);
 
@@ -724,17 +647,20 @@ I2cCtrl_PollWorker(
             return;
         } else {
             xc->Status = STATUS_IO_TIMEOUT;
+            I2cCtrl_Log("Poll: arbitration retries exhausted\n");
             /* fall through to completion */
         }
     }
 
     /* Drain RX FIFO (HAL-first) */
     if (isRead != FALSE) {
+        I2cCtrl_Log("Poll: RX path\n");
         while (xc->RxIndex < xc->Length) {
             if (devctx->Ops->GetStatus != NULL) {
                 st = devctx->Ops->GetStatus(devctx, &hwst);
                 if (!NT_SUCCESS(st)) {
                     xc->Status = st;
+                    I2cCtrl_Log("Poll: GetStatus RX failed 0x%08lx\n", st);
                     break;
                 }
                 if (!hwst.RxFifoNotEmpty) {
@@ -749,6 +675,7 @@ I2cCtrl_PollWorker(
                 st = devctx->Ops->ReadRxByte(devctx, &b);
                 if (!NT_SUCCESS(st)) {
                     xc->Status = st;
+                    I2cCtrl_Log("Poll: ReadRxByte failed 0x%08lx\n", st);
                     break;
                 }
                 xc->Buffer[xc->RxIndex++] = b;
@@ -758,6 +685,7 @@ I2cCtrl_PollWorker(
             } else {
                 /* No HAL method to read; abort safely */
                 xc->Status = STATUS_NOT_SUPPORTED;
+                I2cCtrl_Log("Poll: no RX HAL method\n");
                 break;
             }
         }
@@ -765,11 +693,13 @@ I2cCtrl_PollWorker(
 
     /* Fill TX FIFO (HAL-first) */
     if (isWrite != FALSE) {
+        I2cCtrl_Log("Poll: TX path\n");
         while (xc->TxIndex < xc->Length) {
             if (devctx->Ops->GetStatus != NULL) {
                 st = devctx->Ops->GetStatus(devctx, &hwst);
                 if (!NT_SUCCESS(st)) {
                     xc->Status = st;
+                    I2cCtrl_Log("Poll: GetStatus TX failed 0x%08lx\n", st);
                     break;
                 }
                 if (!hwst.TxFifoNotFull) {
@@ -784,6 +714,7 @@ I2cCtrl_PollWorker(
                 st = devctx->Ops->WriteTxByte(devctx, xc->Buffer[xc->TxIndex]);
                 if (!NT_SUCCESS(st)) {
                     xc->Status = st;
+                    I2cCtrl_Log("Poll: WriteTxByte failed 0x%08lx\n", st);
                     break;
                 }
             } else if (devctx->Ops->PrimeWrite != NULL) {
@@ -792,11 +723,13 @@ I2cCtrl_PollWorker(
                 st = devctx->Ops->PrimeWrite(devctx, &xc->Buffer[xc->TxIndex], 1U, &pushed);
                 if (!NT_SUCCESS(st) || pushed == 0U) {
                     xc->Status = (NT_SUCCESS(st) ? STATUS_DEVICE_BUSY : st);
+                    I2cCtrl_Log("Poll: PrimeWrite failed/pushed=0 st=0x%08lx\n", st);
                     break;
                 }
             } else {
                 /* No HAL method to write; abort safely */
                 xc->Status = STATUS_NOT_SUPPORTED;
+                I2cCtrl_Log("Poll: no TX HAL method\n");
                 break;
             }
             xc->TxIndex += 1U;
@@ -815,6 +748,7 @@ I2cCtrl_PollWorker(
 
     if ((raw & I2C_INT_STOP_DETECTED) != 0U || hwst.StopDetected != FALSE) {
         xc->StopSeen = TRUE;
+        I2cCtrl_Log("Poll: STOP detected, raw=0x%08lx\n", raw);
 
         if (devctx->Ops->AckInterrupts != NULL) {
             devctx->Ops->AckInterrupts(devctx, I2C_INT_STOP_DETECTED);
@@ -832,6 +766,13 @@ I2cCtrl_PollWorker(
         xc->Status = (xc->Status == STATUS_SUCCESS || xc->Status == 0)
                         ? STATUS_SUCCESS
                         : xc->Status;
+
+        I2cCtrl_Log("Poll: completing, dir=%s status=0x%08lx rx=%lu tx=%lu len=%lu\n",
+                    (isRead ? "R" : "W"),
+                    xc->Status,
+                    xc->RxIndex,
+                    xc->TxIndex,
+                    xc->Length);
 
         /* Single completion path, atomically detach IRP */
         irp = (PIRP)InterlockedExchangePointer((PVOID*)&xc->Irp, NULL);
@@ -902,37 +843,32 @@ I2cCtrl_InterruptService(
     RtlZeroMemory(&hwst, sizeof(hwst));
 
     /* Defensive gates */
-    if (devctx == NULL || devctx->Ops == NULL) {
+    if (devctx == NULL || devctx->Ops == NULL)
         return FALSE;
-    }
-    if (devctx->Removed || devctx->Stopping || !devctx->Started) {
+
+    if (devctx->Removed || devctx->Stopping || !devctx->Started)
         return FALSE;
-    }
 
     /* If nothing enabled, treat as spurious */
     mask = devctx->IntrMask;
-    if (mask == 0U) {
+    if (mask == 0U)
         return FALSE;
-    }
 
     /* Read raw causes via HAL and intersect with our mask */
     if (devctx->Ops->GetRawIntr != NULL) {
         raw = devctx->Ops->GetRawIntr(devctx);
     } else if (devctx->Ops->GetStatus != NULL) {
         st = devctx->Ops->GetStatus(devctx, &hwst);
-        if (!NT_SUCCESS(st)) {
+        if (!NT_SUCCESS(st))
             return FALSE;
-        }
         raw = hwst.RawIntr;
     } else {
         return FALSE;
     }
 
     causes = raw & mask;
-    if (causes == 0U) {
-        /* Spurious interrupt (masked out or noise) */
+    if (causes == 0U)
         return FALSE;
-    }
 
     /* Classify causes for fast-path acks */
     rxEvents    = causes & (I2C_INT_RX_FULL | I2C_INT_RX_OVER | I2C_INT_RX_UNDER);
@@ -943,47 +879,36 @@ I2cCtrl_InterruptService(
 
     /* Acknowledge specific latched causes via HAL to avoid storms */
     if ((errEvents & I2C_INT_TX_ABORT) != 0U) {
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_TX_ABORT);
-        }
-        if (devctx->ErrorCount != 0xFFFFFFFFUL) {
+        if (devctx->ErrorCount != 0xFFFFFFFFUL)
             devctx->ErrorCount += 1U;
-        }
     }
     if ((rxEvents & I2C_INT_RX_OVER) != 0U) {
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_RX_OVER);
-        }
-        if (devctx->ErrorCount != 0xFFFFFFFFUL) {
+        if (devctx->ErrorCount != 0xFFFFFFFFUL)
             devctx->ErrorCount += 1U;
-        }
     }
     if ((rxEvents & I2C_INT_RX_UNDER) != 0U) {
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_RX_UNDER);
-        }
-        if (devctx->ErrorCount != 0xFFFFFFFFUL) {
+        if (devctx->ErrorCount != 0xFFFFFFFFUL)
             devctx->ErrorCount += 1U;
-        }
     }
     if ((txEvents & I2C_INT_TX_OVER) != 0U) {
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_TX_OVER);
-        }
-        if (devctx->ErrorCount != 0xFFFFFFFFUL) {
+        if (devctx->ErrorCount != 0xFFFFFFFFUL)
             devctx->ErrorCount += 1U;
-        }
     }
     if ((otherEvents & I2C_INT_START_DETECTED) != 0U) {
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_START_DETECTED);
-        }
     }
     if ((wakeEvents & I2C_INT_STOP_DETECTED) != 0U) {
-        /* STOP_DET may be used for normal completion and wake */
-        if (devctx->Ops->AckInterrupts != NULL) {
+        if (devctx->Ops->AckInterrupts != NULL)
             devctx->Ops->AckInterrupts(devctx, I2C_INT_STOP_DETECTED);
-        }
     }
 
     /* Defensively acknowledge remaining latched causes to reduce storms */

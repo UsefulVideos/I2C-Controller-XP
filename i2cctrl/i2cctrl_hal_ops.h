@@ -125,5 +125,4 @@ typedef struct _I2C_HW_OPS {
 /* Global backend ops (implemented in a .c file) */
 extern I2C_HW_OPS  IntelI2cOps;
 extern I2C_HW_CAPS IntelI2cCaps;
-
 #endif /* I2CCTRL_HAL_OPS_H */

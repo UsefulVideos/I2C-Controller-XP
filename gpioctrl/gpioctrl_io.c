@@ -1,6 +1,6 @@
 /* gpioctrl_io.c
- * GPIO Controller Driver (gpioctrl.sys) – IOCTL handlers
- * WinDDK 7.1.0 – XP/2003 build environment – C89 compliant
+ * GPIO Controller Driver (gpioctrl.sys) - IOCTL handlers
+ * WinDDK 7.1.0 - XP/2003 build environment - C89 compliant
  *
  * Implements:
  *  - GpioCtrl_IoctlReadPin
@@ -22,7 +22,7 @@
    --------------------------------------------------------------------------- */
 static NTSTATUS
 GpioIo_ValidateReady(
-    IN PGPIOCTRL_FDO_EXT Ext
+    IN PGPIOCTRL_FDO Ext
     )
 {
     if (!Ext->Started || Ext->MmioBase == NULL) {
@@ -33,7 +33,7 @@ GpioIo_ValidateReady(
 
 static NTSTATUS
 GpioIo_ValidatePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN ULONG Pin
     )
 {
@@ -48,25 +48,25 @@ GpioIo_ValidatePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlReadPin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
     NTSTATUS status;
     PIO_STACK_LOCATION isl;
-    PGPIO_READ_PIN in;
+    PGPIOCTRL_READ_PIN in;
     PULONG out;
     ULONG inLen, outLen;
     ULONG pin;
     ULONG data;
 
     isl   = IoGetCurrentIrpStackLocation(Irp);
-    in    = (PGPIO_READ_PIN)Irp->AssociatedIrp.SystemBuffer;
+    in    = (PGPIOCTRL_READ_PIN)Irp->AssociatedIrp.SystemBuffer;
     out   = (PULONG)Irp->AssociatedIrp.SystemBuffer;
     inLen = isl->Parameters.DeviceIoControl.InputBufferLength;
     outLen= isl->Parameters.DeviceIoControl.OutputBufferLength;
 
-    if (inLen < sizeof(GPIO_READ_PIN) || outLen < sizeof(ULONG)) {
+    if (inLen < sizeof(GPIOCTRL_READ_PIN) || outLen < sizeof(ULONG)) {
         Irp->IoStatus.Information = 0;
         return STATUS_BUFFER_TOO_SMALL;
     }
@@ -95,23 +95,23 @@ GpioCtrl_IoctlReadPin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlWritePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
     NTSTATUS status;
     PIO_STACK_LOCATION isl;
-    PGPIO_WRITE_PIN in;
+    PGPIOCTRL_WRITE_PIN in;
     ULONG inLen;
     ULONG pin, value;
     ULONG data;
     KIRQL oldIrql;
 
     isl   = IoGetCurrentIrpStackLocation(Irp);
-    in    = (PGPIO_WRITE_PIN)Irp->AssociatedIrp.SystemBuffer;
+    in    = (PGPIOCTRL_WRITE_PIN)Irp->AssociatedIrp.SystemBuffer;
     inLen = isl->Parameters.DeviceIoControl.InputBufferLength;
 
-    if (inLen < sizeof(GPIO_WRITE_PIN)) {
+    if (inLen < sizeof(GPIOCTRL_WRITE_PIN)) {
         Irp->IoStatus.Information = 0;
         return STATUS_BUFFER_TOO_SMALL;
     }
@@ -150,13 +150,13 @@ GpioCtrl_IoctlWritePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlConfigurePin(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
     NTSTATUS status;
     PIO_STACK_LOCATION isl;
-    PGPIO_CONFIGURE_PIN in;
+    PGPIOCTRL_CONFIGURE_PIN in;
     ULONG inLen;
     ULONG pin;
     ULONG dir, pull, ien, itype, ipol;
@@ -164,10 +164,10 @@ GpioCtrl_IoctlConfigurePin(
     KIRQL oldIrql;
 
     isl   = IoGetCurrentIrpStackLocation(Irp);
-    in    = (PGPIO_CONFIGURE_PIN)Irp->AssociatedIrp.SystemBuffer;
+    in    = (PGPIOCTRL_CONFIGURE_PIN)Irp->AssociatedIrp.SystemBuffer;
     inLen = isl->Parameters.DeviceIoControl.InputBufferLength;
 
-    if (inLen < sizeof(GPIO_CONFIGURE_PIN)) {
+    if (inLen < sizeof(GPIOCTRL_CONFIGURE_PIN)) {
         Irp->IoStatus.Information = 0;
         return STATUS_BUFFER_TOO_SMALL;
     }
@@ -235,7 +235,7 @@ GpioCtrl_IoctlConfigurePin(
    --------------------------------------------------------------------------- */
 NTSTATUS
 GpioCtrl_IoctlQueryCaps(
-    IN PGPIOCTRL_FDO_EXT Ext,
+    IN PGPIOCTRL_FDO Ext,
     IN PIRP               Irp
     )
 {
