@@ -1382,13 +1382,15 @@ I2cCtrl_AcpiGetDeviceInformation(
 // IOCTL_ACPI_GET_DEVICE_INFORMATION. We only care about a few fields.
 //
 typedef struct _I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE {
-    ULONG Signature;       // filled by ACPI, ignored here
-    ULONG Length;          // total length of this structure
-    ULONG NextRequest;     // IN: index to request
-    PVOID DeviceHandle;    // OUT: opaque handle
-    ULONG DeviceStatus;    // OUT: _STA bits
-    // The real structure has more fields; we don't need them.
-} I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE, *PI2CCTRL_ACPI_DEVICE_INFORMATION_WIRE;
+    ULONG Signature;
+    ULONG Length;
+    ULONG NextRequest;
+    PVOID DeviceHandle;
+    ULONG DeviceStatus;
+    ULONG DeviceType;
+    NTSTATUS Status;
+    PDEVICE_OBJECT DeviceObject;
+} I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE;
 
 /* FIFO helpers used by surprise-remove quiesce */
 VOID I2cCtrl_DrainRxFifoBounded(PI2CCTRL_FDO FdoExt);

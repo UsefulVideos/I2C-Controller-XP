@@ -2087,11 +2087,11 @@ I2cCtrl_AcpiFillMethodName(
 
 NTSTATUS
 I2cCtrl_AcpiEvalMethod(
-    PDEVICE_OBJECT            AcpiPdo,
-    PVOID                     AcpiHandle,
-    PCSTR                     MethodName,
-    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER  OutBuf,
-    ULONG                     OutBufLen
+    PDEVICE_OBJECT                     AcpiPdo,
+    PVOID                              AcpiHandle,
+    PCSTR                              MethodName,
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER   OutBuf,
+    ULONG                              OutBufLen
     )
 {
     NTSTATUS                status;
@@ -2106,8 +2106,10 @@ I2cCtrl_AcpiEvalMethod(
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    if (AcpiPdo == NULL || MethodName == NULL ||
-        OutBuf == NULL || OutBufLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
+    if (AcpiPdo == NULL ||
+        MethodName == NULL ||
+        OutBuf == NULL ||
+        OutBufLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
     {
         I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Pdo=%p, Method=%s, OutLen=%lu)\n",
                     AcpiPdo, MethodName, OutBufLen);
@@ -2119,18 +2121,12 @@ I2cCtrl_AcpiEvalMethod(
     I2cCtrl_Log("AcpiEvalMethod: begin (PDO=%p, Handle=%p, Method=%s)\n",
                 AcpiPdo, AcpiHandle, MethodName);
 
-    //
-    // Build simple ACPI input buffer
-    //
     RtlZeroMemory(&input, sizeof(input));
-
 #ifdef ACPI_EVAL_INPUT_BUFFER_SIGNATURE
     input.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
 #endif
 
-    //
-    // MethodName is ANSI 4-char (e.g. "_HID", "_CID", "_ADR", "_CRS")
-    //
+    /* MethodName is 4‑char ANSI (e.g. "_ADR") */
     input.MethodNameAsUlong = *((PULONG)MethodName);
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
@@ -2144,16 +2140,15 @@ I2cCtrl_AcpiEvalMethod(
               OutBufLen,
               FALSE,
               &event,
-              &iosb);
+              &iosb
+          );
 
     if (irp == NULL) {
         I2cCtrl_Log("AcpiEvalMethod: IoBuildDeviceIoControlRequest failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    //
-    // XP ACPI namespace handle is passed via OriginalFileObject
-    //
+    /* XP ACPI namespace handle is passed via OriginalFileObject */
     irp->Tail.Overlay.OriginalFileObject = (PFILE_OBJECT)AcpiHandle;
 
     I2cCtrl_Log("AcpiEvalMethod: sending IRP (Method=%s, Handle=%p)\n",
@@ -2162,7 +2157,7 @@ I2cCtrl_AcpiEvalMethod(
     status = IoCallDriver(AcpiPdo, irp);
 
     if (status == STATUS_PENDING) {
-        timeout.QuadPart = -5 * 1000 * 1000 * 10; // 5 seconds
+        timeout.QuadPart = -5 * 1000 * 1000 * 10; /* 5 seconds */
         KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, &timeout);
         status = iosb.Status;
     }
@@ -2173,10 +2168,10 @@ I2cCtrl_AcpiEvalMethod(
         return status;
     }
 
-    if (iosb.Information < sizeof(PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) ||
+    if (iosb.Information < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) ||
         iosb.Information > OutBufLen)
     {
-        I2cCtrl_Log("AcpiEvalMethod: buffer overflow (Method=%s, Info=%lu, OutLen=%lu)\n",
+        I2cCtrl_Log("AcpiEvalMethod: buffer size mismatch (Method=%s, Info=%lu, OutLen=%lu)\n",
                     MethodName, (ULONG)iosb.Information, OutBufLen);
         return STATUS_BUFFER_OVERFLOW;
     }
@@ -11777,9 +11772,9 @@ I2cCtrl_AcpiGetHidDescriptorViaDsm(
     return STATUS_SUCCESS;
 }
 
+
 //
 // Query ACPI for device information (IOCTL_ACPI_GET_DEVICE_INFORMATION)
-// B) The ACPI root (\_SB) - DeviceHandle is currently unused and reserved
 //
 NTSTATUS
 I2cCtrl_AcpiGetDeviceInformation(
@@ -11798,7 +11793,6 @@ I2cCtrl_AcpiGetDeviceInformation(
     UNREFERENCED_PARAMETER(DeviceHandle);
 
     if (AcpiPdo == NULL || Info == NULL) {
-        I2cCtrl_Log("AcpiGetDevInfo: invalid parameters\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -11810,7 +11804,8 @@ I2cCtrl_AcpiGetDeviceInformation(
     RtlZeroMemory(Info, sizeof(*Info));
 
     wireInfo.Signature   = ACPI_DEVICE_INFORMATION_SIGNATURE;
-    wireInfo.NextRequest = Info->NextRequest;
+    wireInfo.Length      = sizeof(wireInfo);      // REQUIRED
+    wireInfo.NextRequest = Info->NextRequest;     // usually 0
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
 
@@ -11841,24 +11836,17 @@ I2cCtrl_AcpiGetDeviceInformation(
     }
 
     //
-    // Copy ONLY the fields that exist in the wire struct.
+    // Copy the fields we expose to the rest of the driver.
     //
     Info->NextRequest  = wireInfo.NextRequest;
     Info->DeviceHandle = wireInfo.DeviceHandle;
     Info->DeviceStatus = wireInfo.DeviceStatus;
-
-    //
-    // The remaining fields DO NOT exist in the wire struct.
-    // Leave them zeroed:
-    //
-    // Info->DeviceObject = NULL;
-    // Info->DeviceType   = 0;
-    // Info->Status       = 0;
-    //
+    Info->DeviceType   = wireInfo.DeviceType;
+    Info->Status       = wireInfo.Status;
+    Info->DeviceObject = wireInfo.DeviceObject;
 
     return STATUS_SUCCESS;
 }
-
 
 NTSTATUS
 I2cCtrl_ReportPwrmBaseInfo(
@@ -11918,34 +11906,65 @@ I2cCtrl_AcpiEvalInteger(
     if (!AcpiDevice || !MethodName || !OutValue)
         return STATUS_INVALID_PARAMETER;
 
-    outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
+    //
+    // Allocate enough space for:
+    //   - our header
+    //   - one ACPI_METHOD_ARGUMENT
+    //   - a 64‑bit integer payload
+    //
+    outLen =
+        sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) +
+        sizeof(ACPI_METHOD_ARGUMENT) +
+        sizeof(ULONG64);
+
     outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'pmcA');
     if (!outBuf)
         return STATUS_INSUFFICIENT_RESOURCES;
 
+    RtlZeroMemory(outBuf, outLen);
+
+    //
+    // Perform the ACPI evaluation.
+    //
     status = I2cCtrl_AcpiEvalMethod(
                  AcpiDevice,
                  NULL,          // no handle
-                 MethodName,    // e.g. "TPMC"
+                 MethodName,    // e.g. "_ADR"
                  outBuf,
                  outLen
              );
 
-    if (NT_SUCCESS(status) && outBuf->Count >= 1) {
+    if (!NT_SUCCESS(status)) {
+        ExFreePool(outBuf);
+        return status;
+    }
 
-        PACPI_METHOD_ARGUMENT arg;
+    //
+    // Validate returned structure.
+    //
+    if (outBuf->Count < 1 ||
+        outBuf->Length < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
+    {
+        ExFreePool(outBuf);
+        return STATUS_UNSUCCESSFUL;
+    }
 
-        arg = (PACPI_METHOD_ARGUMENT)outBuf->Data;
+    //
+    // Extract first argument from Data[].
+    //
+    {
+        PACPI_METHOD_ARGUMENT arg =
+            (PACPI_METHOD_ARGUMENT)outBuf->Data;
 
         if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER &&
             arg->DataLength >= sizeof(ULONG64))
         {
             *OutValue = *(ULONG64*)arg->Data;
-        } else {
+            status = STATUS_SUCCESS;
+        }
+        else {
             status = STATUS_UNSUCCESSFUL;
         }
-    } else {
-        status = STATUS_UNSUCCESSFUL;
     }
 
     ExFreePool(outBuf);
