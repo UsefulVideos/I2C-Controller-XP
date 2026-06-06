@@ -12867,13 +12867,41 @@ I2cCtrl_GetPciBusDevFun(
     ULONG *Fun
     )
 {
-    UNREFERENCED_PARAMETER(PciPdo);
-    UNREFERENCED_PARAMETER(Bus);
-    UNREFERENCED_PARAMETER(Dev);
-    UNREFERENCED_PARAMETER(Fun);
+    NTSTATUS status;
+    ULONG addr = 0;
+    ULONG bytes = 0;
 
-    I2cCtrl_Log("GetPciBusDevFun: STUB\n");
-    return STATUS_NOT_SUPPORTED;
+    if (PciPdo == NULL || Bus == NULL || Dev == NULL || Fun == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        I2cCtrl_Log("GetPciBusDevFun: wrong IRQL\n");
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    PAGED_CODE();
+
+    status = IoGetDeviceProperty(
+                 PciPdo,
+                 DevicePropertyAddress,
+                 sizeof(ULONG),
+                 &addr,
+                 &bytes
+             );
+
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("GetPciBusDevFun: IoGetDeviceProperty failed (0x%08lx)\n", status);
+        return status;
+    }
+
+    *Fun =  (addr      ) & 0x07;
+    *Dev = ((addr >> 3) & 0x1F);
+    *Bus = ((addr >> 8) & 0xFF);
+
+    I2cCtrl_Log("GetPciBusDevFun: BDF = %lu:%lu.%lu\n", *Bus, *Dev, *Fun);
+
+    return STATUS_SUCCESS;
 }
 
 
