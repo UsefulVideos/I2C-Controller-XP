@@ -12713,6 +12713,8 @@ I2cCtrl_FindAcpiPdoByAdr(
         return NULL;
     }
 
+    PAGED_CODE();
+
     fdoExt = (PI2CCTRL_FDO)Fdo->DeviceExtension;
 
     /* Get PCI PDO */
@@ -12738,24 +12740,13 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     I2cCtrl_Log("FindAcpiPdoByAdr: expected _ADR = 0x%08lx\n", adrValue);
 
-    /*
-     * IMPORTANT:
-     * We do NOT enumerate ACPI PDOs.
-     * We simply call AcpiOpen, which already finds the ACPI PDO
-     * for this PCI controller using your existing stack-walk logic.
-     */
-
     status = I2cCtrl_AcpiOpen(fdoExt);
     if (!NT_SUCCESS(status) || fdoExt->AcpiDeviceObject == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: AcpiOpen failed (0x%08lx)\n", status);
         return NULL;
     }
 
-    /*
-     * Now evaluate _ADR on the ACPI PDO that AcpiOpen found.
-     * If _ADR matches the PCI BDF, this is the correct ACPI node.
-     */
-
+    /* Evaluate _ADR on the ACPI PDO */
     outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
 
     outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
@@ -12800,11 +12791,6 @@ I2cCtrl_FindAcpiPdoByAdr(
         }
     }
 
-    /*
-     * _ADR matches.
-     * This ACPI PDO is correct.
-     */
-
     I2cCtrl_Log("FindAcpiPdoByAdr: MATCH -> ACPI PDO %p\n",
                 fdoExt->AcpiDeviceObject);
 
@@ -12829,7 +12815,13 @@ I2cCtrl_GetPciBusDevFun(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Query PCI PDO for DevicePropertyAddress */
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        I2cCtrl_Log("GetPciBusDevFun: wrong IRQL\n");
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    PAGED_CODE();
+
     status = IoGetDeviceProperty(
                  PciPdo,
                  DevicePropertyAddress,
@@ -12842,13 +12834,6 @@ I2cCtrl_GetPciBusDevFun(
         I2cCtrl_Log("GetPciBusDevFun: IoGetDeviceProperty failed (0x%08lx)\n", status);
         return status;
     }
-
-    /*
-     * DevicePropertyAddress returns:
-     *   bits  0..2 = function
-     *   bits  3..7 = device
-     *   bits  8..15 = bus
-     */
 
     *Fun =  (addr      ) & 0x07;
     *Dev = ((addr >> 3) & 0x1F);
