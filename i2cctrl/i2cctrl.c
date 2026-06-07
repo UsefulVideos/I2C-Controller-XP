@@ -2834,17 +2834,49 @@ I2cCtrl_Log(
 
     PAGED_CODE();
 
+    //
+    // Hard safety guards: prevent use-after-free crashes
+    //
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        return;
+    }
+
     if (Format == NULL) {
         return;
     }
 
-    /* Format the caller's message */
-    va_start(args, Format);
-    status = RtlStringCbVPrintfA(buffer, sizeof(buffer), Format, args);
-    va_end(args);
+    //
+    // SAFE pointer formatting:
+    // Convert all %p to 0x%I64X BEFORE calling VPrintf.
+    // This prevents the CRT from dereferencing freed pointers.
+    //
+    {
+        CHAR safeFmt[256];
+        SIZE_T i = 0, j = 0;
 
-    if (!NT_SUCCESS(status)) {
-        return;
+        while (Format[i] != '\0' && j < sizeof(safeFmt) - 1) {
+            if (Format[i] == '%' && Format[i+1] == 'p') {
+                safeFmt[j++] = '0';
+                safeFmt[j++] = 'x';
+                safeFmt[j++] = '%';
+                safeFmt[j++] = 'I';
+                safeFmt[j++] = '6';
+                safeFmt[j++] = '4';
+                safeFmt[j++] = 'X';
+                i += 2;
+                continue;
+            }
+            safeFmt[j++] = Format[i++];
+        }
+        safeFmt[j] = '\0';
+
+        va_start(args, Format);
+        status = RtlStringCbVPrintfA(buffer, sizeof(buffer), safeFmt, args);
+        va_end(args);
+
+        if (!NT_SUCCESS(status)) {
+            return;
+        }
     }
 
     /* Get local time */
@@ -2860,7 +2892,6 @@ I2cCtrl_Log(
 
         if (hour == 0) {
             hour = 12;
-            pm = FALSE;
         } else if (hour == 12) {
             pm = TRUE;
         } else if (hour > 12) {
@@ -2880,7 +2911,6 @@ I2cCtrl_Log(
             pm ? "PM" : "AM"
         );
 
-        /* Combine timestamp + message */
         RtlStringCbPrintfA(
             final,
             sizeof(final),
@@ -2933,10 +2963,9 @@ I2cCtrl_Log(
     );
 
     ZwClose(hFile);
-	
-	//
+
+    //
     // Mirror to ETW/WPP without the timestamp prefix.
-    // 'buffer' contains the original caller message (already formatted).
     //
     TraceEvents(
         TRACE_LEVEL_INFORMATION,
