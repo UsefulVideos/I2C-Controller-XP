@@ -2507,26 +2507,31 @@ I2cCtrl_TimeoutDpcRoutine(
         devctx->Ops == NULL) {
 
         KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
-        if (xc->Irp == irp) {
-            devctx->ActiveBusy = FALSE;
-            xc->Status = STATUS_DEVICE_NOT_READY;
-            xc->Irp = NULL;
+        if (xc->Irp != irp) {
+            KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+            return;
         }
+        devctx->ActiveBusy = FALSE;
+        xc->Status = STATUS_DEVICE_NOT_READY;
+        xc->Irp = NULL;
         KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
-        /* Quiesce hardware via HAL */
-        if (devctx->Ops->MaskInterrupts != NULL) {
-            devctx->Ops->MaskInterrupts(devctx, 0U);
-        }
-        if (devctx->Ops->AckInterrupts != NULL) {
-            devctx->Ops->AckInterrupts(devctx,
-              I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
-              I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
-              I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
-              I2C_INT_RD_REQ);
-        }
-        if (devctx->Ops->Enable != NULL) {
-            (VOID)devctx->Ops->Enable(devctx, FALSE);
+        /* Quiesce hardware via HAL (only if Ops is valid) */
+        if (devctx->Ops != NULL) {
+            if (devctx->Ops->MaskInterrupts != NULL) {
+                devctx->Ops->MaskInterrupts(devctx, 0U);
+            }
+            if (devctx->Ops->AckInterrupts != NULL) {
+                devctx->Ops->AckInterrupts(
+                    devctx,
+                    I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
+                    I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
+                    I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
+                    I2C_INT_RD_REQ);
+            }
+            if (devctx->Ops->Enable != NULL) {
+                (VOID)devctx->Ops->Enable(devctx, FALSE);
+            }
         }
 
         devctx->HardwareFailure = TRUE;
@@ -2542,20 +2547,22 @@ I2cCtrl_TimeoutDpcRoutine(
     if (xc->RetryCount < devctx->MaxRetries) {
         xc->RetryCount++;
 
-        if (devctx->Ops->MaskInterrupts != NULL) {
-            devctx->Ops->MaskInterrupts(devctx, 0U);
-        }
-        if (devctx->Ops->AckInterrupts != NULL) {
-            devctx->Ops->AckInterrupts(devctx,
-              I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
-              I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
-              I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
-              I2C_INT_RD_REQ);
-        }
-
-        if (devctx->Ops->Enable != NULL) {
-            (VOID)devctx->Ops->Enable(devctx, FALSE);
-            (VOID)devctx->Ops->Enable(devctx, TRUE);
+        if (devctx->Ops != NULL) {
+            if (devctx->Ops->MaskInterrupts != NULL) {
+                devctx->Ops->MaskInterrupts(devctx, 0U);
+            }
+            if (devctx->Ops->AckInterrupts != NULL) {
+                devctx->Ops->AckInterrupts(
+                    devctx,
+                    I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
+                    I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
+                    I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
+                    I2C_INT_RD_REQ);
+            }
+            if (devctx->Ops->Enable != NULL) {
+                (VOID)devctx->Ops->Enable(devctx, FALSE);
+                (VOID)devctx->Ops->Enable(devctx, TRUE);
+            }
         }
 
         if (devctx->TransactionTimeoutMs == 0U) {
@@ -2578,25 +2585,30 @@ I2cCtrl_TimeoutDpcRoutine(
 
     /* Retries exhausted: fence, quiesce, and complete with timeout */
     KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
-    if (xc->Irp == irp) {
-        devctx->ActiveBusy = FALSE;
-        xc->Status = STATUS_IO_TIMEOUT;
-        xc->Irp = NULL;
+    if (xc->Irp != irp) {
+        KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+        return;
     }
+    devctx->ActiveBusy = FALSE;
+    xc->Status = STATUS_IO_TIMEOUT;
+    xc->Irp = NULL;
     KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
-    if (devctx->Ops->MaskInterrupts != NULL) {
-        devctx->Ops->MaskInterrupts(devctx, 0U);
-    }
-    if (devctx->Ops->AckInterrupts != NULL) {
-        devctx->Ops->AckInterrupts(devctx,
-          I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
-          I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
-          I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
-          I2C_INT_RD_REQ);
-    }
-    if (devctx->Ops->Enable != NULL) {
-        (VOID)devctx->Ops->Enable(devctx, FALSE);
+    if (devctx->Ops != NULL) {
+        if (devctx->Ops->MaskInterrupts != NULL) {
+            devctx->Ops->MaskInterrupts(devctx, 0U);
+        }
+        if (devctx->Ops->AckInterrupts != NULL) {
+            devctx->Ops->AckInterrupts(
+                devctx,
+                I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
+                I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
+                I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
+                I2C_INT_RD_REQ);
+        }
+        if (devctx->Ops->Enable != NULL) {
+            (VOID)devctx->Ops->Enable(devctx, FALSE);
+        }
     }
 
     devctx->HardwareFailure = TRUE;
@@ -2606,7 +2618,6 @@ I2cCtrl_TimeoutDpcRoutine(
     KeSetEvent(&devctx->TransferEvent, IO_NO_INCREMENT, FALSE);
     IoCompleteRequest(irp, IO_NO_INCREMENT);
 }
-
 
 /* -----------------------------------------------------------------------
  * I2cCtrl_QueueDpcRoutine - QoS scheduler: dequeue by priority and start HW transfer
@@ -2715,13 +2726,17 @@ I2cCtrl_QueueDpcRoutine(
     /* Attach the request pointer to IRP for cleanup in completion path */
     irp->Tail.Overlay.DriverContext[0] = req;
 
-    /* Reset and configure transfer context */
+    /* Reset and configure transfer context under QueueLock to synchronize with timeout DPC */
     xc = &devctx->XferCtx;
     RtlZeroMemory(xc, sizeof(*xc));
+
+    KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
     xc->Irp        = irp;
     xc->Status     = STATUS_SUCCESS;
     xc->StopSeen   = FALSE;
     xc->RetryCount = 0;
+    devctx->ActiveBusy = TRUE;
+    KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
     /* Arm the per-transfer timeout */
     KeInitializeTimer(&xc->TimeoutTimer);
@@ -2739,7 +2754,14 @@ I2cCtrl_QueueDpcRoutine(
             irp->IoStatus.Status = status;
             irp->IoStatus.Information = 0;
             irp->Tail.Overlay.DriverContext[0] = NULL;
-            xc->Irp = NULL;
+
+            KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+            if (devctx->XferCtx.Irp == irp) {
+                devctx->XferCtx.Irp = NULL;
+                devctx->ActiveBusy = FALSE;
+            }
+            KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
             IoCompleteRequest(irp, IO_NO_INCREMENT);
             ExFreePool(req);
             return;
@@ -2751,7 +2773,8 @@ I2cCtrl_QueueDpcRoutine(
 
     /* Clear latched causes before starting */
     if (devctx->Ops != NULL && devctx->Ops->AckInterrupts != NULL) {
-        devctx->Ops->AckInterrupts(devctx,
+        devctx->Ops->AckInterrupts(
+            devctx,
             I2C_INT_TX_ABORT  | I2C_INT_RX_OVER | I2C_INT_RX_UNDER |
             I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
             I2C_INT_GEN_CALL | I2C_INT_ACTIVITY |
@@ -2760,13 +2783,12 @@ I2cCtrl_QueueDpcRoutine(
 
     /* Dispatch by opcode (existing logic retained) */
     if (req->OpCode == I2CCTRL_OPCODE_BLOCK_WRITE) {
-        /* … existing block write logic unchanged … */
+        /* existing block write logic */
 
     } else if (req->OpCode == I2CCTRL_OPCODE_BLOCK_READ) {
-        /* … existing block read logic unchanged … */
+        /* existing block read logic */
 
     } else if (req->OpCode == I2CCTRL_OPCODE_GET_PT_SAMPLE) {
-        /* HID/touch path: delegate to QueryTouchSample */
         PT_RAW_SAMPLE sample;
         RtlZeroMemory(&sample, sizeof(sample));
 
@@ -2792,7 +2814,14 @@ I2cCtrl_QueueDpcRoutine(
         }
 
         irp->Tail.Overlay.DriverContext[0] = NULL;
-        xc->Irp = NULL;
+
+        KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+        if (devctx->XferCtx.Irp == irp) {
+            devctx->XferCtx.Irp = NULL;
+            devctx->ActiveBusy = FALSE;
+        }
+        KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         ExFreePool(req);
         return;
@@ -2802,7 +2831,14 @@ I2cCtrl_QueueDpcRoutine(
         irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
         irp->IoStatus.Information = 0;
         irp->Tail.Overlay.DriverContext[0] = NULL;
-        xc->Irp = NULL;
+
+        KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+        if (devctx->XferCtx.Irp == irp) {
+            devctx->XferCtx.Irp = NULL;
+            devctx->ActiveBusy = FALSE;
+        }
+        KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         ExFreePool(req);
         return;

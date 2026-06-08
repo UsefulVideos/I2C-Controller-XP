@@ -85,16 +85,6 @@ VOID I2cCtrl_DpcRoutine(
 
 VOID I2cCtrl_QueueDpcRoutine(PKDPC Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2);
 
-/* Timeout DPC handler */
-VOID
-I2cCtrl_TimeoutDpcRoutine(
-    PKDPC Dpc,
-    PVOID DeferredContext,
-    PVOID SystemArg1,
-    PVOID SystemArg2
-    );
-
-
 /* ============================================================================
    SMBus queue and request processing
    ============================================================================ */

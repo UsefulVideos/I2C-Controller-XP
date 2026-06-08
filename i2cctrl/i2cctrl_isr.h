@@ -37,10 +37,10 @@ I2cCtrl_MapAbortSource(
    --------------------------------------------------------------------------- */
 VOID
 I2cCtrl_TimeoutDpcRoutine(
-    PKDPC Dpc,
-    PVOID DeferredContext,
-    PVOID SystemArg1,
-    PVOID SystemArg2
+    IN PKDPC Dpc,
+    IN PVOID DeferredContext,
+    IN PVOID SystemArg1,
+    IN PVOID SystemArg2
     );
 
 /* ---------------------------------------------------------------------------
