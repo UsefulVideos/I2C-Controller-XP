@@ -101,10 +101,6 @@ I2cCtrl_QueryDeviceRelations(
 }
 
 
-/* -----------------------------------------------------------------------
- * I2cCtrl_FdoDispatch - FDO dispatch routine
- * XP/2003 BSOD-safe, WinDDK-compiler-safe, C89-compliant.
- * ----------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_FdoDispatch(
     PDEVICE_OBJECT DeviceObject,
@@ -125,14 +121,8 @@ I2cCtrl_FdoDispatch(
     irpSp  = IoGetCurrentIrpStackLocation(Irp);
     fdoExt = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
 
-    I2cCtrl_Log("FDO: Entered for device %p, Major=0x%02X, Minor=0x%02X\n",
-                DeviceObject,
-                irpSp ? irpSp->MajorFunction : 0xFF,
-                irpSp ? irpSp->MinorFunction : 0xFF);
-
     /* Must be our FDO */
     if (fdoExt == NULL || fdoExt->Self != DeviceObject) {
-        I2cCtrl_Log("FDO: Invalid extension or Self mismatch -> STATUS_INVALID_DEVICE_REQUEST\n");
 
         Irp->IoStatus.Status      = STATUS_INVALID_DEVICE_REQUEST;
         Irp->IoStatus.Information = 0;
@@ -142,7 +132,6 @@ I2cCtrl_FdoDispatch(
 
     /* If already removed, fail cleanly */
     if (fdoExt->Removed) {
-        I2cCtrl_Log("FDO: Device already removed -> STATUS_NO_SUCH_DEVICE\n");
 
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
         Irp->IoStatus.Information = 0;
@@ -153,7 +142,6 @@ I2cCtrl_FdoDispatch(
     /* Acquire remove lock for this IRP */
     status = IoAcquireRemoveLock(&fdoExt->RemoveLock, Irp);
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("FDO: IoAcquireRemoveLock FAILED (0x%08X)\n", status);
 
         Irp->IoStatus.Status      = status;
         Irp->IoStatus.Information = 0;
@@ -162,7 +150,6 @@ I2cCtrl_FdoDispatch(
     }
 
     if (irpSp == NULL) {
-        I2cCtrl_Log("FDO: irpSp NULL -> STATUS_INVALID_PARAMETER\n");
 
         IoReleaseRemoveLock(&fdoExt->RemoveLock, Irp);
         Irp->IoStatus.Status      = STATUS_INVALID_PARAMETER;
@@ -178,7 +165,6 @@ I2cCtrl_FdoDispatch(
         switch (irpSp->MinorFunction) {
 
         case IRP_MN_START_DEVICE:
-            I2cCtrl_Log("FDO: IRP_MN_START_DEVICE -> forwarding + StartCompletion\n");
 
             IoCopyCurrentIrpStackLocationToNext(Irp);
             IoSetCompletionRoutine(
@@ -189,128 +175,83 @@ I2cCtrl_FdoDispatch(
             );
             return IoCallDriver(fdoExt->LowerDevice, Irp);
 
-case IRP_MN_QUERY_DEVICE_RELATIONS:
-{
-    ULONG type = irpSp->Parameters.QueryDeviceRelations.Type;
-
-    I2cCtrl_Log("FDO: IRP_MN_QUERY_DEVICE_RELATIONS (Type=%u)\n", type);
-
-    if (type == BusRelations)
-    {
-        if (fdoExt->ReadyForChildren)
+        case IRP_MN_QUERY_DEVICE_RELATIONS:
         {
-            //
-            // CreateTouchpad now AUTOMATICALLY:
-            //  - Enumerates ACPI children if none exist
-            //  - Reenumerates if needed
-            //  - Deletes invalid children
-            //  - Binds the PT touchpad
-            //
-            I2cCtrl_Log("BusRelations: calling I2cCtrl_CreateTouchpad()\n");
+            ULONG type = irpSp->Parameters.QueryDeviceRelations.Type;
 
-            (void)I2cCtrl_CreateTouchpad(fdoExt->Self, fdoExt);
+            if (type == BusRelations)
+            {
+                if (fdoExt->ReadyForChildren)
+                {
+                    (void)I2cCtrl_CreateTouchpad(fdoExt->Self, fdoExt);
+                }
+
+                status = I2cCtrl_QueryDeviceRelations(fdoExt, Irp);
+
+                IoReleaseRemoveLock(&fdoExt->RemoveLock, Irp);
+                return status;
+            }
+
+            IoCopyCurrentIrpStackLocationToNext(Irp);
+            IoSetCompletionRoutine(
+                Irp,
+                I2CCTRL_ReleaseLockCompletion,
+                &fdoExt->RemoveLock,
+                TRUE, TRUE, TRUE
+            );
+            return IoCallDriver(fdoExt->LowerDevice, Irp);
         }
-        else
+
+        case IRP_MN_QUERY_ID:
         {
-            I2cCtrl_Log("BusRelations: StartDevice not completed -> returning existing children only\n");
+            ULONG idType = irpSp->Parameters.QueryId.IdType;
+
+            if (idType == BusQueryDeviceID)
+            {
+                static const WCHAR busId[] = L"I2CCTRL";
+                SIZE_T len = sizeof(busId);
+                PWSTR buf;
+
+                buf = (PWSTR)ExAllocatePoolWithTag(PagedPool, len, 'odfI');
+                if (!buf) {
+                    status = STATUS_INSUFFICIENT_RESOURCES;
+                } else {
+                    RtlCopyMemory(buf, busId, len);
+                    Irp->IoStatus.Information = (ULONG_PTR)buf;
+                    status = STATUS_SUCCESS;
+                }
+
+                Irp->IoStatus.Status = status;
+                IoCompleteRequest(Irp, IO_NO_INCREMENT);
+                return status;
+            }
+
+            IoCopyCurrentIrpStackLocationToNext(Irp);
+            IoSetCompletionRoutine(
+                Irp,
+                I2CCTRL_ReleaseLockCompletion,
+                &fdoExt->RemoveLock,
+                TRUE, TRUE, TRUE
+            );
+            return IoCallDriver(fdoExt->LowerDevice, Irp);
         }
-
-        //
-        // Return DEVICE_RELATIONS (ACPI children only)
-        //
-        status = I2cCtrl_QueryDeviceRelations(fdoExt, Irp);
-
-        IoReleaseRemoveLock(&fdoExt->RemoveLock, Irp);
-        return status;
-    }
-
-    I2cCtrl_Log("FDO: QUERY_DEVICE_RELATIONS (Type=%u) -> passing down\n", type);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(
-        Irp,
-        I2CCTRL_ReleaseLockCompletion,
-        &fdoExt->RemoveLock,
-        TRUE, TRUE, TRUE
-    );
-    return IoCallDriver(fdoExt->LowerDevice, Irp);
-}
-
-
-case IRP_MN_QUERY_ID:
-{
-    ULONG idType = irpSp->Parameters.QueryId.IdType;
-    I2cCtrl_Log("FDO: IRP_MN_QUERY_ID (IdType=%u)\n", idType);
-
-    //
-    // XP DOES NOT DEFINE BusQueryBusID.
-    // XP only defines:
-    //   BusQueryDeviceID = 0
-    //   BusQueryHardwareIDs = 1
-    //   BusQueryCompatibleIDs = 2
-    //   BusQueryInstanceID = 3
-    //   BusQueryDeviceSerialNumber = 4
-    //
-    // So we use BusQueryDeviceID to return the BUS ID.
-    //
-    if (idType == BusQueryDeviceID)
-    {
-        static const WCHAR busId[] = L"I2CCTRL";
-        SIZE_T len = sizeof(busId);
-
-        PWSTR buf = (PWSTR)ExAllocatePoolWithTag(PagedPool, len, 'odfI');
-        if (!buf) {
-            I2cCtrl_Log("FDO: BusQueryDeviceID alloc FAILED (%u bytes)\n", (unsigned)len);
-            status = STATUS_INSUFFICIENT_RESOURCES;
-        } else {
-            RtlCopyMemory(buf, busId, len);
-            Irp->IoStatus.Information = (ULONG_PTR)buf;
-            I2cCtrl_Log("FDO: BusQueryDeviceID SUCCESS - \"%ws\"\n", busId);
-            status = STATUS_SUCCESS;
-        }
-
-        Irp->IoStatus.Status = status;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return status;
-    }
-
-    //
-    // All other ID types → pass down to PCI
-    //
-    I2cCtrl_Log("FDO: IRP_MN_QUERY_ID IdType=%u -> passing down\n", idType);
-
-    IoCopyCurrentIrpStackLocationToNext(Irp);
-    IoSetCompletionRoutine(
-        Irp,
-        I2CCTRL_ReleaseLockCompletion,
-        &fdoExt->RemoveLock,
-        TRUE, TRUE, TRUE
-    );
-    return IoCallDriver(fdoExt->LowerDevice, Irp);
-}
 
         case IRP_MN_STOP_DEVICE:
-            I2cCtrl_Log("FDO: IRP_MN_STOP_DEVICE -> stopping controller\n");
 
-            /* Mark the device as stopping BEFORE touching hardware. */
             fdoExt->Stopping = TRUE;
             fdoExt->Started  = FALSE;
 
-            /* Cancel all DPCs... */
             KeRemoveQueueDpc(&fdoExt->IsrDpc);
             KeRemoveQueueDpc(&fdoExt->QueueDpc);
             KeRemoveQueueDpc(&fdoExt->TimeoutDpc);
 
-            /* Disconnect interrupt... */
             if (fdoExt->InterruptObject) {
                 IoDisconnectInterrupt(fdoExt->InterruptObject);
                 fdoExt->InterruptObject = NULL;
             }
 
-            /* Now it is safe to stop the hardware. */
             (void)I2cCtrl_StopDevice(fdoExt);
 
-            /* Forward IRP down the stack. */
             IoCopyCurrentIrpStackLocationToNext(Irp);
             IoSetCompletionRoutine(
                 Irp,
@@ -321,29 +262,23 @@ case IRP_MN_QUERY_ID:
             return IoCallDriver(fdoExt->LowerDevice, Irp);
 
         case IRP_MN_SURPRISE_REMOVAL:
-            I2cCtrl_Log("FDO: IRP_MN_SURPRISE_REMOVAL -> emergency stop\n");
 
-            /* Mark device as gone BEFORE touching hardware. */
             fdoExt->SurpriseRemoved = TRUE;
             fdoExt->Stopping        = TRUE;
             fdoExt->Removed         = TRUE;
             fdoExt->Started         = FALSE;
 
-            /* Cancel all DPCs... */
             KeRemoveQueueDpc(&fdoExt->IsrDpc);
             KeRemoveQueueDpc(&fdoExt->QueueDpc);
             KeRemoveQueueDpc(&fdoExt->TimeoutDpc);
 
-            /* Disconnect interrupt... */
             if (fdoExt->InterruptObject) {
                 IoDisconnectInterrupt(fdoExt->InterruptObject);
                 fdoExt->InterruptObject = NULL;
             }
 
-            /* Now it is safe to stop the hardware. */
             (void)I2cCtrl_StopDevice(fdoExt);
 
-            /* Forward IRP down the stack. */
             IoCopyCurrentIrpStackLocationToNext(Irp);
             IoSetCompletionRoutine(
                 Irp,
@@ -359,12 +294,9 @@ case IRP_MN_QUERY_ID:
             PDEVICE_OBJECT lower;
             NTSTATUS       downStatus;
 
-            I2cCtrl_Log("FDO: IRP_MN_REMOVE_DEVICE -> full teardown\n");
-
             ext   = fdoExt;
             lower = ext->LowerDevice;
 
-            /* Correct place for the flags */
             ext->Removed  = TRUE;
             ext->Stopping = TRUE;
             ext->Started  = FALSE;
@@ -372,12 +304,10 @@ case IRP_MN_QUERY_ID:
             (void)I2cCtrl_RemoveDevice(ext, Irp);
 
             if (lower != NULL) {
-                I2cCtrl_Log("FDO: Forwarding REMOVE_DEVICE to lower %p\n", lower);
 
                 IoSkipCurrentIrpStackLocation(Irp);
                 downStatus = IoCallDriver(lower, Irp);
             } else {
-                I2cCtrl_Log("FDO: No lower device -> completing REMOVE locally\n");
 
                 Irp->IoStatus.Status      = STATUS_SUCCESS;
                 Irp->IoStatus.Information = 0;
@@ -385,11 +315,9 @@ case IRP_MN_QUERY_ID:
                 downStatus = STATUS_SUCCESS;
             }
 
-            I2cCtrl_Log("FDO: Waiting for outstanding IRPs\n");
             IoReleaseRemoveLockAndWait(&ext->RemoveLock, Irp);
 
             if (lower != NULL) {
-                I2cCtrl_Log("FDO: Detaching from lower %p\n", lower);
                 IoDetachDevice(lower);
                 ext->LowerDevice = NULL;
             }
@@ -397,15 +325,12 @@ case IRP_MN_QUERY_ID:
             ASSERT(IsListEmpty(&ext->ChildList));
             ASSERT(ext->NumChildren == 0);
 
-            I2cCtrl_Log("FDO: Deleting FDO %p\n", DeviceObject);
             IoDeleteDevice(DeviceObject);
 
             return downStatus;
         }
 
         default:
-            I2cCtrl_Log("FDO: Unhandled PnP minor 0x%02X -> passing down\n",
-                        irpSp->MinorFunction);
 
             IoCopyCurrentIrpStackLocationToNext(Irp);
             IoSetCompletionRoutine(
@@ -421,8 +346,6 @@ case IRP_MN_QUERY_ID:
     }
 
     /* Non-PnP majors */
-    I2cCtrl_Log("FDO: Non-PnP major 0x%02X -> passing down\n",
-                irpSp->MajorFunction);
 
     IoCopyCurrentIrpStackLocationToNext(Irp);
     IoSetCompletionRoutine(
