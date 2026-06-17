@@ -5489,47 +5489,28 @@ I2cCtrl_DispatchPnP(
     hdr    = (PI2CCTRL_COMMON_HEADER)DeviceObject->DeviceExtension;
     status = Irp->IoStatus.Status;
 
-    I2cCtrl_Log("PnP: Entered for device %p, MinorFunction=0x%02X\n",
-                DeviceObject, isl->MinorFunction);
+    /* IMPORTANT:
+     * Logging removed here because PnP IRPs may run inside
+     * registry unload, NTFS teardown, or other contexts where
+     * ZwCreateFile / ZwWriteFile are unsafe.
+     */
 
-    //
-    // If extension is NULL, this DO is unusable for us.
-    // Do NOT forward – just fail with NO_SUCH_DEVICE.
-    //
     if (hdr == NULL) {
-        I2cCtrl_Log("PnP: Device %p has NULL extension -> STATUS_NO_SUCH_DEVICE\n",
-                    DeviceObject);
-
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    //
-    // Validate signature before routing.
-    //
     switch (hdr->Signature) {
 
     case I2CCTRL_PDO_SIGNATURE:
-        I2cCtrl_Log("PnP: Device %p recognized as PDO -> routing to PdoDispatch\n",
-                    DeviceObject);
         return I2cCtrl_PdoDispatch(DeviceObject, Irp);
 
     case I2CCTRL_FDO_SIGNATURE:
-        I2cCtrl_Log("PnP: Device %p recognized as FDO -> routing to FdoDispatch\n",
-                    DeviceObject);
         return I2cCtrl_FdoDispatch(DeviceObject, Irp);
 
     default:
-        //
-        // Unknown / corrupted signature: treat as dead device.
-        // Do NOT forward – that DO is already ours and its
-        // extension is not trustworthy anymore.
-        //
-        I2cCtrl_Log("PnP: Device %p has UNKNOWN signature 0x%08lX -> STATUS_NO_SUCH_DEVICE\n",
-                    DeviceObject, hdr->Signature);
-
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
