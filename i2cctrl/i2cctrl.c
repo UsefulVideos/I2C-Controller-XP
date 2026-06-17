@@ -4815,33 +4815,25 @@ I2cCtrl_StartCompletion(
 
     if (NT_SUCCESS(Irp->IoStatus.Status)) {
 
-        //
-        // 1) PCI/ACPI successfully started the controller.
-        //    Map BARs, init hardware, connect interrupts, ACPI open, etc.
-        //
+        /* 1) Let the FDO process StartDevice (may set UnsupportedPlatform). */
         I2cCtrl_StartDevice(fdoExt, Irp);
 
-        //
-        // 2) Now that the controller is fully initialized,
-        //    enumerate HID-over-I2C children and select the PT touchpad.
-        //
-        I2cCtrl_Log("StartCompletion: calling I2cCtrl_CreateTouchpad()\n");
+        /* 2) Only create the touchpad if the controller is actually supported. */
+        if (!fdoExt->UnsupportedPlatform) {
 
-        (void)I2cCtrl_CreateTouchpad(fdoExt->Self, fdoExt);
+            I2cCtrl_Log("StartCompletion: calling I2cCtrl_CreateTouchpad()\n");
+            (void)I2cCtrl_CreateTouchpad(fdoExt->Self, fdoExt);
 
-        //
-        // NOTE:
-        //  - This sets fdoExt->TouchpadPdo
-        //  - This prepares HID/PT buffers
-        //  - This prepares HID descriptor + report descriptor
-        //  - This prepares I2C controller for HID/PT mode
-        //  - This ensures IOCTL_GET_PT_SAMPLE works
-        //
+        } else {
+
+            I2cCtrl_Log(
+                "StartCompletion: UnsupportedPlatform=TRUE -> "
+                "skipping I2cCtrl_CreateTouchpad()\n"
+            );
+        }
     }
 
-    //
-    // 3) RELEASE THE REMOVE LOCK - REQUIRED!
-    //
+    /* 3) RELEASE THE REMOVE LOCK - REQUIRED! */
     IoReleaseRemoveLock(&fdoExt->RemoveLock, Irp);
 
     return STATUS_CONTINUE_COMPLETION;
