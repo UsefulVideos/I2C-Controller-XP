@@ -3098,32 +3098,45 @@ if (transList == NULL || transList->Count == 0) {
         ULONG    hwidLen = 0;
         NTSTATUS st;
 
-        st = IoGetDeviceProperty(
-                fdoExt->PhysicalDevice,
-                DevicePropertyHardwareID,
-                sizeof(hwidBuf),
-                hwidBuf,
-                &hwidLen
-            );
+        /* Guard against bad PDO or wrong IRQL (IoGetDeviceProperty is PASSIVE only) */
+        if (fdoExt->PhysicalDevice == NULL ||
+            KeGetCurrentIrql() != PASSIVE_LEVEL)
+        {
+            fdoExt->PnpId = NULL;
+            I2cCtrl_Log("StartDevice: skipping PnpId capture (PDO=%p IRQL=%lu)\n",
+                        fdoExt->PhysicalDevice,
+                        (ULONG)KeGetCurrentIrql());
+        }
+        else
+        {
+            st = IoGetDeviceProperty(
+                    fdoExt->PhysicalDevice,
+                    DevicePropertyHardwareID,
+                    sizeof(hwidBuf),
+                    hwidBuf,
+                    &hwidLen
+                );
 
-        if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
+            if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
 
-            SIZE_T bytes = hwidLen + sizeof(WCHAR);
-            PWSTR  copy  = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
+                SIZE_T bytes = hwidLen + sizeof(WCHAR);
+                PWSTR  copy  = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
 
-            if (copy != NULL) {
-                RtlZeroMemory(copy, bytes);
-                RtlCopyMemory(copy, hwidBuf, hwidLen);
-                fdoExt->PnpId = copy;
-                I2cCtrl_Log("StartDevice: PnpId captured\n");
+                if (copy != NULL) {
+                    RtlZeroMemory(copy, bytes);
+                    RtlCopyMemory(copy, hwidBuf, hwidLen);
+                    fdoExt->PnpId = copy;
+                    I2cCtrl_Log("StartDevice: PnpId captured\n");
+                } else {
+                    fdoExt->PnpId = NULL;
+                    I2cCtrl_Log("StartDevice: PnpId alloc failed\n");
+                }
+
             } else {
                 fdoExt->PnpId = NULL;
-                I2cCtrl_Log("StartDevice: PnpId alloc failed\n");
+                I2cCtrl_Log("StartDevice: PnpId unavailable (st=0x%08lx len=%lu)\n",
+                            st, hwidLen);
             }
-
-        } else {
-            fdoExt->PnpId = NULL;
-            I2cCtrl_Log("StartDevice: PnpId unavailable\n");
         }
     }
 
