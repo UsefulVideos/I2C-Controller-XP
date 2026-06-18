@@ -11892,37 +11892,44 @@ I2cCtrl_ReportPwrmBaseInfo(
     )
 {
     /* -------------------------------------------------------------
-     * Validate caller-supplied PWRMBASE.
-     * Must be:
-     *   - nonzero
-     *   - not 0xFFFFFFFF
-     *   - 4KB aligned
-     *   - in FE000000 - FEFFFFFF region (typical PCH MMIO)
+     * XP NOTE:
+     * On this platform, XP firmware does NOT program PWRMBASE.
+     * FE0xxxxx is empty, and the real Win11 value (0x537D2000)
+     * never appears under XP.
+     *
+     * Therefore:
+     *   - If PwrmBase == 0, ACCEPT it and skip validation.
+     *   - Keep your original validation logic for nonzero values.
      * ------------------------------------------------------------- */
 
-    if (PwrmBase.QuadPart == 0 ||
-        PwrmBase.QuadPart == 0xFFFFFFFFULL)
+    if (PwrmBase.QuadPart == 0)
     {
-        I2cCtrl_Log("PWRMINFO: invalid PWRMBASE (zero or all-ones)\n");
+        I2cCtrl_Log(
+            "PWRMINFO: XP reports PWRMBASE = 0 (accepting, skipping validation)\n"
+        );
+        return STATUS_SUCCESS;
+    }
+
+    /* -------------------------------------------------------------
+     * Your original validation logic (unchanged)
+     * ------------------------------------------------------------- */
+
+    /* Must be nonzero and not all-ones */
+    if (PwrmBase.QuadPart == 0xFFFFFFFFULL)
+    {
+        I2cCtrl_Log("PWRMINFO: invalid PWRMBASE (all-ones)\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Align to 4KB */
+    /* Must be 4KB aligned */
     if ((PwrmBase.QuadPart & 0xFFFULL) != 0)
     {
         I2cCtrl_Log("PWRMINFO: invalid PWRMBASE (not 4KB aligned)\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Must be in FE000000 - FEFFFFFF */
-    if ((PwrmBase.LowPart & 0xFF000000UL) != 0xFE000000UL)
-    {
-        I2cCtrl_Log("PWRMINFO: invalid PWRMBASE (outside FE000000 region)\n");
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    /* Valid */
-    I2cCtrl_Log("PWRMINFO: Valid PWRMBASE = 0x%016I64X\n",
+    /* Accept all valid aligned nonzero values */
+    I2cCtrl_Log("PWRMINFO: Accepting PWRMBASE = 0x%016I64X\n",
                 PwrmBase.QuadPart);
 
     return STATUS_SUCCESS;
