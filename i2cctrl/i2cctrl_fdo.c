@@ -15,6 +15,7 @@ I2cCtrl_QueryDeviceRelations(
     DEVICE_RELATIONS  *relations;
     PLIST_ENTRY        le;
     ULONG              count, i;
+    ULONG              size;
     KIRQL              oldIrql;
 
     PAGED_CODE();
@@ -26,9 +27,7 @@ I2cCtrl_QueryDeviceRelations(
     i      = 0;
     relations = NULL;
 
-    //
-    // Count live children
-    //
+    /* Count live children */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
 
     for (le = fdoExt->ChildList.Flink;
@@ -43,12 +42,16 @@ I2cCtrl_QueryDeviceRelations(
 
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    //
-    // Allocate DEVICE_RELATIONS
-    //
+    /* Correct DEVICE_RELATIONS allocation */
+    if (count == 0)
+        size = sizeof(DEVICE_RELATIONS);
+    else
+        size = sizeof(DEVICE_RELATIONS) +
+               ((count - 1) * sizeof(PDEVICE_OBJECT));
+
     relations = (DEVICE_RELATIONS *)ExAllocatePoolWithTag(
                     PagedPool,
-                    sizeof(DEVICE_RELATIONS) + (count * sizeof(PDEVICE_OBJECT)),
+                    size,
                     I2CCTRL_TAG_EXT);
 
     if (relations == NULL) {
@@ -59,14 +62,12 @@ I2cCtrl_QueryDeviceRelations(
         Irp->IoStatus.Status      = STATUS_INSUFFICIENT_RESOURCES;
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_SUCCESS;   // caller expects SUCCESS
+        return STATUS_SUCCESS;   /* caller expects SUCCESS */
     }
 
     relations->Count = count;
 
-    //
-    // Fill array
-    //
+    /* Fill array */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
 
     for (le = fdoExt->ChildList.Flink;
@@ -89,15 +90,13 @@ I2cCtrl_QueryDeviceRelations(
 
     I2cCtrl_Log("FDO: BusRelations: reporting %lu children\n", relations->Count);
 
-    //
-    // Complete IRP here
-    //
+    /* Complete IRP */
     Irp->IoStatus.Information = (ULONG_PTR)relations;
     Irp->IoStatus.Status      = STATUS_SUCCESS;
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    return STATUS_SUCCESS;   // always SUCCESS for caller
+    return STATUS_SUCCESS;
 }
 
 
