@@ -3090,56 +3090,6 @@ if (transList == NULL || transList->Count == 0) {
     return STATUS_INSUFFICIENT_RESOURCES;
 }
 
-    /* -------------------------------------------------------------
-     * Populate PnpId (required for quirks + backend selection)
-     * ------------------------------------------------------------- */
-    {
-        WCHAR    hwidBuf[256];
-        ULONG    hwidLen = 0;
-        NTSTATUS st;
-
-        /* Guard against bad PDO or wrong IRQL (IoGetDeviceProperty is PASSIVE only) */
-        if (fdoExt->PhysicalDevice == NULL ||
-            KeGetCurrentIrql() != PASSIVE_LEVEL)
-        {
-            fdoExt->PnpId = NULL;
-            I2cCtrl_Log("StartDevice: skipping PnpId capture (PDO=%p IRQL=%lu)\n",
-                        fdoExt->PhysicalDevice,
-                        (ULONG)KeGetCurrentIrql());
-        }
-        else
-        {
-            st = IoGetDeviceProperty(
-                    fdoExt->PhysicalDevice,
-                    DevicePropertyHardwareID,
-                    sizeof(hwidBuf),
-                    hwidBuf,
-                    &hwidLen
-                );
-
-            if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
-
-                SIZE_T bytes = hwidLen + sizeof(WCHAR);
-                PWSTR  copy  = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
-
-                if (copy != NULL) {
-                    RtlZeroMemory(copy, bytes);
-                    RtlCopyMemory(copy, hwidBuf, hwidLen);
-                    fdoExt->PnpId = copy;
-                    I2cCtrl_Log("StartDevice: PnpId captured\n");
-                } else {
-                    fdoExt->PnpId = NULL;
-                    I2cCtrl_Log("StartDevice: PnpId alloc failed\n");
-                }
-
-            } else {
-                fdoExt->PnpId = NULL;
-                I2cCtrl_Log("StartDevice: PnpId unavailable (st=0x%08lx len=%lu)\n",
-                            st, hwidLen);
-            }
-        }
-    }
-
 /* -------------------------------------------------------------
  * Match HWID against g_I2cControllers[] and capture profile
  * ------------------------------------------------------------- */
@@ -3888,6 +3838,57 @@ else
 }
 
 I2cCtrl_Log("StartDevice: === POWER + LPSS DEBUG END ===\n");
+
+    /* -------------------------------------------------------------
+     * Populate PnpId (required for quirks + backend selection)
+     * ------------------------------------------------------------- */
+    {
+        WCHAR    hwidBuf[256];
+        ULONG    hwidLen = 0;
+        NTSTATUS st;
+
+        /* Guard against bad PDO or wrong IRQL (IoGetDeviceProperty is PASSIVE only) */
+        if (fdoExt->PhysicalDevice == NULL ||
+            KeGetCurrentIrql() != PASSIVE_LEVEL)
+        {
+            fdoExt->PnpId = NULL;
+            I2cCtrl_Log("StartDevice: skipping PnpId capture (PDO=%p IRQL=%lu)\n",
+                        fdoExt->PhysicalDevice,
+                        (ULONG)KeGetCurrentIrql());
+        }
+        else
+        {
+            st = IoGetDeviceProperty(
+                    fdoExt->PhysicalDevice,
+                    DevicePropertyHardwareID,
+                    sizeof(hwidBuf),
+                    hwidBuf,
+                    &hwidLen
+                );
+
+            if (NT_SUCCESS(st) && hwidLen >= sizeof(WCHAR)) {
+
+                SIZE_T bytes = hwidLen + sizeof(WCHAR);
+                PWSTR  copy  = ExAllocatePoolWithTag(NonPagedPool, bytes, 'pdiI');
+
+                if (copy != NULL) {
+                    RtlZeroMemory(copy, bytes);
+                    RtlCopyMemory(copy, hwidBuf, hwidLen);
+                    fdoExt->PnpId = copy;
+                    I2cCtrl_Log("StartDevice: PnpId captured\n");
+                } else {
+                    fdoExt->PnpId = NULL;
+                    I2cCtrl_Log("StartDevice: PnpId alloc failed\n");
+                }
+
+            } else {
+                fdoExt->PnpId = NULL;
+                I2cCtrl_Log("StartDevice: PnpId unavailable (st=0x%08lx len=%lu)\n",
+                            st, hwidLen);
+            }
+        }
+    }
+
 
 /* Late pass: install backend, then apply HW quirks */
 I2cCtrl_InstallBackend(fdoExt);
