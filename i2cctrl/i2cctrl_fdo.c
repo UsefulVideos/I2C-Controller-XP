@@ -23,59 +23,41 @@ I2cCtrl_QueryDeviceRelations(
     isl = IoGetCurrentIrpStackLocation(Irp);
     ASSERT(isl->Parameters.QueryDeviceRelations.Type == BusRelations);
 
-    count  = 0;
-    i      = 0;
-    relations = NULL;
+    count = 0;
+    i     = 0;
 
-    /* Count live children */
+    /* Count children */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
-
     for (le = fdoExt->ChildList.Flink;
          le != &fdoExt->ChildList;
          le = le->Flink)
     {
         PI2CCTRL_PDO child = CONTAINING_RECORD(le, I2CCTRL_PDO, ListEntry);
-
         if (child->Present && !child->Removed)
             count++;
     }
-
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    /* Correct DEVICE_RELATIONS allocation */
-    if (count == 0)
-        size = sizeof(DEVICE_RELATIONS);
-    else
-        size = sizeof(DEVICE_RELATIONS) +
-               ((count - 1) * sizeof(PDEVICE_OBJECT));
+    /* Correct allocation */
+    size = sizeof(DEVICE_RELATIONS);
+    if (count > 1)
+        size += (count - 1) * sizeof(PDEVICE_OBJECT);
 
-    relations = (DEVICE_RELATIONS *)ExAllocatePoolWithTag(
-                    PagedPool,
-                    size,
-                    I2CCTRL_TAG_EXT);
-
-    if (relations == NULL) {
-
-        I2cCtrl_Log("FDO: BusRelations: allocation FAILED\n");
-
+    relations = ExAllocatePoolWithTag(PagedPool, size, I2CCTRL_TAG_EXT);
+    if (!relations) {
         Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status      = STATUS_INSUFFICIENT_RESOURCES;
-
+        Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
-        return STATUS_SUCCESS;   /* caller expects SUCCESS */
+        return STATUS_SUCCESS;
     }
 
-    relations->Count = count;
-
-    /* Fill array */
+    /* Fill */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
-
     for (le = fdoExt->ChildList.Flink;
          le != &fdoExt->ChildList && i < count;
          le = le->Flink)
     {
         PI2CCTRL_PDO child = CONTAINING_RECORD(le, I2CCTRL_PDO, ListEntry);
-
         if (!child->Present || child->Removed)
             continue;
 
@@ -83,17 +65,12 @@ I2cCtrl_QueryDeviceRelations(
         ObReferenceObject(child->Pdo);
         i++;
     }
-
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
     relations->Count = i;
 
-    I2cCtrl_Log("FDO: BusRelations: reporting %lu children\n", relations->Count);
-
-    /* Complete IRP */
     Irp->IoStatus.Information = (ULONG_PTR)relations;
-    Irp->IoStatus.Status      = STATUS_SUCCESS;
-
+    Irp->IoStatus.Status = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
     return STATUS_SUCCESS;
