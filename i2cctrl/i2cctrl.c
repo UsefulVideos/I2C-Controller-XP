@@ -12667,6 +12667,7 @@ I2cCtrl_InterruptThread(
     I2cCtrl_Log("InterruptThread: exit\n");
 }
 
+/* Locate the ACPI PDO associated with this PCI device by walking the device stack */
 PDEVICE_OBJECT
 I2cCtrl_FindAcpiPdoForPciDevice(
     PDEVICE_OBJECT Fdo
@@ -12676,7 +12677,12 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     PDEVICE_OBJECT top;
     PDEVICE_OBJECT current;
     PDEVICE_OBJECT lower;
-    PDEVICE_OBJECT acpiPdo = NULL;
+    PDEVICE_OBJECT acpiPdo;
+    PCWSTR pnp;
+    PCWSTR hwid;
+    PCWSTR inst;
+
+    acpiPdo = NULL;
 
     if (Fdo == NULL) {
         I2cCtrl_Log("FindAcpiPdo: Fdo=NULL\n");
@@ -12689,14 +12695,52 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     }
 
     ext = (PI2CCTRL_FDO)Fdo->DeviceExtension;
-    if (ext == NULL ||
-        ext->Signature != I2CCTRL_FDO_SIGNATURE ||
+
+    if (ext == NULL) {
+        I2cCtrl_Log("FindAcpiPdo: FDO invalid (ext=NULL)\n");
+        return NULL;
+    }
+
+    /* Safe string extraction */
+    if (ext->PnpId != NULL) {
+        pnp = ext->PnpId;
+    } else {
+        pnp = L"<null>";
+    }
+
+    if (ext->HardwareId.Buffer != NULL) {
+        hwid = ext->HardwareId.Buffer;
+    } else {
+        hwid = L"<null>";
+    }
+
+    if (ext->InstanceId.Buffer != NULL) {
+        inst = ext->InstanceId.Buffer;
+    } else {
+        inst = L"<null>";
+    }
+
+    /* Validate extension state */
+    if (ext->Signature != I2CCTRL_FDO_SIGNATURE ||
         ext->Removed ||
         ext->Stopping ||
         ext->SurpriseRemoved ||
         !ext->Started)
     {
-        I2cCtrl_Log("FindAcpiPdo: FDO invalid or removed\n");
+        I2cCtrl_Log(
+            "FindAcpiPdo: FDO invalid "
+            "(Ext=%p Sig=0x%08lx Removed=%lu Stopping=%lu Surprise=%lu Started=%lu "
+            "PnpId=\"%ws\" HardwareId=\"%ws\" InstanceId=\"%ws\")\n",
+            ext,
+            ext->Signature,
+            ext->Removed,
+            ext->Stopping,
+            ext->SurpriseRemoved,
+            ext->Started,
+            pnp,
+            hwid,
+            inst
+        );
         return NULL;
     }
 
@@ -12719,7 +12763,7 @@ I2cCtrl_FindAcpiPdoForPciDevice(
 
         if (I2cCtrl_IsAcpiDriver(current->DriverObject)) {
             I2cCtrl_Log("FindAcpiPdo: SUCCESS ACPI PDO=%p\n", current);
-            acpiPdo = current; /* keep reference */
+            acpiPdo = current;
             break;
         }
 
@@ -12746,10 +12790,10 @@ I2cCtrl_FindAcpiPdoForPciDevice(
         return acpiPdo;
     }
 
-    /* FALLBACK: call ByAdr() safely */
     I2cCtrl_Log("FindAcpiPdo: no ACPI in stack, trying fallback\n");
     return I2cCtrl_FindAcpiPdoByAdr(Fdo);
 }
+
 
 PDEVICE_OBJECT
 I2cCtrl_FindAcpiPdoByAdr(
