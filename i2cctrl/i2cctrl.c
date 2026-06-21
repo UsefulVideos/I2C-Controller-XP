@@ -1231,7 +1231,7 @@ I2cCtrl_SmbusRwOnce(VOID* ctxVoid)
 
 
 /* -----------------------------------------------------------------------
-   I2cCtrl_AddDevice - attach FDO for supported ACPI/PCI I²C controllers
+   I2cCtrl_AddDevice - attach FDO for supported ACPI/PCI I2C controllers
    XP/2003-safe, BSOD-hardened, C89-compliant.
    Uses the canonical controller table (g_I2cControllers[]) for detection.
    ----------------------------------------------------------------------- */
@@ -1316,7 +1316,7 @@ I2cCtrl_AddDevice(
     }
 
     /* ---------------------------------------------------------------
-       Detect whether this is a supported I²C controller
+       Detect whether this is a supported I2C controller
        --------------------------------------------------------------- */
     if (dynBuf != NULL) {
         base  = (const WCHAR*)dynBuf;
@@ -1389,10 +1389,10 @@ I2cCtrl_AddDevice(
        --------------------------------------------------------------- */
     devctx = (PI2CCTRL_FDO)fdo->DeviceExtension;
     RtlZeroMemory(devctx, sizeof(*devctx));
-	
-	/* SET FDO SIGNATURE HERE */
-	devctx->Signature = I2CCTRL_FDO_SIGNATURE;
-	
+
+    /* SET FDO SIGNATURE HERE */
+    devctx->Signature = I2CCTRL_FDO_SIGNATURE;
+
     devctx->Self           = fdo;
     devctx->PhysicalDevice = PhysicalDeviceObject;
     devctx->LowerDevice    = IoAttachDeviceToDeviceStack(fdo, PhysicalDeviceObject);
@@ -1403,7 +1403,8 @@ I2cCtrl_AddDevice(
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    devctx->ControllerId = InterlockedIncrement((volatile LONG*)&g_I2cCtrlGlobal.NextControllerId);
+    devctx->ControllerId =
+        InterlockedIncrement((volatile LONG*)&g_I2cCtrlGlobal.NextControllerId);
 
     I2cCtrl_Log("AddDevice: ControllerId assigned = %lu\n", devctx->ControllerId);
 
@@ -1427,81 +1428,12 @@ I2cCtrl_AddDevice(
 
     fdo->Flags |= DO_POWER_PAGABLE;
 
-/* ---------------------------------------------------------------
-   Identify controller, install register map, apply quirks
-   --------------------------------------------------------------- */
-status = I2cCtrlIdentifyAndInitController(devctx);
-if (!NT_SUCCESS(status)) {
-    I2cCtrl_Log("AddDevice: IdentifyAndInitController failed 0x%08lx\n", status);
-    IoDetachDevice(devctx->LowerDevice);
-    IoDeleteDevice(fdo);
-    return status;
-}
-
-/*
- * Pre-seed PnpId with the canonical controller table ID.
- * This allows ApplyQuirks() to run safely during AddDevice
- * without logging “invalid devctx”.
- *
- * The real ACPI PnpId will overwrite this later in StartDevice.
- */
-devctx->PnpId = (PWSTR)g_I2cControllers[devctx->ControllerIndex].PciId;
-
-/* Install backend (Intel DW-I2C / Cannon Lake style) */
-I2cCtrl_InstallBackend(devctx);
-
-/*
- * Early quirks pass:
- * - BAR0/BAR2 are NULL at this stage -> hardware quirks are skipped
- * - ACPI/BSOD flags that do not touch hardware still apply
- */
-I2cCtrlApplyQuirks(devctx);
-
-/*
- * ASUS X509FA: PMC PWMR mapping for Cannon Lake I2C
- *
- * ControllerId 1 = 8086:9DC5
- * ControllerId 2 = 8086:9DE8
- * ControllerId 3 = 8086:9DE9
- *
- * Raw PWRM field  = 0x537D28A3
- * Aligned PWRMBASE = 0x537D2000
- * Length = 0x1E30
- */
-if (devctx->ControllerId == 1 ||
-    devctx->ControllerId == 2 ||
-    devctx->ControllerId == 3)
-{
-    devctx->PwrmBase.QuadPart = 0x537D2000ULL;
-    devctx->PwrmLength        = 0x1E30;
-    devctx->HavePwrm          = TRUE;
-
-    devctx->PwrmBaseVa = MmMapIoSpace(
-                             devctx->PwrmBase,
-                             devctx->PwrmLength,
-                             MmNonCached);
-
-    if (devctx->PwrmBaseVa == NULL) {
-        I2cCtrl_Log("AddDevice: PWMR MmMapIoSpace failed\n");
-        IoDetachDevice(devctx->LowerDevice);
-        IoDeleteDevice(fdo);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    I2cCtrl_Log("AddDevice: PWMR mapped VA=%p PA=0x%08lx Len=0x%lx (Ctrl%lu)\n",
-                devctx->PwrmBaseVa,
-                (ULONG)devctx->PwrmBase.LowPart,
-                devctx->PwrmLength,
-                devctx->ControllerId);
-}
-
-
     /* ---------------------------------------------------------------
        Child PDO lifecycle helpers
        --------------------------------------------------------------- */
-	 devctx->DeleteChildrenFn      = I2cCtrl_DeenumerateAcpiChildren;
-	 devctx->EnumerateChildrenFn   = I2cCtrl_EnumerateAcpiChildren;
-	 devctx->ReenumerateChildrenFn = I2cCtrl_ReenumerateAcpiChildren;
+    devctx->DeleteChildrenFn      = I2cCtrl_DeenumerateAcpiChildren;
+    devctx->EnumerateChildrenFn   = I2cCtrl_EnumerateAcpiChildren;
+    devctx->ReenumerateChildrenFn = I2cCtrl_ReenumerateAcpiChildren;
 
     fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -3484,6 +3416,16 @@ if (haveInt && fdoExt->InterruptObject == NULL) {
 /* Program safe initial interrupt mask after ISR connect */
 if (fdoExt->Ops != NULL && fdoExt->Ops->MaskInterrupts != NULL) {
     fdoExt->Ops->MaskInterrupts(fdoExt, fdoExt->IntrMask);
+}
+
+/* -------------------------------------------------------------
+ * ACPI I2C method detection (safe point)
+ * ------------------------------------------------------------- */
+if (fdoExt->AcpiHandle && fdoExt->AcpiDeviceObject) {
+    I2cCtrl_Log("StartDevice: checking for ACPI I2C methods\n");
+    I2cCtrl_CheckForAcpiI2cMethods(fdoExt, fdoExt->AcpiHandle);
+} else {
+    I2cCtrl_Log("StartDevice: ACPI not ready -> skipping method detection\n");
 }
 
 /* -------------------------------------------------------------
