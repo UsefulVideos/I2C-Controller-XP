@@ -366,7 +366,47 @@ const I2CCTRL_DEVICE_ID g_I2cControllers[] = {
     { L"PCI\\VEN_8086&DEV_06EB",
       0x00,0x04,0x08,0x0C,
       0,0,0,0,
-      QUIRK_NONE, BSOD_NONE }
+      QUIRK_NONE, BSOD_NONE },
+	    /* Intel Serial IO I2C ES (Atom/Cherry Trail/Braswell) */
+    { L"ACPI\\808622C1",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C2",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C3",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C4",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C5",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C6",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C7",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622C8",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE }
 };
 
 const ULONG g_I2cControllersCount =
