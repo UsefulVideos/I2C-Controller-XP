@@ -125,4 +125,48 @@ typedef struct _I2C_HW_OPS {
 /* Global backend ops (implemented in a .c file) */
 extern I2C_HW_OPS  DwI2cOps;
 extern I2C_HW_CAPS DwI2cCaps;
+
+/* Additional backends */
+extern I2C_HW_OPS  AcpiI2cOps;
+extern I2C_HW_CAPS AcpiI2cCaps;
+
+extern I2C_HW_OPS  RealtekI2cOps;
+extern I2C_HW_CAPS RealtekI2cCaps;
+
+extern I2C_HW_OPS  QualcommI2cOps;
+extern I2C_HW_CAPS QualcommI2cCaps;
+
+extern I2C_HW_OPS  NvidiaI2cOps;
+extern I2C_HW_CAPS NvidiaI2cCaps;
+
+extern I2C_HW_OPS  AppleI2cOps;
+extern I2C_HW_CAPS AppleI2cCaps;
+
+extern I2C_HW_OPS  BroadcomI2cOps;
+extern I2C_HW_CAPS BroadcomI2cCaps;
+
+extern I2C_HW_OPS  MediatekI2cOps;
+extern I2C_HW_CAPS MediatekI2cCaps;
+
+extern I2C_HW_OPS  SamsungI2cOps;
+extern I2C_HW_CAPS SamsungI2cCaps;
+
+extern I2C_HW_OPS  ViaI2cOps;
+extern I2C_HW_CAPS ViaI2cCaps;
+
+extern I2C_HW_OPS  SiFiveI2cOps;
+extern I2C_HW_CAPS SiFiveI2cCaps;
+
+extern I2C_HW_OPS  RockchipI2cOps;
+extern I2C_HW_CAPS RockchipI2cCaps;
+
+extern I2C_HW_OPS  AmdVendorI2cOps;
+extern I2C_HW_CAPS AmdVendorI2cCaps;
+
+extern I2C_HW_OPS  IntelVendorI2cOps;
+extern I2C_HW_CAPS IntelVendorI2cCaps;
+
+extern I2C_HW_OPS  SoftI2cOps;
+extern I2C_HW_CAPS SoftI2cCaps;
+
 #endif /* I2CCTRL_HAL_OPS_H */

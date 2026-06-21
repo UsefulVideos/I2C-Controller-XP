@@ -159,7 +159,7 @@ I2cCtrl_FdoDispatch(
             {
                 if (fdoExt->ReadyForChildren)
                 {
-                    (void)I2cCtrl_CreateTouchpad(fdoExt->Self, fdoExt);
+                    (void)I2cCtrl_CreateI2cDevice(fdoExt->Self, fdoExt);
                 }
 
                 status = I2cCtrl_QueryDeviceRelations(fdoExt, Irp);

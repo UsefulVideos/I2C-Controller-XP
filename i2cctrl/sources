@@ -18,7 +18,7 @@ TARGETLIBS= \
 
 SOURCES= \
     i2cctrl.c \
-	i2cctrl_zw.c \
+    i2cctrl_zw.c \
     i2cctrl_backport.c \
     i2cctrl_bsod.c \
     i2cctrl_detect.c \
@@ -37,6 +37,21 @@ SOURCES= \
     i2cctrl_i2chid.c \
     i2cctrl_dpi.c \
     i2cctrl_wdm_compat.c \
-	i2cctrl_hal_intel.c \
+    i2cctrl_hal_ops.c \
+    i2cctrl_hal_dw.c \
+    i2cctrl_hal_acpi.c \
+    i2cctrl_hal_realtek.c \
+    i2cctrl_hal_qualcomm.c \
+    i2cctrl_hal_nvidia.c \
+    i2cctrl_hal_apple.c \
+    i2cctrl_hal_broadcom.c \
+    i2cctrl_hal_mediatek.c \
+    i2cctrl_hal_samsung.c \
+    i2cctrl_hal_via.c \
+    i2cctrl_hal_sifive.c \
+    i2cctrl_hal_rockchip.c \
+    i2cctrl_hal_amd_vendor.c \
+    i2cctrl_hal_intel_vendor.c \
+    i2cctrl_hal_soft.c \
     i2cctrl_version.rc
 

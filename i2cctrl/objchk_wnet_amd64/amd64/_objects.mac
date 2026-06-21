@@ -21,7 +21,22 @@ AMD64_OBJECTS=\
  $(OBJ_PATH)\$O\i2cctrl_i2chid.obj \
  $(OBJ_PATH)\$O\i2cctrl_dpi.obj \
  $(OBJ_PATH)\$O\i2cctrl_wdm_compat.obj \
- $(OBJ_PATH)\$O\i2cctrl_hal_intel.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_ops.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_dw.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_acpi.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_realtek.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_qualcomm.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_nvidia.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_apple.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_broadcom.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_mediatek.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_samsung.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_via.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_sifive.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_rockchip.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_amd_vendor.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_intel_vendor.obj \
+ $(OBJ_PATH)\$O\i2cctrl_hal_soft.obj \
 
 
 _RES_FILE=$(OBJ_PATH)\$O\i2cctrl_version.res

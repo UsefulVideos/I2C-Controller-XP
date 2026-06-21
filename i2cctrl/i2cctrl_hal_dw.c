@@ -1,64 +1,14 @@
-/* i2cctrl_hal_intel.c
+/* i2cctrl_hal_dw.c
  *
- * Intel DesignWare-style I2C backend for I2C-Controller-XP
- * XP/2003-safe, C89-compliant skeleton.
+ * Synopsys DesignWare / Intel Serial IO I2C backend
+ * XP/2003-safe, C89-compliant.
  */
 
 #include <ntddk.h>
 #include "i2cctrl_hal_ops.h"
 #include "i2cctrl_hal_caps.h"
-#include "i2cctrl_ext.h"    /* I2cCtrl_InstallBackend declaration and I2CCTRL_FDO */
-
-/* ---------------------------------------------------------------------------
- * External helpers / globals from the rest of the driver
- * --------------------------------------------------------------------------- */
-
-typedef struct _I2C_REG_MAP {
-    ULONG ControlReg;
-    ULONG StatusReg;
-    ULONG DataReg;
-    ULONG ClockReg;
-    ULONG Quirks;
-    ULONG BsodQuirks;
-} I2C_REG_MAP, *PI2C_REG_MAP;
-
-/* Some bits used by higher layers (see i2cctrl.c / i2cctrl_isr.c) */
-#define INTEL_STAT_TX_EMPTY_BIT   0x00000004U  /* example: TX FIFO empty */
-#define INTEL_STAT_RX_FULL_BIT    0x00000008U  /* example: RX FIFO full  */
-#define INTEL_STAT_RX_NOT_EMPTY   0x00000010U  /* example: RX FIFO not empty */
-#define INTEL_STAT_ARB_LOST_BIT   0x00000100U  /* example: arbitration lost */
-#define INTEL_STAT_STOP_DET_BIT   0x00000020U  /* example: STOP detected */
-#define INTEL_STAT_TX_ABRT_BIT    0x00000040U  /* example: TX abort */
-
-/* You can adjust these to your real Intel controller’s register layout */
-#define INTEL_REG_CON             0x00U  /* control */
-#define INTEL_REG_TAR             0x04U  /* target address */
-#define INTEL_REG_DATA_CMD        0x08U  /* data / command */
-#define INTEL_REG_SS_SCL_HCNT     0x0CU  /* clock config (example) */
-#define INTEL_REG_INTR_STATUS     0x10U  /* raw interrupt status */
-#define INTEL_REG_INTR_MASK       0x14U  /* interrupt mask */
-#define INTEL_REG_CLR_INTR        0x18U  /* clear-all interrupt */
-#define INTEL_REG_CLR_TX_ABRT     0x1CU  /* clear TX abort */
-#define INTEL_REG_CLR_STOP_DET    0x20U  /* clear STOP detect */
-#define INTEL_REG_TXFLR           0x24U  /* TX FIFO level */
-#define INTEL_REG_RXFLR           0x28U  /* RX FIFO level */
-
-/* Control bits (example DW I2C-style) */
-#define INTEL_CON_ENABLE_BIT      0x00000001U
-#define INTEL_CON_MASTER_MODE     0x00000040U
-#define INTEL_CON_RESTART_EN      0x00000020U
-
-/* ---------------------------------------------------------------------------
- * Local helpers
- * --------------------------------------------------------------------------- */
-
-static __inline PUCHAR
-IntelGetMmioBase(
-    PI2CCTRL_FDO devctx
-    )
-{
-    return (devctx != NULL) ? devctx->MmioBase : NULL;
-}
+#include "i2cctrl_hal_dw.h"
+#include "i2cctrl_ext.h"
 
 static __inline ULONG
 IntelReadReg(
@@ -79,63 +29,34 @@ IntelWriteReg(
     I2cCtrl_WriteRegisterSafe(devctx, offset, value);
 }
 
+/* Capabilities */
 
-/* ---------------------------------------------------------------------------
- * Capabilities
- * --------------------------------------------------------------------------- */
+I2C_HW_CAPS DwI2cCaps = {
+    16,
+    16,
 
-I2C_HW_CAPS IntelI2cCaps = {
-    16,         /* TxFifoDepth */
-    16,         /* RxFifoDepth */
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
 
-    TRUE,       /* SupportsRestart */
-    TRUE,       /* SupportsStopBitInDataCmd */
-    TRUE,       /* HasSeparateIntrClearRegs */
-    TRUE,       /* HasDedicatedIntrMask */
-    TRUE,       /* HasRawIntrStatus */
+    FALSE,
+    FALSE,
 
-    FALSE,      /* Supports10BitAddr */
-    FALSE,      /* SupportsSlaveMode */
+    TRUE,
+    TRUE,
+    TRUE,
 
-    TRUE,       /* DetectsArbitrationLost */
-    TRUE,       /* DetectsAddressNack */
-    TRUE,       /* DetectsDataNack */
+    TRUE,
+    TRUE,
+    FALSE,
 
-    TRUE,       /* SupportsStandard100k */
-    TRUE,       /* SupportsFast400k */
-    FALSE,      /* SupportsHigh3_4M (Intel DW rarely supports HS mode) */
-
-    400000,     /* MaxSpeedHz */
-    0           /* InputClockHz (unknown on XP) */
+    400000,
+    0
 };
 
-
-/* ---------------------------------------------------------------------------
- * Core HAL operations
- * --------------------------------------------------------------------------- */
-
-static NTSTATUS
-Intel_MapResources(
-    PI2CCTRL_FDO devctx,
-    PCM_RESOURCE_LIST translated
-    )
-{
-    UNREFERENCED_PARAMETER(devctx);
-    UNREFERENCED_PARAMETER(translated);
-
-    /* StartDevice already maps MMIO and sets devctx->MmioBase.
-       Nothing to do here for XP backend. */
-    return STATUS_SUCCESS;
-}
-
-static VOID
-Intel_UnmapResources(
-    PI2CCTRL_FDO devctx
-    )
-{
-    UNREFERENCED_PARAMETER(devctx);
-    /* MMIO unmapping is handled in StopDevice/RemoveDevice. */
-}
+/* Core ops */
 
 static NTSTATUS
 Intel_Enable(
@@ -171,7 +92,6 @@ Intel_SetTarget7bit(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* 7-bit address in low bits; hardware usually expects this. */
     IntelWriteReg(devctx, INTEL_REG_TAR, (ULONG)(addr7 & 0x7FU));
     return STATUS_SUCCESS;
 }
@@ -188,21 +108,16 @@ Intel_SetSpeed(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Very simple example: adjust clock register based on mode.
-       TODO: replace with real timing values for your controller. */
     clk = IntelReadReg(devctx, INTEL_REG_SS_SCL_HCNT);
 
     switch (speed) {
     case I2C_SPEED_STANDARD:
-        /* 100 kHz - larger high-count */
         clk = 0x00000100U;
         break;
     case I2C_SPEED_FAST:
-        /* 400 kHz */
         clk = 0x00000040U;
         break;
     case I2C_SPEED_HIGH:
-        /* 3.4 MHz */
         clk = 0x00000010U;
         break;
     default:
@@ -219,7 +134,6 @@ Intel_SetBusSpeedHz(
     ULONG        speedHz
     )
 {
-    /* Map arbitrary Hz to one of the canonical modes. */
     if (speedHz <= 100000U) {
         return Intel_SetSpeed(devctx, I2C_SPEED_STANDARD);
     } else if (speedHz <= 400000U) {
@@ -239,7 +153,6 @@ Intel_IssueWriteByte(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Write data byte; no STOP/READ flag. */
     IntelWriteReg(devctx, INTEL_REG_DATA_CMD, (ULONG)byte);
     return STATUS_SUCCESS;
 }
@@ -255,8 +168,7 @@ Intel_IssueReadToken(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Issue a read command (READ bit set, no STOP). */
-    cmd = 0x00000100U; /* READ flag in DATA_CMD for DW I2C-style */
+    cmd = 0x00000100U;
     IntelWriteReg(devctx, INTEL_REG_DATA_CMD, cmd);
     return STATUS_SUCCESS;
 }
@@ -284,7 +196,6 @@ Intel_ReadRxByteSafe(
     UCHAR*       out
     )
 {
-    /* For now, same as ReadRxByte; you can add extra checks if needed. */
     return Intel_ReadRxByte(devctx, out);
 }
 
@@ -320,6 +231,7 @@ Intel_PrimeReadTokens(
     )
 {
     ULONG i;
+    NTSTATUS st;
 
     if (devctx == NULL || queued == NULL) {
         return STATUS_INVALID_PARAMETER;
@@ -328,7 +240,7 @@ Intel_PrimeReadTokens(
     *queued = 0U;
 
     for (i = 0U; i < count; i++) {
-        NTSTATUS st = Intel_IssueReadToken(devctx);
+        st = Intel_IssueReadToken(devctx);
         if (!NT_SUCCESS(st)) {
             return st;
         }
@@ -337,10 +249,6 @@ Intel_PrimeReadTokens(
 
     return STATUS_SUCCESS;
 }
-
-/* ---------------------------------------------------------------------------
- * Status / interrupts
- * --------------------------------------------------------------------------- */
 
 static NTSTATUS
 Intel_GetStatus(
@@ -360,10 +268,8 @@ Intel_GetStatus(
     txflr = IntelReadReg(devctx, INTEL_REG_TXFLR);
     rxflr = IntelReadReg(devctx, INTEL_REG_RXFLR);
 
-    /* Zero the struct first; higher layers expect defined fields. */
     RtlZeroMemory(st, sizeof(*st));
 
-    /* These field names must match your actual I2C_HW_STATUS definition. */
     st->RawIntr        = raw;
     st->TxFifoLevel    = txflr;
     st->RxFifoLevel    = rxflr;
@@ -385,7 +291,6 @@ Intel_AckInterrupts(
         return;
     }
 
-    /* Clear-all if requested. */
     if (hwBits == 0xFFFFFFFFU) {
         (VOID)IntelReadReg(devctx, INTEL_REG_CLR_INTR);
         return;
@@ -399,7 +304,6 @@ Intel_AckInterrupts(
         (VOID)IntelReadReg(devctx, INTEL_REG_CLR_STOP_DET);
     }
 
-    /* Always read CLR_INTR last to clear any remaining latched bits. */
     (VOID)IntelReadReg(devctx, INTEL_REG_CLR_INTR);
 }
 
@@ -413,8 +317,6 @@ Intel_MaskInterrupts(
         return;
     }
 
-    /* In this backend, hwMask is the mask to *enable*; higher layers
-       pass in the hardware bits they want active. */
     IntelWriteReg(devctx, INTEL_REG_INTR_MASK, hwMask);
 }
 
@@ -465,8 +367,6 @@ Intel_FlushTxBounded(
         return;
     }
 
-    /* There is no direct “flush” in many DW I2C variants; we just wait
-       until TX FIFO is empty. */
     txflr = IntelReadReg(devctx, INTEL_REG_TXFLR);
     while (txflr != 0U) {
         txflr = IntelReadReg(devctx, INTEL_REG_TXFLR);
@@ -484,8 +384,7 @@ Intel_EmitStopIfNeeded(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Issue a STOP on the next command (STOP bit in DATA_CMD). */
-    cmd = 0x00000200U; /* STOP flag - adjust to your controller */
+    cmd = 0x00000200U;
     IntelWriteReg(devctx, INTEL_REG_DATA_CMD, cmd);
     return STATUS_SUCCESS;
 }
@@ -501,7 +400,6 @@ Intel_EmitRestartIfNeeded(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Ensure restart is enabled in CON register. */
     con = IntelReadReg(devctx, INTEL_REG_CON);
     con |= INTEL_CON_RESTART_EN;
     IntelWriteReg(devctx, INTEL_REG_CON, con);
@@ -540,10 +438,6 @@ Intel_WriteTxByte(
     return Intel_IssueWriteByte(devctx, byte);
 }
 
-/* ---------------------------------------------------------------------------
- * Optional FIFO helpers (if you want to wire them later)
- * --------------------------------------------------------------------------- */
-
 static NTSTATUS
 Intel_QuiesceFifos(
     PI2CCTRL_FDO devctx
@@ -572,10 +466,6 @@ Intel_FlushTxFifo(
     return STATUS_SUCCESS;
 }
 
-/* ---------------------------------------------------------------------------
- * Block I/O helpers (used by SMBus / HID paths)
- * --------------------------------------------------------------------------- */
-
 static NTSTATUS
 Intel_IssueBlockWrite(
     PI2CCTRL_FDO devctx,
@@ -598,7 +488,6 @@ Intel_IssueBlockWrite(
         return st;
     }
 
-    /* First write register index, then payload. */
     st = Intel_IssueWriteByte(devctx, (UCHAR)(reg & 0xFFU));
     if (!NT_SUCCESS(st)) {
         return st;
@@ -638,13 +527,11 @@ Intel_IssueBlockRead(
         return st;
     }
 
-    /* Write register index first. */
     st = Intel_IssueWriteByte(devctx, (UCHAR)(reg & 0xFFU));
     if (!NT_SUCCESS(st)) {
         return st;
     }
 
-    /* Issue read tokens. */
     for (i = 0U; i < len; i++) {
         st = Intel_IssueReadToken(devctx);
         if (!NT_SUCCESS(st)) {
@@ -652,7 +539,6 @@ Intel_IssueBlockRead(
         }
     }
 
-    /* Read back bytes. */
     for (i = 0U; i < len; i++) {
         st = Intel_ReadRxByte(devctx, &buf[i]);
         if (!NT_SUCCESS(st)) {
@@ -667,16 +553,19 @@ Intel_IssueBlockRead(
     return STATUS_SUCCESS;
 }
 
-/* ---------------------------------------------------------------------------
- * Universal DW-I2C HAL ops table
- * Applies to ALL Intel Serial IO I2C controllers (ES, LPSS, PCI),
- * AMD I2C controllers, and any DesignWare-compatible I2C core.
- * --------------------------------------------------------------------------- */
+/* Initialize Caps field explicitly (C89-safe) */
+static VOID
+DwI2c_InitCaps(VOID)
+{
+    DwI2cOps.Caps = DwI2cCaps;
+}
+
+/* Global ops table */
 
 I2C_HW_OPS DwI2cOps = {
-    /* Resource mapping */
-    Intel_MapResources,
-    Intel_UnmapResources,
+    /* Resource mapping (use shared helpers) */
+    I2cCtrl_MapMmio,
+    I2cCtrl_UnmapMmio,
 
     /* Core control */
     Intel_Enable,
@@ -715,7 +604,7 @@ I2C_HW_OPS DwI2cOps = {
     Intel_IsArbitrationLost,
     Intel_WriteTxByte,
 
-    /* Capabilities (filled in at runtime) */
+    /* Capabilities */
     { 0 },
 
     /* FIFO management */
@@ -727,45 +616,19 @@ I2C_HW_OPS DwI2cOps = {
     NULL,
     NULL,
 
-    /* Resource queries (unused on XP) */
+    /* Resource queries */
     NULL,
     NULL,
     NULL,
     NULL,
 
-    /* Controller helpers (unused) */
-    NULL,
+    /* Controller helpers */
     NULL,
     NULL,
     NULL,
 
-    /* Wake + block I/O */
+    NULL,
     NULL,
     Intel_IssueBlockWrite,
     Intel_IssueBlockRead
 };
-
-/* Initialize Caps field explicitly (C89-safe) */
-static VOID
-DwI2c_InitCaps(VOID)
-{
-    DwI2cOps.Caps = IntelI2cCaps;
-}
-
-/* ---------------------------------------------------------------------------
- * Backend installer - universal DW backend for ALL controllers
- * --------------------------------------------------------------------------- */
-
-VOID
-I2cCtrl_InstallBackend(PI2CCTRL_FDO devctx)
-{
-    if (devctx == NULL)
-        return;
-
-    DwI2c_InitCaps();
-
-    devctx->Ops  = &DwI2cOps;
-    devctx->Caps = &DwI2cOps.Caps;
-
-    I2cCtrl_Log("InstallBackend: universal DW backend installed\n");
-}

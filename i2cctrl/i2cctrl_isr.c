@@ -42,8 +42,8 @@ I2cCtrl_MapAbortSource(ULONG abrtSrc)
    --------------------------------------------------------------------------- */
 
 /* ---------------------------------------------------------------------------
- * I2cCtrl_AckInterrupts - acknowledge per-source interrupt clears via HAL ops
- * XP/2003 BSOD-safe, HAL-generic, C89-compliant
+ * I2cCtrl_AckInterrupts - universal interrupt acknowledge dispatcher
+ * Backend-driven, vendor-agnostic, XP/2003-safe, C89-compliant
  * --------------------------------------------------------------------------- */
 VOID
 I2cCtrl_AckInterrupts(
@@ -52,34 +52,32 @@ I2cCtrl_AckInterrupts(
     )
 {
     if (dx == NULL || dx->Ops == NULL) {
-        TraceEvents(TRACE_LEVEL_ERROR, TRACE_FLAG_ISR,
-                    "AckInterrupts called with NULL context or Ops");
+        I2cCtrl_Log("AckInterrupts: NULL dx or Ops\n");
         return;
     }
 
-    /* TX abort: HAL may require reading source before clear */
-    if ((intr & I2C_INT_TX_ABORT) != 0U) {
-        if (dx->Ops->AckInterrupts != NULL) {
-            dx->Ops->AckInterrupts(dx, I2C_INT_TX_ABORT);
-        }
+    /* Backend must provide AckInterrupts() */
+    if (dx->Ops->AckInterrupts == NULL) {
+        I2cCtrl_Log("AckInterrupts: backend has no AckInterrupts()\n");
+        return;
     }
 
-    /* STOP detected: clear via HAL */
-    if ((intr & I2C_INT_STOP_DETECTED) != 0U) {
-        if (dx->Ops->AckInterrupts != NULL) {
-            dx->Ops->AckInterrupts(dx, I2C_INT_STOP_DETECTED);
-        }
+    /*
+     * UNIVERSAL RULE:
+     * The backend knows exactly how to clear interrupts for its hardware.
+     * We simply pass the raw interrupt bitmask to the backend.
+     *
+     * No Intel assumptions.
+     * No DW assumptions.
+     * No LPSS assumptions.
+     * No per-bit clearing here.
+     * No vendor-specific logic.
+     */
+    __try {
+        dx->Ops->AckInterrupts(dx, intr);
     }
-
-    /* Clear combined interrupt sources via HAL */
-    if (dx->Ops->AckInterrupts != NULL) {
-        dx->Ops->AckInterrupts(
-            dx,
-            I2C_INT_RX_UNDER | I2C_INT_RX_OVER | I2C_INT_TX_OVER |
-            I2C_INT_TX_ABORT  | I2C_INT_STOP_DETECTED | I2C_INT_START_DETECTED |
-            I2C_INT_GEN_CALL | I2C_INT_ACTIVITY | I2C_INT_RX_DONE |
-            I2C_INT_RD_REQ
-        );
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        I2cCtrl_Log("AckInterrupts: EXCEPTION in backend AckInterrupts()\n");
     }
 }
 

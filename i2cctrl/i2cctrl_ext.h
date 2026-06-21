@@ -751,9 +751,28 @@ NTSTATUS (*ReenumerateChildrenFn)(
     PHYSICAL_ADDRESS PolicyPwrmBase;
 	BOOLEAN ReadyForChildren;
 	PVOID PwrmBaseVa;   /* Virtual mapping of PWRMBASE */
+	struct _I2CCTRL_PDO* OtherDevicePdo;   /* NEW: non-touchpad device PDO */
+	BOOLEAN IsLpss2;                        /* NEW: LPSS2 capability flag */
+	    //
+    // ACPI-backed controller state (used only by AcpiI2cOps)
+    //
+    UCHAR   AcpiTarget;        /* 7-bit target address */
+    ULONG   AcpiPendingReads;  /* queued read tokens */
+    NTSTATUS AcpiLastStatus;   /* last ACPI transfer result */
+
+    ULONG   AcpiRawIntr;       /* software-emulated interrupt bits */
+    ULONG   AcpiIntrMask;      /* software interrupt mask */
+	PVOID AcpiI2cMethodHandle;   /* cached ACPI method handle */
+	BOOLEAN AcpiI2cMethodChecked;
+
 } I2CCTRL_FDO, *PI2CCTRL_FDO;
 
 #endif /* _I2CCTRL_FDO_DEFINED */
+
+typedef struct _I2CCTRL_ACPI_METHOD_HANDLE {
+    PVOID AcpiHandle;     /* namespace node */
+    ULONG MethodName;     /* 4-char ACPI name as ULONG */
+} I2CCTRL_ACPI_METHOD_HANDLE, *PI2CCTRL_ACPI_METHOD_HANDLE;
 
 NTSTATUS
 I2cCtrlIdentifyAndInitController(
@@ -765,6 +784,16 @@ I2cCtrl_InstallBackend(
     PI2CCTRL_FDO devctx
     );
 
+NTSTATUS
+I2cCtrl_MapMmio(
+    PI2CCTRL_FDO devctx,
+    PCM_RESOURCE_LIST translated
+    );
+
+VOID
+I2cCtrl_UnmapMmio(
+    PI2CCTRL_FDO devctx
+    );
 
 /* ---------------------------------------------------------------------------
    Per-handle target binding (FileObject->FsContext)
@@ -1348,6 +1377,11 @@ I2cCtrl_AcpiOpen(
     PI2CCTRL_FDO fdoExt
     );
 
+VOID
+I2cCtrl_AcpiClose(
+    PI2CCTRL_FDO fdoExt
+    );
+
 NTSTATUS
 I2cCtrl_EnumerateAcpiNamespace(
     PDEVICE_OBJECT AcpiPdo,
@@ -1420,7 +1454,63 @@ I2cCtrl_WaitForEnableState(
 //
 // Lookup table entry
 //
+typedef enum _I2C_BACKEND_TYPE {
+
+    /* 0x00 — Synopsys DesignWare (DW) */
+    BACKEND_DW = 0,          /* Intel/AMD/ES/LPSS/PCI/INT3446/INT3447 */
+
+    /* 0x01 — ACPI-only pseudo-controllers */
+    BACKEND_ACPI = 1,        /* ACPI-only I2C (no MMIO, no PCI) */
+
+    /* 0x02 — Vendor-specific non-DW controllers */
+    BACKEND_VENDOR_GENERIC = 2, /* Generic placeholder */
+
+    /* 0x03 — Realtek */
+    BACKEND_REALTEK = 3,     /* ACPI\RTKxxxx */
+
+    /* 0x04 — Qualcomm */
+    BACKEND_QUALCOMM = 4,    /* ACPI\QCOMxxxx */
+
+    /* 0x05 — NVIDIA */
+    BACKEND_NVIDIA = 5,      /* ACPI\NVDAxxxx or PCI Tegra */
+
+    /* 0x06 — Apple (T2/M1/M2 ACPI bridges) */
+    BACKEND_APPLE = 6,       /* ACPI\APPxxxx */
+
+    /* 0x07 — Broadcom (Raspberry Pi ACPI boards, Chromebooks) */
+    BACKEND_BROADCOM = 7,    /* ACPI\BCMxxxx */
+
+    /* 0x08 — MediaTek */
+    BACKEND_MEDIATEK = 8,    /* ACPI\MTKxxxx */
+
+    /* 0x09 — Samsung Exynos */
+    BACKEND_SAMSUNG = 9,     /* ACPI\SAMxxxx */
+
+    /* 0x0A — VIA / Centaur */
+    BACKEND_VIA = 10,        /* ACPI\VIAxxxx */
+
+    /* 0x0B — SiFive / RISC-V SoCs */
+    BACKEND_SIFIVE = 11,     /* ACPI\SFVExxxx */
+
+    /* 0x0C — Rockchip */
+    BACKEND_ROCKCHIP = 12,   /* ACPI\RKCPxxxx */
+
+    /* 0x0D — AMD PSP/embedded I2C (non-DW variants) */
+    BACKEND_AMD_VENDOR = 13, /* ACPI\AMDxVEND */
+
+    /* 0x0E — Intel non-DW (rare future devices) */
+    BACKEND_INTEL_VENDOR = 14,
+
+    /* 0x0F — Software/bit-bang I2C backend */
+    BACKEND_SOFTWARE = 15,   /* GPIO-based I2C */
+
+    /* 0x10 — Reserved for future expansion */
+    BACKEND_RESERVED = 16
+
+} I2C_BACKEND_TYPE;
+
 typedef struct _I2CCTRL_DEVICE_ID {
+
     PCWSTR PciId;              /* Hardware ID string to match */
 
     /* DW-I2C functional register offsets (BAR0) */
@@ -1437,8 +1527,10 @@ typedef struct _I2CCTRL_DEVICE_ID {
 
     ULONG  Quirks;             /* Functional quirks bitmask */
     ULONG  BsodQuirks;         /* BSOD-tweak-workarounds bitmask */
-} I2CCTRL_DEVICE_ID, *PI2CCTRL_DEVICE_ID;
 
+    I2C_BACKEND_TYPE BackendType; /* Backend selector (DW/ACPI/Vendor) */
+
+} I2CCTRL_DEVICE_ID, *PI2CCTRL_DEVICE_ID;
 
 /* Extern declarations */
 extern const I2CCTRL_DEVICE_ID g_I2cControllers[];
@@ -1899,6 +1991,12 @@ I2cCtrl_CreateTouchpad(
     PI2CCTRL_FDO   fdoExt
 );
 
+NTSTATUS
+I2cCtrl_CreateI2cDevice(
+    PDEVICE_OBJECT Fdo,
+    PI2CCTRL_FDO   fdoExt
+);
+
 //
 // XP does NOT define this, but PnP uses it.
 // Value taken from later WDKs.
@@ -1933,6 +2031,73 @@ I2cCtrl_GetPciBusDevFun(
     ULONG *Bus,
     ULONG *Dev,
     ULONG *Fun
+    );
+
+BOOLEAN
+I2cCtrl_IsVendorTouchpad(
+    PCWSTR Hid,
+    PI2CCTRL_PDO Pdo
+    );
+	
+BOOLEAN
+I2cCtrl_IsRawI2cTouchpad(
+    PI2CCTRL_PDO Pdo
+    );
+
+VOID
+I2cCtrl_AckInterrupts(
+    PI2CCTRL_FDO dx,
+    ULONG        intr
+    );
+
+NTSTATUS
+I2cCtrl_AcpiTransfer(
+    PI2CCTRL_FDO devctx,
+    UCHAR        slaveAddr,
+    PUCHAR       writeBuf,
+    ULONG        writeLen,
+    PUCHAR       readBuf,
+    ULONG        readLen
+);
+
+VOID
+I2cCtrl_CheckForAcpiI2cMethods(
+    PI2CCTRL_FDO FdoExt,
+    PVOID        AcpiHandle
+    );
+
+NTSTATUS
+I2cCtrl_InvokeAcpiI2cMethod(
+    PI2CCTRL_FDO devctx,
+    UCHAR        slaveAddr,
+    PUCHAR       writeBuf,
+    ULONG        writeLen,
+    PUCHAR       readBuf,
+    ULONG        readLen
+    );
+
+BOOLEAN
+I2cCtrl_AcpiMethodExists(
+    PI2CCTRL_FDO FdoExt,
+    PVOID        AcpiHandle,
+    PCWSTR       MethodNameW
+    );
+
+NTSTATUS
+I2cCtrl_AcpiEvalMethodRaw(
+    PI2CCTRL_FDO    FdoExt,
+    PVOID           AcpiHandle,
+    PVOID           InBuf,
+    ULONG           InLen,
+    PVOID           OutBuf,
+    ULONG           OutLen,
+    PIO_STATUS_BLOCK IoStatus
+    );
+
+PI2CCTRL_ACPI_METHOD_HANDLE
+I2cCtrl_GetAcpiMethodHandle(
+    PI2CCTRL_FDO FdoExt,
+    PCWSTR       MethodName
     );
 
 #endif /* _I2CCTRL_EXT_H_ */
