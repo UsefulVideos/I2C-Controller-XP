@@ -3562,121 +3562,137 @@ if (fdoExt->Ops != NULL && fdoExt->Ops->MaskInterrupts != NULL) {
 }
 
 /* -------------------------------------------------------------
- * PWRMBASE selection
- * Order:
- *   1. Registry override (PolicyPwrmBase)
- *   2. Dynamic PCI discovery
- *   3. Validate
- *   4. If invalid, mark UnsupportedPlatform and exit cleanly
+ * PWRMBASE selection (LPSS-only)
  * ------------------------------------------------------------- */
 
-/* 1. Registry override */
-if (fdoExt->PwrmBase.QuadPart == 0 &&
-    fdoExt->PolicyPwrmBase.QuadPart != 0)
 {
-    fdoExt->PwrmBase = fdoExt->PolicyPwrmBase;
+    BOOLEAN isLpss = FALSE;
 
-    I2cCtrl_Log("StartDevice: PWRMBASE (policy) = %08X%08X\n",
-                fdoExt->PwrmBase.HighPart,
-                fdoExt->PwrmBase.LowPart);
-}
+    if (fdoExt->PnpId != NULL) {
+        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL)
+        {
+            isLpss = TRUE;
+        }
+    }
 
-/* 2. Dynamic PCI discovery */
-if (fdoExt->PwrmBase.QuadPart == 0)
-{
-    PHYSICAL_ADDRESS pciPwrm;
-    NTSTATUS pciStatus;
-
-    pciStatus = I2cCtrl_FindPwrmBaseDynamic(&pciPwrm);
-
-    if (NT_SUCCESS(pciStatus))
-    {
-        fdoExt->PwrmBase = pciPwrm;
-        fdoExt->HavePwrm = TRUE;
-
-        I2cCtrl_Log("StartDevice: PWRMBASE (PCI) = %08X%08X\n",
-                    fdoExt->PwrmBase.HighPart,
-                    fdoExt->PwrmBase.LowPart);
+    if (!isLpss) {
+        I2cCtrl_Log("StartDevice: non-LPSS controller -> skipping PWRMBASE selection\n");
     }
     else
     {
-        I2cCtrl_Log("StartDevice: PCI PWRMBASE fetch failed (0x%08lx)\n",
-                    pciStatus);
-    }
-}
+        /* 1. Registry override */
+        if (fdoExt->PwrmBase.QuadPart == 0 &&
+            fdoExt->PolicyPwrmBase.QuadPart != 0)
+        {
+            fdoExt->PwrmBase = fdoExt->PolicyPwrmBase;
 
-/* 3. Validate */
-status = I2cCtrl_ReportPwrmBaseInfo(fdoExt->PwrmBase);
-if (!NT_SUCCESS(status))
-{
-    I2cCtrl_Log("StartDevice: INVALID PWRMBASE -> cannot power controller\n");
-    I2cCtrl_Log("StartDevice: marking UnsupportedPlatform=TRUE\n");
+            I2cCtrl_Log("StartDevice: PWRMBASE (policy) = %08X%08X\n",
+                        fdoExt->PwrmBase.HighPart,
+                        fdoExt->PwrmBase.LowPart);
+        }
 
-    fdoExt->UnsupportedPlatform = TRUE;
-    fdoExt->Started             = FALSE;
+        /* 2. Dynamic PCI discovery */
+        if (fdoExt->PwrmBase.QuadPart == 0)
+        {
+            PHYSICAL_ADDRESS pciPwrm;
+            NTSTATUS pciStatus;
 
-    /* Disconnect interrupt if connected */
-    if (fdoExt->InterruptObject != NULL) {
-        I2cCtrl_Log("StartDevice: disconnecting interrupt object\n");
-        IoDisconnectInterrupt(fdoExt->InterruptObject);
-        fdoExt->InterruptObject = NULL;
-    }
+            pciStatus = I2cCtrl_FindPwrmBaseDynamic(&pciPwrm);
 
-    /* Unmap BAR0 */
-    if (fdoExt->Mmio != NULL) {
-        I2cCtrl_Log("StartDevice: unmapping BAR0 MMIO\n");
-        MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
-        fdoExt->Mmio              = NULL;
-        fdoExt->MmioLength        = 0;
-        fdoExt->MmioPhys.QuadPart = 0;
-    }
+            if (NT_SUCCESS(pciStatus))
+            {
+                fdoExt->PwrmBase = pciPwrm;
+                fdoExt->HavePwrm = TRUE;
 
-    I2cCtrl_Log("StartDevice: returning STATUS_SUCCESS (unsupported platform)\n");
-    return STATUS_SUCCESS;
-}
+                I2cCtrl_Log("StartDevice: PWRMBASE (PCI) = %08X%08X\n",
+                            fdoExt->PwrmBase.HighPart,
+                            fdoExt->PwrmBase.LowPart);
+            }
+            else
+            {
+                I2cCtrl_Log("StartDevice: PCI PWRMBASE fetch failed (0x%08lx)\n",
+                            pciStatus);
+            }
+        }
 
-/* 4. Map PWRMBASE VA */
-if (fdoExt->PwrmBaseVa == NULL)
-{
-    fdoExt->PwrmBaseVa = MmMapIoSpace(
-        fdoExt->PwrmBase,
-        0x10000,        /* covers PMC4, PW_FORCE_ON, PW_STS */
-        MmNonCached
-    );
+        /* 3. Validate */
+        status = I2cCtrl_ReportPwrmBaseInfo(fdoExt->PwrmBase);
+        if (!NT_SUCCESS(status))
+        {
+            I2cCtrl_Log("StartDevice: INVALID PWRMBASE -> cannot power controller\n");
+            I2cCtrl_Log("StartDevice: marking UnsupportedPlatform=TRUE\n");
 
-    if (fdoExt->PwrmBaseVa != NULL) {
-        I2cCtrl_Log("StartDevice: PWRMBASE VA mapped at %p\n",
-                    fdoExt->PwrmBaseVa);
-    } else {
-        I2cCtrl_Log("StartDevice: FAILED to map PWRMBASE VA\n");
+            fdoExt->UnsupportedPlatform = TRUE;
+            fdoExt->Started             = FALSE;
+
+            if (fdoExt->InterruptObject != NULL) {
+                I2cCtrl_Log("StartDevice: disconnecting interrupt object\n");
+                IoDisconnectInterrupt(fdoExt->InterruptObject);
+                fdoExt->InterruptObject = NULL;
+            }
+
+            if (fdoExt->Mmio != NULL) {
+                I2cCtrl_Log("StartDevice: unmapping BAR0 MMIO\n");
+                MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
+                fdoExt->Mmio              = NULL;
+                fdoExt->MmioLength        = 0;
+                fdoExt->MmioPhys.QuadPart = 0;
+            }
+
+            I2cCtrl_Log("StartDevice: returning STATUS_SUCCESS (unsupported platform)\n");
+            return STATUS_SUCCESS;
+        }
+
+        /* 4. Map PWRMBASE VA */
+        if (fdoExt->PwrmBaseVa == NULL)
+        {
+            fdoExt->PwrmBaseVa = MmMapIoSpace(
+                fdoExt->PwrmBase,
+                0x10000,
+                MmNonCached
+            );
+
+            if (fdoExt->PwrmBaseVa != NULL) {
+                I2cCtrl_Log("StartDevice: PWRMBASE VA mapped at %p\n",
+                            fdoExt->PwrmBaseVa);
+            } else {
+                I2cCtrl_Log("StartDevice: FAILED to map PWRMBASE VA\n");
+            }
+        }
     }
 }
 
 /* -------------------------------------------------------------
  * LPSS BAR2 fallback (XP cannot see BAR2 in _CRS)
- * Supports DEV_9DE8, DEV_9DE9, DEV_9DC5
+ * Only for LPSS controllers: DEV_9DE8, DEV_9DE9, DEV_9DC5
  * ------------------------------------------------------------- */
 if (!haveBar2)
 {
+    BOOLEAN isLpss = FALSE;
     ULONG pidOffset = 0;
 
     if (fdoExt->PnpId != NULL)
     {
-        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL)
+        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL) {
+            isLpss = TRUE;
             pidOffset = 0xC000;   /* I2C0 */
-        else if (wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL)
+        }
+        else if (wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL) {
+            isLpss = TRUE;
             pidOffset = 0xC100;   /* I2C1 */
-        else if (wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL)
+        }
+        else if (wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL) {
+            isLpss = TRUE;
             pidOffset = 0xC200;   /* I2C2 */
-        else
-            pidOffset = 0xC000;   /* safe default */
-    }
-    else {
-        pidOffset = 0xC000;
+        }
     }
 
-    if (fdoExt->PwrmBase.QuadPart == 0)
-    {
+    if (!isLpss) {
+        I2cCtrl_Log("StartDevice: non-LPSS controller -> skipping LPSS BAR2 fallback\n");
+    }
+    else if (fdoExt->PwrmBase.QuadPart == 0) {
         I2cCtrl_Log("StartDevice: no valid PWRMBASE -> skipping LPSS BAR2 fallback\n");
     }
     else
@@ -3710,224 +3726,235 @@ if (!haveBar2)
 
 
 /* -------------------------------------------------------------
- * WHL/CNL Power Wells + LPSS Enable (Diagnostic Version)
+ * WHL/CNL Power Wells + LPSS Enable (LPSS-only, diagnostic)
  * ------------------------------------------------------------- */
 
-I2cCtrl_Log("StartDevice: === POWER + LPSS DEBUG BEGIN ===\n");
-
-/* =============================================================
- * 1. POWER WELLS (PWRMBASE)
- * ============================================================= */
-
-if (fdoExt->PwrmBaseVa != NULL)
 {
-    ULONG pmc4_before = 0, pmc4_after = 0;
-    ULONG pw_force_before = 0, pw_force_after = 0;
-    ULONG pw_sts_before = 0, pw_sts_after = 0;
+    BOOLEAN isLpss;
 
-    I2cCtrl_Log("StartDevice: PWRMBASE VA=%p PA=%08X%08X\n",
-                fdoExt->PwrmBaseVa,
-                fdoExt->PwrmBase.HighPart,
-                fdoExt->PwrmBase.LowPart);
+    isLpss = FALSE;
 
-    /* --- Read initial PMC4 / PW registers --- */
-    __try {
-        pmc4_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET));
-        pw_force_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET));
-        pw_sts_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION reading PWRM registers\n");
+    if (fdoExt->PnpId != NULL) {
+        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL)
+        {
+            isLpss = TRUE;
+        }
     }
 
-    I2cCtrl_Log("StartDevice: PMC4 BEFORE       = 0x%08lx\n", pmc4_before);
-    I2cCtrl_Log("StartDevice: PW_FORCE_ON BEFORE= 0x%08lx\n", pw_force_before);
-    I2cCtrl_Log("StartDevice: PW_STS BEFORE     = 0x%08lx\n", pw_sts_before);
+    if (!isLpss) {
+        I2cCtrl_Log("StartDevice: non-LPSS controller -> skipping POWER + LPSS debug\n");
+    } else {
 
-    /* --- Enable CECE bit --- */
-    pmc4_after = pmc4_before | WHL_PMC_CECE_BIT;
+        I2cCtrl_Log("StartDevice: === POWER + LPSS DEBUG BEGIN ===\n");
 
-    I2cCtrl_Log("StartDevice: Setting CECE bit (0x%08lx)\n",
-                WHL_PMC_CECE_BIT);
+        /* =============================================================
+         * 1. POWER WELLS (PWRMBASE)
+         * ============================================================= */
 
-    __try {
-        WRITE_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET),
-            pmc4_after);
-        pmc4_after = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION writing PMC4\n");
-    }
+        if (fdoExt->PwrmBaseVa != NULL)
+        {
+            ULONG pmc4_before = 0, pmc4_after = 0;
+            ULONG pw_force_before = 0, pw_force_after = 0;
+            ULONG pw_sts_before = 0, pw_sts_after = 0;
 
-    I2cCtrl_Log("StartDevice: PMC4 AFTER        = 0x%08lx\n", pmc4_after);
+            I2cCtrl_Log("StartDevice: PWRMBASE VA=%p PA=%08X%08X\n",
+                        fdoExt->PwrmBaseVa,
+                        fdoExt->PwrmBase.HighPart,
+                        fdoExt->PwrmBase.LowPart);
 
-    /* --- Force PW1/PW2 ON --- */
-    I2cCtrl_Log("StartDevice: Writing PW_FORCE_ON mask 0x%08lx\n",
-                WHL_PW_MASK);
-
-    __try {
-        WRITE_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET),
-            WHL_PW_MASK);
-        pw_force_after = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION writing PW_FORCE_ON\n");
-    }
-
-    I2cCtrl_Log("StartDevice: PW_FORCE_ON AFTER = 0x%08lx\n", pw_force_after);
-
-    /* --- Poll PW_STS --- */
-    {
-        ULONG timeout = 10000;
-        ULONG iter = 0;
-        ULONG pw = 0;
-
-        I2cCtrl_Log("StartDevice: Polling PW_STS for PW1/PW2 ON (mask=0x%08lx)\n",
-                    WHL_PW_MASK);
-
-        do {
             __try {
-                pw = READ_REGISTER_ULONG(
+                pmc4_before = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET));
+                pw_force_before = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET));
+                pw_sts_before = READ_REGISTER_ULONG(
                     (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET));
             } __except(EXCEPTION_EXECUTE_HANDLER) {
-                I2cCtrl_Log("StartDevice: EXCEPTION reading PW_STS (iter=%lu)\n",
-                            iter);
-                break;
+                I2cCtrl_Log("StartDevice: EXCEPTION reading PWRM registers\n");
             }
 
-            if ((pw & WHL_PW_MASK) == WHL_PW_MASK)
-                break;
+            I2cCtrl_Log("StartDevice: PMC4 BEFORE       = 0x%08lx\n", pmc4_before);
+            I2cCtrl_Log("StartDevice: PW_FORCE_ON BEFORE= 0x%08lx\n", pw_force_before);
+            I2cCtrl_Log("StartDevice: PW_STS BEFORE     = 0x%08lx\n", pw_sts_before);
 
-            if ((iter % 1000) == 0)
-                I2cCtrl_Log("StartDevice: PW_STS poll iter=%lu value=0x%08lx\n",
-                            iter, pw);
+            pmc4_after = pmc4_before | WHL_PMC_CECE_BIT;
 
-            KeStallExecutionProcessor(1);
-            iter++;
+            I2cCtrl_Log("StartDevice: Setting CECE bit (0x%08lx)\n",
+                        WHL_PMC_CECE_BIT);
 
-        } while (--timeout);
-
-        pw_sts_after = pw;
-
-        I2cCtrl_Log("StartDevice: PW_STS FINAL      = 0x%08lx (iters=%lu timeout=%lu)\n",
-                    pw_sts_after, iter, timeout);
-    }
-}
-else
-{
-    /* VA not mapped - log PA only */
-    I2cCtrl_Log("StartDevice: PWRMBASE VA=NULL PA=%08X%08X -> cannot access power wells\n",
-                fdoExt->PwrmBase.HighPart,
-                fdoExt->PwrmBase.LowPart);
-}
-
-/* =============================================================
- * 2. LPSS PRIVATE REGISTERS (BAR2)
- * ============================================================= */
-
-if (fdoExt->LpssBar2 != NULL)
-{
-    ULONG clk_before = 0, clk_after = 0;
-    ULONG rst_before = 0, rst_after = 0;
-    ULONG rst_sts_before = 0, rst_sts_after = 0;
-
-    I2cCtrl_Log("StartDevice: LPSS BAR2 VA=%p PA=%08X%08X\n",
-                fdoExt->LpssBar2,
-                fdoExt->LpssBar2Phys.HighPart,
-                fdoExt->LpssBar2Phys.LowPart);
-
-    /* --- Read initial LPSS state --- */
-    __try {
-        clk_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL));
-        rst_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL));
-        rst_sts_before = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_STS));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION reading LPSS initial state\n");
-    }
-
-    I2cCtrl_Log("StartDevice: LPSS CLK_CTL BEFORE = 0x%08lx\n", clk_before);
-    I2cCtrl_Log("StartDevice: LPSS RST_CTL BEFORE = 0x%08lx\n", rst_before);
-    I2cCtrl_Log("StartDevice: LPSS RST_STS BEFORE = 0x%08lx\n", rst_sts_before);
-
-    /* --- Enable clocks --- */
-    I2cCtrl_Log("StartDevice: Writing LPSS CLK_CTL = 0x00000007\n");
-
-    __try {
-        WRITE_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL),
-            0x7);
-        clk_after = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION writing LPSS CLK_CTL\n");
-    }
-
-    I2cCtrl_Log("StartDevice: LPSS CLK_CTL AFTER  = 0x%08lx\n", clk_after);
-
-    /* --- Deassert reset --- */
-    I2cCtrl_Log("StartDevice: Writing LPSS RST_CTL = 0x00000000\n");
-
-    __try {
-        WRITE_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL),
-            0x0);
-        rst_after = READ_REGISTER_ULONG(
-            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL));
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        I2cCtrl_Log("StartDevice: EXCEPTION writing LPSS RST_CTL\n");
-    }
-
-    I2cCtrl_Log("StartDevice: LPSS RST_CTL AFTER  = 0x%08lx\n", rst_after);
-
-    /* --- Poll reset status --- */
-    {
-        ULONG timeout = 1000;
-        ULONG iter = 0;
-        ULONG rst = 0;
-
-        I2cCtrl_Log("StartDevice: Polling LPSS RST_STS for bit0=1\n");
-
-        do {
             __try {
-                rst = READ_REGISTER_ULONG(
+                WRITE_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET),
+                    pmc4_after);
+                pmc4_after = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PMC_PMC4_OFFSET));
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                I2cCtrl_Log("StartDevice: EXCEPTION writing PMC4\n");
+            }
+
+            I2cCtrl_Log("StartDevice: PMC4 AFTER        = 0x%08lx\n", pmc4_after);
+
+            I2cCtrl_Log("StartDevice: Writing PW_FORCE_ON mask 0x%08lx\n",
+                        WHL_PW_MASK);
+
+            __try {
+                WRITE_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET),
+                    WHL_PW_MASK);
+                pw_force_after = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET));
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                I2cCtrl_Log("StartDevice: EXCEPTION writing PW_FORCE_ON\n");
+            }
+
+            I2cCtrl_Log("StartDevice: PW_FORCE_ON AFTER = 0x%08lx\n", pw_force_after);
+
+            {
+                ULONG timeout = 10000;
+                ULONG iter = 0;
+                ULONG pw = 0;
+
+                I2cCtrl_Log("StartDevice: Polling PW_STS for PW1/PW2 ON (mask=0x%08lx)\n",
+                            WHL_PW_MASK);
+
+                do {
+                    __try {
+                        pw = READ_REGISTER_ULONG(
+                            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET));
+                    } __except(EXCEPTION_EXECUTE_HANDLER) {
+                        I2cCtrl_Log("StartDevice: EXCEPTION reading PW_STS (iter=%lu)\n",
+                                    iter);
+                        break;
+                    }
+
+                    if ((pw & WHL_PW_MASK) == WHL_PW_MASK)
+                        break;
+
+                    if ((iter % 1000) == 0)
+                        I2cCtrl_Log("StartDevice: PW_STS poll iter=%lu value=0x%08lx\n",
+                                    iter, pw);
+
+                    KeStallExecutionProcessor(1);
+                    iter++;
+
+                } while (--timeout);
+
+                pw_sts_after = pw;
+
+                I2cCtrl_Log("StartDevice: PW_STS FINAL      = 0x%08lx (iters=%lu timeout=%lu)\n",
+                            pw_sts_after, iter, timeout);
+            }
+        }
+        else
+        {
+            I2cCtrl_Log("StartDevice: PWRMBASE VA=NULL PA=%08X%08X -> cannot access power wells\n",
+                        fdoExt->PwrmBase.HighPart,
+                        fdoExt->PwrmBase.LowPart);
+        }
+
+        /* =============================================================
+         * 2. LPSS PRIVATE REGISTERS (BAR2)
+         * ============================================================= */
+
+        if (fdoExt->LpssBar2 != NULL)
+        {
+            ULONG clk_before = 0, clk_after = 0;
+            ULONG rst_before = 0, rst_after = 0;
+            ULONG rst_sts_before = 0, rst_sts_after = 0;
+
+            I2cCtrl_Log("StartDevice: LPSS BAR2 VA=%p PA=%08X%08X\n",
+                        fdoExt->LpssBar2,
+                        fdoExt->LpssBar2Phys.HighPart,
+                        fdoExt->LpssBar2Phys.LowPart);
+
+            __try {
+                clk_before = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL));
+                rst_before = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL));
+                rst_sts_before = READ_REGISTER_ULONG(
                     (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_STS));
             } __except(EXCEPTION_EXECUTE_HANDLER) {
-                I2cCtrl_Log("StartDevice: EXCEPTION reading LPSS RST_STS (iter=%lu)\n",
-                            iter);
-                break;
+                I2cCtrl_Log("StartDevice: EXCEPTION reading LPSS initial state\n");
             }
 
-            if (rst & 0x1)
-                break;
+            I2cCtrl_Log("StartDevice: LPSS CLK_CTL BEFORE = 0x%08lx\n", clk_before);
+            I2cCtrl_Log("StartDevice: LPSS RST_CTL BEFORE = 0x%08lx\n", rst_before);
+            I2cCtrl_Log("StartDevice: LPSS RST_STS BEFORE = 0x%08lx\n", rst_sts_before);
 
-            if ((iter % 100) == 0)
-                I2cCtrl_Log("StartDevice: LPSS RST_STS poll iter=%lu value=0x%08lx\n",
-                            iter, rst);
+            I2cCtrl_Log("StartDevice: Writing LPSS CLK_CTL = 0x00000007\n");
 
-            KeStallExecutionProcessor(1);
-            iter++;
+            __try {
+                WRITE_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL),
+                    0x7);
+                clk_after = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL));
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                I2cCtrl_Log("StartDevice: EXCEPTION writing LPSS CLK_CTL\n");
+            }
 
-        } while (--timeout);
+            I2cCtrl_Log("StartDevice: LPSS CLK_CTL AFTER  = 0x%08lx\n", clk_after);
 
-        rst_sts_after = rst;
+            I2cCtrl_Log("StartDevice: Writing LPSS RST_CTL = 0x00000000\n");
 
-        I2cCtrl_Log("StartDevice: LPSS RST_STS FINAL = 0x%08lx (iters=%lu timeout=%lu)\n",
-                    rst_sts_after, iter, timeout);
+            __try {
+                WRITE_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL),
+                    0x0);
+                rst_after = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL));
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                I2cCtrl_Log("StartDevice: EXCEPTION writing LPSS RST_CTL\n");
+            }
+
+            I2cCtrl_Log("StartDevice: LPSS RST_CTL AFTER  = 0x%08lx\n", rst_after);
+
+            {
+                ULONG timeout = 1000;
+                ULONG iter = 0;
+                ULONG rst = 0;
+
+                I2cCtrl_Log("StartDevice: Polling LPSS RST_STS for bit0=1\n");
+
+                do {
+                    __try {
+                        rst = READ_REGISTER_ULONG(
+                            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_STS));
+                    } __except(EXCEPTION_EXECUTE_HANDLER) {
+                        I2cCtrl_Log("StartDevice: EXCEPTION reading LPSS RST_STS (iter=%lu)\n",
+                                    iter);
+                        break;
+                    }
+
+                    if (rst & 0x1)
+                        break;
+
+                    if ((iter % 100) == 0)
+                        I2cCtrl_Log("StartDevice: LPSS RST_STS poll iter=%lu value=0x%08lx\n",
+                                    iter, rst);
+
+                    KeStallExecutionProcessor(1);
+                    iter++;
+
+                } while (--timeout);
+
+                rst_sts_after = rst;
+
+                I2cCtrl_Log("StartDevice: LPSS RST_STS FINAL = 0x%08lx (iters=%lu timeout=%lu)\n",
+                            rst_sts_after, iter, timeout);
+            }
+        }
+        else
+        {
+            I2cCtrl_Log("StartDevice: LPSS BAR2 NULL -> cannot access LPSS private registers\n");
+        }
+
+        I2cCtrl_Log("StartDevice: === POWER + LPSS DEBUG END ===\n");
     }
 }
-else
-{
-    I2cCtrl_Log("StartDevice: LPSS BAR2 NULL -> cannot access LPSS private registers\n");
-}
-
-I2cCtrl_Log("StartDevice: === POWER + LPSS DEBUG END ===\n");
 
 /* Late pass: install backend, then apply HW quirks */
 I2cCtrl_InstallBackend(fdoExt);
@@ -4025,31 +4052,41 @@ I2cCtrl_Log("StartDevice: === DW-I2C ENABLE DEBUG END ===\n");
         I2cCtrl_Log(prefix "[0x08]=0x%08lx\n", _r2);                   \
     } while (0)
 
-
 //
 // ENABLE FAILED path
 //
 status = I2cCtrl_WaitForEnableState(fdoExt, TRUE, 500U);
 if (!NT_SUCCESS(status)) {
 
+    BOOLEAN isLpss = FALSE;
+
+    if (fdoExt->PnpId != NULL) {
+        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL)
+        {
+            isLpss = TRUE;
+        }
+    }
+
     I2cCtrl_Log("StartDevice: ENABLE FAILED (0x%08lx) -> collecting debug\n", status);
 
     //
-    // 1. Dump PWRM window (if mapped)
+    // 1. Dump PWRM window (if mapped, LPSS-only)
     //
-    if (fdoExt->PwrmBaseVa != NULL) {
+    if (isLpss && fdoExt->PwrmBaseVa != NULL) {
         I2CCTRL_DUMP3("StartDevice: PWRM ", fdoExt->PwrmBaseVa);
     } else {
-        I2cCtrl_Log("StartDevice: PWRM VA is NULL -> no PWRM dump\n");
+        I2cCtrl_Log("StartDevice: PWRM dump skipped (non-LPSS or VA NULL)\n");
     }
 
     //
-    // 2. Dump LPSS/private window (if mapped)
+    // 2. Dump LPSS/private window (if mapped, LPSS-only)
     //
-    if (fdoExt->LpssBar2 != NULL) {
+    if (isLpss && fdoExt->LpssBar2 != NULL) {
         I2CCTRL_DUMP3("StartDevice: PRIV ", fdoExt->LpssBar2);
     } else {
-        I2cCtrl_Log("StartDevice: PRIV VA is NULL -> no private dump\n");
+        I2cCtrl_Log("StartDevice: PRIV dump skipped (non-LPSS or VA NULL)\n");
     }
 
     //
@@ -4147,19 +4184,11 @@ fdoExt->ChildrenStale   = FALSE;
 
 I2cCtrl_Log("StartDevice: controller enabled, runtime flags set\n");
 
-/*
- * IMPORTANT:
- *  XP cannot accept child PDO creation here.
- *  ACPI namespace is not ready, and synthetic PDOs created here
- *  cause rebalance loops and repeated AddDevice/RemoveDevice cycles.
- *
- *  Child enumeration MUST occur in IRP_MN_QUERY_DEVICE_RELATIONS (BusRelations).
- */
-
 I2cCtrl_Log("StartDevice: deferring child enumeration to BusRelations\n");
 I2cCtrl_Log("StartDevice: complete\n");
 
 return STATUS_SUCCESS;
+
 }
 
 /* -----------------------------------------------------------------------
