@@ -115,6 +115,16 @@ ExcludeFromSelect = *
 %I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EB
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMD0010
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMDI0010
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228A
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228B
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228C
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228D
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228E
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228F
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862289
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862288
+
+
 
 ; =====================================================================
 ;  INSTALL SECTION — BUS DRIVER

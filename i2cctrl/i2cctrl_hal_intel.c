@@ -668,10 +668,12 @@ Intel_IssueBlockRead(
 }
 
 /* ---------------------------------------------------------------------------
- * HAL ops table
+ * Universal DW-I2C HAL ops table
+ * Applies to ALL Intel Serial IO I2C controllers (ES, LPSS, PCI),
+ * AMD I2C controllers, and any DesignWare-compatible I2C core.
  * --------------------------------------------------------------------------- */
 
-I2C_HW_OPS IntelI2cOps = {
+I2C_HW_OPS DwI2cOps = {
     /* Resource mapping */
     Intel_MapResources,
     Intel_UnmapResources,
@@ -713,58 +715,57 @@ I2C_HW_OPS IntelI2cOps = {
     Intel_IsArbitrationLost,
     Intel_WriteTxByte,
 
-    /* Capabilities */
-    { 0 }, /* Caps - will be overwritten below */
+    /* Capabilities (filled in at runtime) */
+    { 0 },
 
     /* FIFO management */
     Intel_QuiesceFifos,
     Intel_DrainRxFifo,
     Intel_FlushTxFifo,
 
-    /* Optional raw register access (not used here) */
+    /* Optional raw register access */
     NULL,
     NULL,
 
-    /* Resource queries (not used in XP backend) */
+    /* Resource queries (unused on XP) */
     NULL,
     NULL,
     NULL,
     NULL,
 
-    /* Controller helpers */
-    NULL,           /* ConfigureController */
-    NULL,           /* EmitReadRequest */
-    NULL,           /* ReadTxDiscard */
-    NULL,           /* QueryTouchSample */
+    /* Controller helpers (unused) */
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 
     /* Wake + block I/O */
-    NULL,           /* EnableWakeSource */
+    NULL,
     Intel_IssueBlockWrite,
     Intel_IssueBlockRead
 };
 
 /* Initialize Caps field explicitly (C89-safe) */
 static VOID
-Intel_InitOpsCaps(VOID)
+DwI2c_InitCaps(VOID)
 {
-    IntelI2cOps.Caps = IntelI2cCaps;
+    DwI2cOps.Caps = IntelI2cCaps;
 }
 
 /* ---------------------------------------------------------------------------
- * Backend installer - called from FDO init / AddDevice
+ * Backend installer - universal DW backend for ALL controllers
  * --------------------------------------------------------------------------- */
 
 VOID
-I2cCtrl_InstallBackend(
-    PI2CCTRL_FDO devctx
-    )
+I2cCtrl_InstallBackend(PI2CCTRL_FDO devctx)
 {
-    if (devctx == NULL) {
+    if (devctx == NULL)
         return;
-    }
 
-    Intel_InitOpsCaps();
+    DwI2c_InitCaps();
 
-    devctx->Ops  = &IntelI2cOps;
-    devctx->Caps = &IntelI2cOps.Caps;
+    devctx->Ops  = &DwI2cOps;
+    devctx->Caps = &DwI2cOps.Caps;
+
+    I2cCtrl_Log("InstallBackend: universal DW backend installed\n");
 }

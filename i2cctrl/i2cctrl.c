@@ -8335,7 +8335,7 @@ I2cCtrlIdentifyAndInitController(
 }
 
 //
-// Perform a full controller reset sequence (XP-safe)
+// Perform a full DW-I2C controller reset (XP-safe, universal)
 //
 VOID
 I2cCtrl_PerformReset(
@@ -8346,6 +8346,7 @@ I2cCtrl_PerformReset(
     const ULONG STAT_BUSY_BIT       = 0x00000001U;
     const ULONG STAT_RESET_DONE_BIT = 0x00000002U;
 
+    const I2CCTRL_DEVICE_ID* id;
     ULONG ctrl;
     ULONG stat;
     ULONG tries;
@@ -8353,43 +8354,58 @@ I2cCtrl_PerformReset(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (devctx == NULL) {
-        KdPrint(("I2CCTRL: PerformReset: invalid devctx\n"));
+        I2cCtrl_Log("PerformReset: invalid devctx\n");
         return;
     }
 
-    if (&g_CurrentRegMap == NULL) {
-        KdPrint(("I2CCTRL: PerformReset: g_CurrentRegMap NULL\n"));
+    id = I2cCtrl_FindControllerId(devctx->PnpId);
+    if (id == NULL) {
+        I2cCtrl_Log("PerformReset: no controller profile\n");
         return;
     }
 
-    KdPrint(("I2CCTRL: PerformReset: initiating reset sequence\n"));
+    if (devctx->MmioBase == NULL) {
+        I2cCtrl_Log("PerformReset: BAR0 unmapped\n");
+        devctx->HardwareFailure = TRUE;
+        return;
+    }
+
+    I2cCtrl_Log("PerformReset: begin\n");
 
     /* Assert reset bit */
-    ctrl = I2cCtrl_ReadRegisterSafe(devctx, g_CurrentRegMap.ControlReg);
-    I2cCtrl_WriteRegisterSafe(devctx, g_CurrentRegMap.ControlReg, ctrl | CTRL_RESET_BIT);
+    ctrl = I2cCtrl_ReadRegisterSafe(devctx, id->ControlOffset);
+    I2cCtrl_WriteRegisterSafe(devctx, id->ControlOffset,
+                              ctrl | CTRL_RESET_BIT);
 
     /* Poll for reset completion or idle state */
     tries = 0U;
     do {
-        stat = I2cCtrl_ReadRegisterSafe(devctx, g_CurrentRegMap.StatusReg);
-        if (((stat & STAT_BUSY_BIT) == 0U) || ((stat & STAT_RESET_DONE_BIT) != 0U)) {
+        stat = I2cCtrl_ReadRegisterSafe(devctx, id->StatusOffset);
+
+        if (((stat & STAT_BUSY_BIT) == 0U) ||
+            ((stat & STAT_RESET_DONE_BIT) != 0U))
+        {
             break;
         }
-        KeStallExecutionProcessor(10U); /* 10 µs delay */
+
+        KeStallExecutionProcessor(10U);
         tries++;
+
     } while (tries < 500U);
 
     /* Deassert reset bit */
-    ctrl = I2cCtrl_ReadRegisterSafe(devctx, g_CurrentRegMap.ControlReg);
+    ctrl = I2cCtrl_ReadRegisterSafe(devctx, id->ControlOffset);
     if ((ctrl & CTRL_RESET_BIT) != 0U) {
-        I2cCtrl_WriteRegisterSafe(devctx, g_CurrentRegMap.ControlReg, ctrl & ~CTRL_RESET_BIT);
+        I2cCtrl_WriteRegisterSafe(devctx, id->ControlOffset,
+                                  ctrl & ~CTRL_RESET_BIT);
     }
 
     /* Final verification */
     if (tries >= 500U) {
-        KdPrint(("I2CCTRL: PerformReset: timeout waiting for reset completion\n"));
+        I2cCtrl_Log("PerformReset: timeout waiting for reset completion\n");
     } else {
-        KdPrint(("I2CCTRL: PerformReset: reset complete (tries=%lu, STAT=0x%08lx)\n", tries, stat));
+        I2cCtrl_Log("PerformReset: reset complete (tries=%lu, STAT=0x%08lx)\n",
+                    tries, stat);
     }
 }
 
@@ -8457,10 +8473,6 @@ I2cCtrlApplyQuirks(
     bar0 = devctx->MmioBase;
     bar2 = devctx->LpssBar2;
 
-    /* ============================================================
-       HARDWARE SAFETY CHECKS (missing in your version)
-       ============================================================ */
-
     if (bar0 == NULL) {
         I2cCtrl_Log("ApplyQuirks: BAR0 NULL -> skipping HW quirks\n");
         return;
@@ -8474,88 +8486,125 @@ I2cCtrlApplyQuirks(
         I2cCtrl_Log("ApplyQuirks: LPSS offsets present but BAR2 NULL\n");
     }
 
-    I2cCtrl_Log("ApplyQuirks: begin\n");
+    I2cCtrl_Log("ApplyQuirks: begin (quirks=0x%08lx bsod=0x%08lx)\n",
+                id->Quirks, id->BsodQuirks);
 
     /* ============================================================
-       LPSS POWER-ON (BAR2)
+       LPSS POWER-ON (BAR2, guarded + exception-safe)
        ============================================================ */
-    if (bar2 != NULL) {
+    if (bar2 != NULL &&
+        (id->LpssClkGateOffset ||
+         id->LpssResetOffset   ||
+         id->LpssFuncClkOffset ||
+         id->LpssMiscOffset))
+    {
+        __try {
 
-        if (id->LpssClkGateOffset) {
-            clk = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssClkGateOffset));
-            clk &= ~0x1U;
-            WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssClkGateOffset), clk);
-            I2cCtrl_Log("LPSS: clock gate cleared\n");
-        }
+            if (id->LpssClkGateOffset) {
+                clk = READ_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssClkGateOffset));
+                clk &= ~0x1U;
+                WRITE_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssClkGateOffset), clk);
+                I2cCtrl_Log("LPSS: clock gate cleared\n");
+            }
 
-        if (id->LpssResetOffset) {
-            ctrl = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssResetOffset));
-            ctrl &= ~0x1U;
-            WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssResetOffset), ctrl);
-            I2cCtrl_Log("LPSS: reset deasserted\n");
-        }
+            if (id->LpssResetOffset) {
+                ctrl = READ_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssResetOffset));
+                ctrl &= ~0x1U;
+                WRITE_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssResetOffset), ctrl);
+                I2cCtrl_Log("LPSS: reset deasserted\n");
+            }
 
-        if (id->LpssFuncClkOffset) {
-            clk = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssFuncClkOffset));
-            clk |= 0x1U;
-            WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssFuncClkOffset), clk);
-            I2cCtrl_Log("LPSS: functional clock enabled\n");
-        }
+            if (id->LpssFuncClkOffset) {
+                clk = READ_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssFuncClkOffset));
+                clk |= 0x1U;
+                WRITE_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssFuncClkOffset), clk);
+                I2cCtrl_Log("LPSS: functional clock enabled\n");
+            }
 
-        if (id->LpssMiscOffset) {
-            verify = READ_REGISTER_ULONG((PULONG)(bar2 + id->LpssMiscOffset));
-            WRITE_REGISTER_ULONG((PULONG)(bar2 + id->LpssMiscOffset), verify);
-            I2cCtrl_Log("LPSS: misc touched\n");
+            if (id->LpssMiscOffset) {
+                verify = READ_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssMiscOffset));
+                WRITE_REGISTER_ULONG(
+                    (PULONG)(bar2 + id->LpssMiscOffset), verify);
+                I2cCtrl_Log("LPSS: misc touched\n");
+            }
+
+        } __except(EXCEPTION_EXECUTE_HANDLER) {
+            I2cCtrl_Log("ApplyQuirks: EXCEPTION in LPSS BAR2 sequence\n");
         }
     }
 
     /* ============================================================
-       DW-I2C FUNCTIONAL QUIRKS (BAR0)
+       DW-I2C FUNCTIONAL QUIRKS (BAR0, exception-safe)
        ============================================================ */
+    __try {
 
-    if (id->Quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
+        if (id->Quirks & QUIRK_NEEDS_RESET_WORKAROUND) {
 
-        I2cCtrl_Log("Quirk: reset workaround\n");
+            I2cCtrl_Log("Quirk: reset workaround\n");
 
-        ctrl = READ_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset));
-        WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset),
-                             ctrl | CTRL_RESET_BIT);
+            ctrl = READ_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset));
+            WRITE_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset),
+                ctrl | CTRL_RESET_BIT);
 
-        tries = 0;
-        while (tries < 500) {
-            stat = READ_REGISTER_ULONG((PULONG)(bar0 + id->StatusOffset));
-            if ((stat & STAT_BUSY_BIT) == 0U ||
-                (stat & STAT_RESET_DONE_BIT) != 0U)
-                break;
-            KeStallExecutionProcessor(10);
-            tries++;
+            tries = 0;
+            while (tries < 500) {
+                stat = READ_REGISTER_ULONG(
+                    (PULONG)(bar0 + id->StatusOffset));
+                if ((stat & STAT_BUSY_BIT) == 0U ||
+                    (stat & STAT_RESET_DONE_BIT) != 0U)
+                    break;
+                KeStallExecutionProcessor(10);
+                tries++;
+            }
+
+            ctrl = READ_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset));
+            WRITE_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset),
+                ctrl & ~CTRL_RESET_BIT);
+
+            I2cCtrl_Log("Quirk: reset workaround complete\n");
         }
 
-        ctrl = READ_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset));
-        WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset),
-                             ctrl & ~CTRL_RESET_BIT);
+        if (id->Quirks & QUIRK_BROKEN_CLOCK_GATE) {
 
-        I2cCtrl_Log("Quirk: reset workaround complete\n");
+            I2cCtrl_Log("Quirk: broken clock gate\n");
+
+            clk = READ_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ClockOffset));
+            clk |= CLK_ENABLE_BIT;
+            clk &= ~CLK_GATE_BIT;
+            WRITE_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ClockOffset), clk);
+        }
+
+        if (id->Quirks & QUIRK_NO_DMA_SUPPORT) {
+
+            I2cCtrl_Log("Quirk: no DMA support\n");
+
+            ctrl = READ_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset));
+            ctrl &= ~CTRL_DMA_EN_BIT;
+            WRITE_REGISTER_ULONG(
+                (PULONG)(bar0 + id->ControlOffset), ctrl);
+        }
+
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        I2cCtrl_Log("ApplyQuirks: EXCEPTION in DW-I2C BAR0 sequence\n");
     }
 
-    if (id->Quirks & QUIRK_BROKEN_CLOCK_GATE) {
-
-        I2cCtrl_Log("Quirk: broken clock gate\n");
-
-        clk = READ_REGISTER_ULONG((PULONG)(bar0 + id->ClockOffset));
-        clk |= CLK_ENABLE_BIT;
-        clk &= ~CLK_GATE_BIT;
-        WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ClockOffset), clk);
-    }
-
-    if (id->Quirks & QUIRK_NO_DMA_SUPPORT) {
-
-        I2cCtrl_Log("Quirk: no DMA support\n");
-
-        ctrl = READ_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset));
-        ctrl &= ~CTRL_DMA_EN_BIT;
-        WRITE_REGISTER_ULONG((PULONG)(bar0 + id->ControlOffset), ctrl);
-    }
+    /* ============================================================
+       NON-MMIO QUIRKS (safe)
+       ============================================================ */
 
     if (id->Quirks & QUIRK_ACPI20) {
         devctx->AcpiIs20Plus = TRUE;
@@ -8759,12 +8808,9 @@ I2cHidApplyQuirks(
 }
 
 //
-// Guarded MMIO helpers and data accessors (XP-BSOD-safe, WinDDK, C89)
+// Guarded MMIO helpers (XP-BSOD-safe, WinDDK, C89)
 //
 
-//
-// Safe 32-bit MMIO write using full device context
-//
 __forceinline
 VOID
 I2cCtrl_WriteRegisterSafe(
@@ -8822,9 +8868,6 @@ I2cCtrl_WriteRegisterSafe(
     KeReleaseSpinLock(&Dx->HwLock, oldIrql);
 }
 
-//
-// Safe 32-bit MMIO read using full device context
-//
 __forceinline
 ULONG
 I2cCtrl_ReadRegisterSafe(
@@ -8885,90 +8928,73 @@ I2cCtrl_ReadRegisterSafe(
 }
 
 //
-// MMIO accessor: write controller data register
+// Backend-agnostic data/status accessors: delegate to Ops (DW-safe)
 //
+
 VOID
 I2cCtrlWriteData(
     PI2CCTRL_FDO devctx,
     ULONG value
     )
 {
-    ULONG offset;
-
-    if (devctx == NULL) {
-        KdPrint(("I2CCTRL: WriteData NULL devctx\n"));
+    if (devctx == NULL || devctx->Ops == NULL) {
+        I2cCtrl_Log("WriteData: missing devctx/Ops\n");
         return;
     }
 
-    offset = g_CurrentRegMap.DataReg;
-
-    I2cCtrl_WriteRegisterSafe(devctx, offset, value);
-
-    if ((g_CurrentRegMap.Quirks & QUIRK_NO_DMA_SUPPORT) != 0U) {
-        KdPrint(("I2CCTRL: Writing data without DMA (quirk)\n"));
+    if (devctx->Ops->WriteTxByte != NULL) {
+        devctx->Ops->WriteTxByte(devctx, (UCHAR)value);
+    } else {
+        I2cCtrl_Log("WriteData: backend has no WriteTxByte\n");
     }
 }
 
-//
-// MMIO accessor: read controller data register
-//
 ULONG
 I2cCtrlReadData(
     PI2CCTRL_FDO devctx
     )
 {
-    ULONG offset;
-    ULONG value;
+    UCHAR b;
 
-    if (devctx == NULL) {
-        KdPrint(("I2CCTRL: ReadData NULL devctx\n"));
+    if (devctx == NULL || devctx->Ops == NULL) {
+        I2cCtrl_Log("ReadData: missing devctx/Ops\n");
         return 0U;
     }
 
-    offset = g_CurrentRegMap.DataReg;
-    value  = I2cCtrl_ReadRegisterSafe(devctx, offset);
+    b = 0;
 
-    if ((g_CurrentRegMap.Quirks & QUIRK_NO_DMA_SUPPORT) != 0U) {
-        KdPrint(("I2CCTRL: Reading data without DMA (quirk)\n"));
+    if (devctx->Ops->ReadRxByteSafe != NULL) {
+        (VOID)devctx->Ops->ReadRxByteSafe(devctx, &b);
+    } else if (devctx->Ops->ReadRxByte != NULL) {
+        (VOID)devctx->Ops->ReadRxByte(devctx, &b);
+    } else {
+        I2cCtrl_Log("ReadData: backend has no ReadRxByte\n");
+        b = 0;
     }
 
-    return value;
+    return (ULONG)b;
 }
 
-
-//
-// MMIO accessor: read controller status register (BSOD-safe)
-//
 ULONG
 I2cCtrlReadStatus(
     PI2CCTRL_FDO devctx
     )
 {
-    ULONG offset;
-    ULONG status;
+    I2C_HW_STATUS st;
 
-    if (devctx == NULL) {
+    if (devctx == NULL || devctx->Ops == NULL) {
         return 0U;
     }
 
-    /* Status register offset from active register map */
-    offset = g_CurrentRegMap.StatusReg;
-
-    /* Perform safe MMIO read */
-    status = I2cCtrl_ReadRegisterSafe(devctx, offset);
-
-    /* Quirk handling: clock gate workaround */
-    if ((g_CurrentRegMap.Quirks & QUIRK_BROKEN_CLOCK_GATE) != 0U) {
-        KdPrint(("I2CCTRL: Applying clock gate workaround during status read\n"));
-        /* Example (kept commented as in your original):
-           ULONG clk = I2cCtrl_ReadRegisterSafe(devctx, g_CurrentRegMap.ClockReg);
-           clk |= 0x00000001U;          // enable clock
-           clk &= ~0x00000002U;         // clear gate
-           I2cCtrl_WriteRegisterSafe(devctx, g_CurrentRegMap.ClockReg, clk);
-        */
+    if (devctx->Ops->GetStatus != NULL) {
+        /* I2C_HW_STATUS is opaque here; we just invoke the backend */
+        (VOID)devctx->Ops->GetStatus(devctx, &st);
+    } else {
+        I2cCtrl_Log("ReadStatus: backend has no GetStatus\n");
     }
 
-    return status;
+    /* Legacy callers expect a ULONG; we cannot derive it from opaque status */
+    return 0U;
 }
 
 
