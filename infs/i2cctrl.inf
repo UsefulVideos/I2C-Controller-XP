@@ -66,9 +66,19 @@ ExcludeFromSelect = *
 %I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_06EB
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMD0010
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\AMDI0010
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228A
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228B
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228C
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228D
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228E
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228F
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862289
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862288
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622C9
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622CA
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622CB
 
 [UsefulAGKHelper.NTamd64] ; Windows XP x64 / Server 2003 x64
-; (same list repeated)
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3446
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\INT3447
 %I2CControllerDesc% = I2CCTRL_Inst, PCI\VEN_8086&DEV_9D60
@@ -123,7 +133,9 @@ ExcludeFromSelect = *
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\8086228F
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862289
 %I2CControllerDesc% = I2CCTRL_Inst, ACPI\80862288
-
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622C9
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622CA
+%I2CControllerDesc% = I2CCTRL_Inst, ACPI\808622CB
 
 
 ; =====================================================================
@@ -132,6 +144,7 @@ ExcludeFromSelect = *
 
 [I2CCTRL_Inst]
 CopyFiles = Drivers_Copy
+CopyFiles = Cpl_Copy
 AddReg    = I2CCTRL_AddReg
 
 [I2CCTRL_Inst.Services]
@@ -190,6 +203,7 @@ HKR,,"Policy.Force10BitAddr",0x00010001,0
 
 [DefaultInstall]
 CopyFiles = Drivers_Copy
+CopyFiles = Cpl_Copy
 AddReg    = I2CCTRL_AddReg
 
 [DefaultInstall.Services]
@@ -202,11 +216,22 @@ AddService = i2cctrl, 0x00000002, I2CCTRL_Service_Inst, I2CCTRL_EventLog_Inst
 [Drivers_Copy]
 i2cctrl.sys
 
+[Cpl_Copy]
+i2cctrl_helper.cpl
+
 [DestinationDirs]
 Drivers_Copy = 12   ; %SystemRoot%\System32\drivers
 
+[DestinationDirs.NTx86]
+Cpl_Copy     = 11 ; %SystemRoot%\System32
+
+[DestinationDirs.NTamd64]
+Cpl_Copy     = 16422 ; %SystemRoot%\SysWOW64
+
+
 [SourceDisksFiles]
 i2cctrl.sys = 1
+i2cctrl_helper.cpl   = 1
 
 [SourceDisksNames]
 1 = %DiskName%,,,.

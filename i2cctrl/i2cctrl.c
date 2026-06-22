@@ -406,6 +406,20 @@ const I2CCTRL_DEVICE_ID g_I2cControllers[] = {
     { L"ACPI\\808622C8",
       0x00,0x04,0x08,0x0C,
       0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+	    { L"ACPI\\808622C9",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622CA",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
+      QUIRK_ACPI20, BSOD_NONE },
+
+    { L"ACPI\\808622CB",
+      0x00,0x04,0x08,0x0C,
+      0,0,0,0,
       QUIRK_ACPI20, BSOD_NONE }
 };
 

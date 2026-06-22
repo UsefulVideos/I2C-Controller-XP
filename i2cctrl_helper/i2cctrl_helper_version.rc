@@ -1,0 +1,46 @@
+#include <windows.h>
+#include "resource.h"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version Information
+//
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"    // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      "UsefulAGKHelper\0"
+            VALUE "FileDescription",  "I2C Controller Helper Control Panel Applet\0"
+            VALUE "FileVersion",      "1.0.0.0\0"
+            VALUE "InternalName",     "i2cctrl_helper\0"
+            VALUE "OriginalFilename", "i2cctrl_helper.cpl\0"
+            VALUE "ProductName",      "I2C Controller Helper\0"
+            VALUE "ProductVersion",   "1.0.0.0\0"
+            VALUE "LegalCopyright",   "Copyright (C) 2025 UsefulAGKHelper\0"
+            VALUE "LegalTrademarks",  "UsefulAGKHelper Trademark\0"
+            VALUE "Comments",         "Applet for configuring I2C controller arbitration, speed, wake, and diagnostics\0"
+            VALUE "PrivateBuild",     "Built with Visual Studio 2008\0"
+            VALUE "SpecialBuild",     "XP/2003 compatible release\0"
+            VALUE "SupportContact",   "support@usefulagkhelper.example\0"
+            VALUE "BuildMachine",     "VS2008-Win32\0"
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

@@ -1,0 +1,4 @@
+LIBRARY "i2cctrl_helper.cpl"
+
+EXPORTS
+    CPlApplet

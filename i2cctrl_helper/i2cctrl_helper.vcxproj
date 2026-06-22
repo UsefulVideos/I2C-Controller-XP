@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- CONFIGURATIONS -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <!-- GLOBALS -->
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{0E28E491-F54D-4F1B-ADEA-534ACAEBB599}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>i2cctrl_helper</RootNamespace>
+    <ProjectName>i2cctrl_helper</ProjectName>
+    <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!-- CONFIGURATION SETTINGS -->
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141_xp</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141_xp</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- OUTPUT DIRECTORIES -->
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)</TargetName>
+    <TargetExt>.cpl</TargetExt>
+  </PropertyGroup>
+
+  <!-- ITEM DEFINITIONS -->
+  <!-- Debug -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>
+        WINVER=0x0501;_WIN32_WINNT=0x0501;WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+
+    <Link>
+      <AdditionalDependencies>
+        user32.lib;advapi32.lib;comctl32.lib;gdi32.lib;%(AdditionalDependencies)
+      </AdditionalDependencies>
+      <OutputFile>$(OutDir)$(ProjectName).cpl</OutputFile>
+      <SubSystem>Windows</SubSystem>
+      <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
+      <ModuleDefinitionFile>i2cctrl_helper.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Release -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>
+        WINVER=0x0501;_WIN32_WINNT=0x0501;WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+
+    <Link>
+      <AdditionalDependencies>
+        user32.lib;advapi32.lib;comctl32.lib;gdi32.lib;%(AdditionalDependencies)
+      </AdditionalDependencies>
+      <OutputFile>$(OutDir)$(ProjectName).cpl</OutputFile>
+      <SubSystem>Windows</SubSystem>
+      <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <ModuleDefinitionFile>i2cctrl_helper.def</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- FILES -->
+  <ItemGroup>
+    <ClCompile Include="i2cctrl_helper.c" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="i2cctrl_helper_ioctl.h" />
+    <ClInclude Include="i2cctrl_targetver.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ResourceCompile Include="i2cctrl_helper_dialog.rc" />
+    <ResourceCompile Include="i2cctrl_helper_version.rc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="i2cctrl_helper.def" />
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>
