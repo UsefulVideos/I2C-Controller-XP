@@ -521,6 +521,24 @@ const I2CHID_DEVICE_ID g_I2cHidDevices[] = {
 const ULONG g_I2cHidDevicesCount =
     sizeof(g_I2cHidDevices) / sizeof(g_I2cHidDevices[0]);
 
+const WCHAR* SpeakerIds[] = {
+    L"MX98357A",
+    L"MX98360A",
+    L"MX98373",
+    L"MX98390",
+    L"10EC5660",
+    L"10EC5663",
+    L"10EC5682",
+    L"10EC5683",
+    L"ESSX8336",
+    L"ESSX8339",
+    L"CLSA0100",
+    L"CLSA0101",
+    L"INT34C3",
+    L"INT34C8",
+    L"INT34D1",
+    NULL
+};
 
 /* -----------------------------------------------------------------------
  * DriverUnload - XP/2003 BSOD-safe, C89-compliant
@@ -12311,6 +12329,137 @@ I2cCtrl_CreateTouchpad(
 }
 
 NTSTATUS
+I2cCtrl_CreateSpeaker(
+    PDEVICE_OBJECT Fdo,
+    PI2CCTRL_FDO   fdoExt
+)
+{
+    NTSTATUS status;
+    ULONG count = 0;
+    KIRQL oldIrql;
+    PLIST_ENTRY entry;
+    PI2CCTRL_PDO childDx;
+
+    if (Fdo == NULL || fdoExt == NULL) {
+        I2cCtrl_Log("CreateSpeaker: invalid parameters\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    I2cCtrl_Log("CreateSpeaker: begin (enumerate + bind speaker)\n");
+
+    /* ------------------------------------------------------------
+       1) Ensure children exist (enumerate or re-enumerate)
+       ------------------------------------------------------------ */
+    if (IsListEmpty(&fdoExt->ChildList)) {
+
+        I2cCtrl_Log("CreateSpeaker: no children -> Enumerate\n");
+
+        status = I2cCtrl_EnumerateAcpiChildren(Fdo, fdoExt, &count);
+
+        if (!NT_SUCCESS(status) || IsListEmpty(&fdoExt->ChildList)) {
+            I2cCtrl_Log("CreateSpeaker: enumeration produced no children\n");
+            (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
+            return STATUS_NOT_FOUND;
+        }
+    } else {
+
+        I2cCtrl_Log("CreateSpeaker: children exist -> Reenumerate\n");
+
+        status = I2cCtrl_ReenumerateAcpiChildren(Fdo, fdoExt, &count);
+
+        if (!NT_SUCCESS(status)) {
+            I2cCtrl_Log("CreateSpeaker: Reenumerate FAILED (0x%08lx)\n", status);
+        }
+
+        if (IsListEmpty(&fdoExt->ChildList)) {
+            I2cCtrl_Log("CreateSpeaker: reenumeration left no children\n");
+            (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
+            return STATUS_NOT_FOUND;
+        }
+    }
+
+    /* ------------------------------------------------------------
+       2) Walk children and find a speaker candidate
+       ------------------------------------------------------------ */
+    fdoExt->SpeakerPdo = NULL;
+
+    KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
+
+    for (entry = fdoExt->ChildList.Flink;
+         entry != &fdoExt->ChildList;
+         entry = entry->Flink)
+    {
+        childDx = CONTAINING_RECORD(entry, I2CCTRL_PDO, ListEntry);
+
+        if (childDx->Removed ||
+            !childDx->Present ||
+            childDx->HardwareId.Buffer == NULL)
+        {
+            continue;
+        }
+
+        /* ------------------------------
+           2a) HID-based I2C speakers
+           ------------------------------ */
+        if (I2cCtrl_IsHidSpeaker(childDx->HardwareId.Buffer, childDx)) {
+
+            childDx->IsSpeaker = TRUE;
+            fdoExt->SpeakerPdo = childDx;
+
+            I2cCtrl_Log("CreateSpeaker: HID speaker \"%ws\" found\n",
+                        childDx->HardwareId.Buffer);
+            break;
+        }
+
+        /* ------------------------------
+           2b) Vendor-specific ACPI IDs
+           ------------------------------ */
+        if (I2cCtrl_IsVendorSpeaker(childDx->HardwareId.Buffer, childDx)) {
+
+            childDx->IsSpeaker = TRUE;
+            fdoExt->SpeakerPdo = childDx;
+
+            I2cCtrl_Log("CreateSpeaker: vendor speaker \"%ws\" found\n",
+                        childDx->HardwareId.Buffer);
+            break;
+        }
+
+        /* ------------------------------
+           2c) Raw I2C speakers (non-HID)
+           ------------------------------ */
+        if (I2cCtrl_IsRawI2cSpeaker(childDx)) {
+
+            childDx->IsSpeaker = TRUE;
+            fdoExt->SpeakerPdo = childDx;
+
+            I2cCtrl_Log("CreateSpeaker: raw I2C speaker \"%ws\" found\n",
+                        childDx->HardwareId.Buffer);
+            break;
+        }
+    }
+
+    KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
+
+    /* ------------------------------------------------------------
+       3) No speaker found -> cleanup
+       ------------------------------------------------------------ */
+    if (fdoExt->SpeakerPdo == NULL) {
+        I2cCtrl_Log("CreateSpeaker: no speaker device found -> deleting children\n");
+        (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
+        return STATUS_NOT_FOUND;
+    }
+
+    /* ------------------------------------------------------------
+       4) Success
+       ------------------------------------------------------------ */
+    I2cCtrl_Log("CreateSpeaker: SpeakerPdo=%p bound successfully\n",
+                fdoExt->SpeakerPdo);
+
+    return STATUS_SUCCESS;
+}
+
+
+NTSTATUS
 I2cCtrl_CreateI2cDevice(
     PDEVICE_OBJECT Fdo,
     PI2CCTRL_FDO   fdoExt
@@ -12363,8 +12512,9 @@ I2cCtrl_CreateI2cDevice(
 
     /* ------------------------------------------------------------
        2) Scan children:
-          - If touchpad → redirect to CreateTouchpad()
-          - Else → pick first non-touchpad device
+          - Touchpad -> CreateTouchpad()
+          - Speaker  -> CreateSpeaker()
+          - Else     -> first generic I2C device
        ------------------------------------------------------------ */
 
     fdoExt->OtherDevicePdo = NULL;
@@ -12387,9 +12537,11 @@ I2cCtrl_CreateI2cDevice(
         /* HID match (if any) */
         hidMatch = I2cCtrl_FindHidMatch(childDx->HardwareId.Buffer);
 
-        /* Touchpad detection (HID, vendor, raw, or Pdo->IsTouchpad) */
+        /* ------------------------------
+           Touchpad detection
+           ------------------------------ */
         if ((hidMatch != NULL && (hidMatch->Flags & HID_FLAG_TOUCHPAD)) ||
-            (childDx->IsTouchpad) ||
+            childDx->IsTouchpad ||
             I2cCtrl_IsVendorTouchpad(childDx->HardwareId.Buffer, childDx) ||
             I2cCtrl_IsRawI2cTouchpad(childDx))
         {
@@ -12400,10 +12552,27 @@ I2cCtrl_CreateI2cDevice(
             return I2cCtrl_CreateTouchpad(Fdo, fdoExt);
         }
 
-        /* First non-touchpad device */
+        /* ------------------------------
+           Speaker detection
+           ------------------------------ */
+        if (childDx->IsSpeaker ||
+            I2cCtrl_IsHidSpeaker(childDx->HardwareId.Buffer, childDx) ||
+            I2cCtrl_IsVendorSpeaker(childDx->HardwareId.Buffer, childDx) ||
+            I2cCtrl_IsRawI2cSpeaker(childDx))
+        {
+            KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
+
+            I2cCtrl_Log("CreateI2cDevice: speaker detected -> redirecting to CreateSpeaker()\n");
+
+            return I2cCtrl_CreateSpeaker(Fdo, fdoExt);
+        }
+
+        /* ------------------------------
+           First non-touchpad, non-speaker device
+           ------------------------------ */
         fdoExt->OtherDevicePdo = childDx;
 
-        I2cCtrl_Log("CreateI2cDevice: selected non-touchpad \"%ws\"\n",
+        I2cCtrl_Log("CreateI2cDevice: selected generic device \"%ws\"\n",
                     childDx->HardwareId.Buffer);
 
         break;
@@ -12412,10 +12581,10 @@ I2cCtrl_CreateI2cDevice(
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
     /* ------------------------------------------------------------
-       3) No non-touchpad device found
+       3) No device found
        ------------------------------------------------------------ */
     if (fdoExt->OtherDevicePdo == NULL) {
-        I2cCtrl_Log("CreateI2cDevice: no non-touchpad device found -> deleting children\n");
+        I2cCtrl_Log("CreateI2cDevice: no suitable device found -> deleting children\n");
         (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
         return STATUS_NOT_FOUND;
     }
@@ -13556,4 +13725,79 @@ I2cCtrl_AcpiMethodExists(
                 methodName, status);
 
     return FALSE;
+}
+
+BOOLEAN
+I2cCtrl_IsVendorSpeaker(
+    PWCHAR Hid,
+    PI2CCTRL_PDO Pdo
+)
+{
+    int i;
+
+    UNREFERENCED_PARAMETER(Pdo);
+
+    if (Hid == NULL) {
+        return FALSE;
+    }
+
+    for (i = 0; SpeakerIds[i] != NULL; i++) {
+        if (_wcsicmp(Hid, SpeakerIds[i]) == 0) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+BOOLEAN
+I2cCtrl_IsHidSpeaker(
+    PWCHAR Hid,
+    PI2CCTRL_PDO Pdo
+)
+{
+    UNREFERENCED_PARAMETER(Pdo);
+
+    if (Hid == NULL) {
+        return FALSE;
+    }
+
+    /* HID style audio IDs */
+    if (_wcsnicmp(Hid, L"HDAUDIO\\", 8) == 0) {
+        return TRUE;
+    }
+
+    /* Intel Smart Sound HID style */
+    if (_wcsnicmp(Hid, L"INT34", 5) == 0) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+BOOLEAN
+I2cCtrl_IsRawI2cSpeaker(
+    PI2CCTRL_PDO Pdo
+)
+{
+    if (Pdo == NULL) {
+        return FALSE;
+    }
+
+    /* Must not have HID */
+    if (Pdo->HardwareId.Buffer != NULL) {
+        return FALSE;
+    }
+
+    /* Must have I2C connection descriptor */
+    if (!Pdo->HasI2cConnection) {
+        return FALSE;
+    }
+
+    /* Must not be marked as touchpad or keyboard */
+    if (Pdo->IsTouchpad || Pdo->IsKeyboard) {
+        return FALSE;
+    }
+
+    return TRUE;
 }

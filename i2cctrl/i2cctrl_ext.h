@@ -437,6 +437,10 @@ typedef enum _I2CCTRL_SPEED_MODE {
     I2cSpeedHigh     = 2
 } I2CCTRL_SPEED_MODE;
 
+/* Forward declaration for child PDO struct */
+struct _I2CCTRL_PDO;
+typedef struct _I2CCTRL_PDO* PI2CCTRL_PDO;
+
 /* ---------------------------------------------------------------------------
  * FDO extension struct
  * --------------------------------------------------------------------------- */
@@ -764,6 +768,7 @@ NTSTATUS (*ReenumerateChildrenFn)(
     ULONG   AcpiIntrMask;      /* software interrupt mask */
 	PVOID AcpiI2cMethodHandle;   /* cached ACPI method handle */
 	BOOLEAN AcpiI2cMethodChecked;
+	PI2CCTRL_PDO SpeakerPdo;
 
 } I2CCTRL_FDO, *PI2CCTRL_FDO;
 
@@ -1151,6 +1156,9 @@ GUID           ClassGuid;
 UNICODE_STRING DeviceDesc;
     HANDLE       GpioHandle;
     ULONG        GpioPin;
+	BOOLEAN IsKeyboard;
+	BOOLEAN HasI2cConnection;
+	BOOLEAN IsSpeaker;
 } I2CCTRL_PDO, *PI2CCTRL_PDO;
 
 typedef struct _I2CCTRL_IRP_CONTEXT {
@@ -2099,5 +2107,32 @@ I2cCtrl_GetAcpiMethodHandle(
     PI2CCTRL_FDO FdoExt,
     PCWSTR       MethodName
     );
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern const WCHAR* SpeakerIds[];
+
+#ifdef __cplusplus
+}
+#endif
+
+BOOLEAN
+I2cCtrl_IsVendorSpeaker(
+    PWCHAR Hid,
+    PI2CCTRL_PDO Pdo
+);
+
+BOOLEAN
+I2cCtrl_IsHidSpeaker(
+    PWCHAR Hid,
+    PI2CCTRL_PDO Pdo
+);
+
+BOOLEAN
+I2cCtrl_IsRawI2cSpeaker(
+    PI2CCTRL_PDO Pdo
+);
 
 #endif /* _I2CCTRL_EXT_H_ */
