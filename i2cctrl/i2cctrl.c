@@ -3292,6 +3292,99 @@ if (desc->Type == CmResourceTypeMemory) {
     }
 }
 
+/* -------------------------------------------------------------
+ * LPSS/PMC POWER-UP (Intel LPSS only)
+ * ------------------------------------------------------------- */
+
+{
+    BOOLEAN isLpss = FALSE;
+
+    if (fdoExt->PnpId != NULL)
+    {
+        if (wcsstr(fdoExt->PnpId, L"DEV_9DE8") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DE9") != NULL ||
+            wcsstr(fdoExt->PnpId, L"DEV_9DC5") != NULL)
+        {
+            isLpss = TRUE;
+        }
+    }
+
+    if (isLpss)
+    {
+        I2cCtrl_Log("LPSS/PMC: controller is LPSS-compatible\n");
+
+        if (fdoExt->PwrmBaseVa != NULL)
+        {
+            I2cCtrl_Log("LPSS/PMC: PWRMBASE VA=%p\n", fdoExt->PwrmBaseVa);
+
+            /* 1. Force PW1/PW2 ON */
+            I2cCtrl_Log("LPSS/PMC: writing PW_FORCE_ON mask 0x%08lx\n",
+                        (ULONG)WHL_PW_MASK);
+
+            WRITE_REGISTER_ULONG(
+                (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_FORCE_ON_OFFSET),
+                WHL_PW_MASK
+            );
+
+            /* 2. Wait for PW_STS to reflect ON */
+            {
+                ULONG i;
+                ULONG sts;
+
+                I2cCtrl_Log("LPSS/PMC: polling PW_STS for PW1/PW2 ON\n");
+
+                for (i = 0; i < 10000; i++)
+                {
+                    sts = READ_REGISTER_ULONG(
+                        (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET)
+                    );
+
+                    if ((sts & WHL_PW_MASK) == WHL_PW_MASK)
+                    {
+                        I2cCtrl_Log("LPSS/PMC: PW_STS ON (0x%08lx)\n", sts);
+                        break;
+                    }
+
+                    if ((i % 1000) == 0)
+                    {
+                        I2cCtrl_Log("LPSS/PMC: PW_STS poll iter=%lu value=0x%08lx\n",
+                                    i, sts);
+                    }
+
+                    KeStallExecutionProcessor(1);
+                }
+
+                if (i == 10000)
+                {
+                    I2cCtrl_Log("LPSS/PMC: PW_STS timeout, PW wells not forced ON\n");
+                }
+            }
+        }
+        else
+        {
+            I2cCtrl_Log("LPSS/PMC: PWRMBASE VA is NULL, cannot power LPSS\n");
+        }
+    }
+    else
+    {
+        I2cCtrl_Log("LPSS/PMC: controller is NOT LPSS, skipping power-up\n");
+    }
+}
+
+if (fdoExt->LpssBar2 != NULL)
+{
+    // 3. Enable LPSS clocks
+    WRITE_REGISTER_ULONG(
+        (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL),
+        0x7);
+
+    // 4. Deassert LPSS reset
+    WRITE_REGISTER_ULONG(
+        (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL),
+        0x0);
+}
+
+
 /* Map LPSS BAR2 if present */
 if (haveBar2) {
 

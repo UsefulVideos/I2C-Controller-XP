@@ -19,7 +19,7 @@ DRIVER_UNLOAD     DriverUnload;
 DRIVER_ADD_DEVICE I2cCtrl_AddDevice;
 
 DRIVER_DISPATCH   I2cCtrl_DispatchPnP;
-DRIVER_DISPATCH I2cCtrl_DispatchPower;
+DRIVER_DISPATCH   I2cCtrl_DispatchPower;
 DRIVER_DISPATCH   I2cCtrl_DispatchIoctl;
 DRIVER_DISPATCH   I2cCtrl_InvalidIrp;
 
