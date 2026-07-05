@@ -1,26 +1,39 @@
 /* i2cctrl.c */
-#include <ntddk.h>          /* core kernel types, IRP, DEVICE_OBJECT, etc. */
+
+#include <ntddk.h>
 #include <wdm.h>
+
 #include "i2cctrl_spinlock_fix.h"
-#include <acpiioct.h>       /* ACPI_EVAL_INPUT_BUFFER, I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER, IOCTL_ACPI_EVAL_METHOD */
+
+#include <acpiioct.h>
 #include <stdarg.h>
-#include <ntstrsafe.h>      /* RtlInitUnicodeString, safe string helpers for ACPI method names */
-#include <strsafe.h>        /* RtlStringCchCopyW, safe string helpers for ACPI method names */
+#include <ntstrsafe.h>
+#include <strsafe.h>
 #include <initguid.h>
 #include <devguid.h>
-#include "i2cctrl_hw.h"     /* register offsets, PCI IDs, bit masks */
-#include "i2cctrl.h"        /* driver-wide definitions, device context */
+
+/* Hardware + core driver definitions */
+#include "i2cctrl_hw.h"
+#include "i2cctrl.h"
 #include "I2cCtrl_Isr.h"
-#include "i2cctrl_ext.h"    /* legacy I2CCTRL_FDO if still referenced */
+
+/* MUST COME BEFORE ANY FAÇADE HEADERS */
+#include "i2cctrl_ext.h"        /* defines I2CCTRL_TARGET fully */
+
+/* Driver internal modules */
 #include "i2cctrl_detect.h"
-#include "i2cctrl_ioctl.h"  /* IOCTL codes and I2CCTRL_RW struct */
-#include "i2cctrl_bsod.h"   /* safe wrappers, guards, WinDBG-friendly logging */
-#include "i2cctrl_spbcx.h"  /* façade definitions for SPBCX_COMPAT_CONTEXT, IOCTLs */
+#include "i2cctrl_ioctl.h"
+#include "i2cctrl_bsod.h"
 #include "i2cctrl_DPI.h"
 #include "i2cctrl_i2c.h"
 #include "i2cctrl_etw.h"
 #include "i2cctrl_etw.tmh"
 #include "i2cctrl_dump.h"
+
+/* Façade layers — MUST come AFTER ext.h */
+#include "i2cctrl_spbcx.h"
+#include "i2cctrl_acpiex.h"
+
 
 //
 // XP/2003 DDK does NOT declare HalGetBusData,
@@ -7159,15 +7172,14 @@ I2cCtrl_DispatchIoctl(
         goto CompleteDirect;
     }
 
-//
-// Allow ACPI evaluation IOCTLs to pass through even if the controller
-// is not started. These IOCTLs must reach ACPI.SYS.
-//
-if (isl->Parameters.DeviceIoControl.IoControlCode == IOCTL_ACPI_EVAL_METHOD) {
-    I2cCtrl_Log("DispatchIoctl: forwarding ACPI IOCTL to lower driver");
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(devctx->LowerDevice, Irp);
-}
+    /* Allow ACPI evaluation IOCTLs to pass through even if the controller
+     * is not started. These IOCTLs must reach ACPI.SYS.
+     */
+    if (isl->Parameters.DeviceIoControl.IoControlCode == IOCTL_ACPI_EVAL_METHOD) {
+        I2cCtrl_Log("DispatchIoctl: forwarding ACPI IOCTL to lower driver");
+        IoSkipCurrentIrpStackLocation(Irp);
+        return IoCallDriver(devctx->LowerDevice, Irp);
+    }
 
     if (devctx->Started == FALSE || devctx->Stopping != FALSE || devctx->Ops == NULL) {
         I2cCtrl_Log("DispatchIoctl: device not ready Started=%lu Stopping=%lu Ops=%p",
@@ -7226,281 +7238,307 @@ if (isl->Parameters.DeviceIoControl.IoControlCode == IOCTL_ACPI_EVAL_METHOD) {
         return STATUS_PENDING;
     }
 
-case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
-{
-    PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-    ULONG  outLen = isl->Parameters.DeviceIoControl.OutputBufferLength;
-    PUCHAR outBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+    case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
+    {
+        PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
+        ULONG  outLen = isl->Parameters.DeviceIoControl.OutputBufferLength;
+        PUCHAR outBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
 
-    I2cCtrl_Log("HID_GET_DEVICE_DESCRIPTOR HidPdo=%p OutLen=%lu Buf=%p",
-                hidpdo, outLen, outBuf);
+        I2cCtrl_Log("HID_GET_DEVICE_DESCRIPTOR HidPdo=%p OutLen=%lu Buf=%p",
+                    hidpdo, outLen, outBuf);
 
-    if (hidpdo == NULL || outBuf == NULL) {
-        status = STATUS_INVALID_PARAMETER;
-        info   = 0U;
-        break;
-    }
+        if (hidpdo == NULL || outBuf == NULL) {
+            status = STATUS_INVALID_PARAMETER;
+            info   = 0U;
+            break;
+        }
 
-    if (outLen < sizeof(HID_DESCRIPTOR)) {
-        status = STATUS_BUFFER_TOO_SMALL;
+        if (outLen < sizeof(HID_DESCRIPTOR)) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            info   = sizeof(HID_DESCRIPTOR);
+            break;
+        }
+
+        RtlCopyMemory(outBuf, &hidpdo->HidDesc, sizeof(HID_DESCRIPTOR));
+        status = STATUS_SUCCESS;
         info   = sizeof(HID_DESCRIPTOR);
         break;
     }
 
-    RtlCopyMemory(outBuf, &hidpdo->HidDesc, sizeof(HID_DESCRIPTOR));
-    status = STATUS_SUCCESS;
-    info   = sizeof(HID_DESCRIPTOR);
-    break;
-}
-
-case IOCTL_HID_GET_REPORT_DESCRIPTOR:
-{
-    PI2CCTRL_PDO hidpdo =
-        (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-
-    ULONG  outLen = isl->Parameters.DeviceIoControl.OutputBufferLength;
-    PUCHAR outBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-    USHORT descLen;
-
-    if (!hidpdo || !outBuf || !hidpdo->HidReportDesc) {
-        status = STATUS_INVALID_PARAMETER;
-        info   = 0;
-        break;
-    }
-
-    if (hidpdo->HidDesc.bNumDescriptors < 1 ||
-        hidpdo->HidDesc.DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE)
+    case IOCTL_HID_GET_REPORT_DESCRIPTOR:
     {
-        status = STATUS_INVALID_DEVICE_STATE;
-        info   = 0;
-        break;
-    }
+        PI2CCTRL_PDO hidpdo =
+            (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
 
-    descLen = hidpdo->HidDesc.DescriptorList[0].wReportLength;
-    if (descLen == 0) {
-        status = STATUS_INVALID_DEVICE_STATE;
-        info   = 0;
-        break;
-    }
+        ULONG  outLen = isl->Parameters.DeviceIoControl.OutputBufferLength;
+        PUCHAR outBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+        USHORT descLen;
 
-    if (outLen < descLen) {
-        status = STATUS_BUFFER_TOO_SMALL;
+        if (!hidpdo || !outBuf || !hidpdo->HidReportDesc) {
+            status = STATUS_INVALID_PARAMETER;
+            info   = 0;
+            break;
+        }
+
+        if (hidpdo->HidDesc.bNumDescriptors < 1 ||
+            hidpdo->HidDesc.DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE)
+        {
+            status = STATUS_INVALID_DEVICE_STATE;
+            info   = 0;
+            break;
+        }
+
+        descLen = hidpdo->HidDesc.DescriptorList[0].wReportLength;
+        if (descLen == 0) {
+            status = STATUS_INVALID_DEVICE_STATE;
+            info   = 0;
+            break;
+        }
+
+        if (outLen < descLen) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            info   = descLen;
+            break;
+        }
+
+        RtlCopyMemory(outBuf, hidpdo->HidReportDesc, descLen);
+        status = STATUS_SUCCESS;
         info   = descLen;
         break;
     }
 
-    RtlCopyMemory(outBuf, hidpdo->HidReportDesc, descLen);
-    status = STATUS_SUCCESS;
-    info   = descLen;
-    break;
-}
-
-case IOCTL_HID_WRITE_REPORT:
-{
-    PI2CCTRL_PDO hidpdo =
-        (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-
-    ULONG  inLen = isl->Parameters.DeviceIoControl.InputBufferLength;
-    PUCHAR inBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-    ULONG  bytesDone = 0;
-
-    if (!hidpdo || !inBuf || inLen == 0) {
-        status = STATUS_INVALID_PARAMETER;
-        info   = 0;
-        break;
-    }
-
-    if (hidpdo->HidDesc.bNumDescriptors < 1 ||
-        hidpdo->HidDesc.DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE)
+    case IOCTL_HID_WRITE_REPORT:
     {
-        status = STATUS_INVALID_DEVICE_STATE;
-        info   = 0;
-        break;
-    }
+        PI2CCTRL_PDO hidpdo =
+            (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
 
-    if (inLen > hidpdo->HidDesc.DescriptorList[0].wReportLength ||
-        inLen > HID_REPORT_MAX_LEN)
-    {
-        status = STATUS_INVALID_BUFFER_SIZE;
-        info   = 0;
-        break;
-    }
+        ULONG  inLen = isl->Parameters.DeviceIoControl.InputBufferLength;
+        PUCHAR inBuf = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+        ULONG  bytesDone = 0;
 
-    {
-        HID_I2C_DESCRIPTOR_V10 parsed;
-        NTSTATUS descStatus =
-            I2cCtrl_ReadAndValidateHidDescriptor(devctx,
-                                                 (UCHAR)hidpdo->SlaveAddress,
-                                                 (PUCHAR)&parsed,
-                                                 sizeof(parsed),
-                                                 &parsed);
-
-        if (NT_SUCCESS(descStatus)) {
-            RtlZeroMemory(&hidpdo->HidDesc, sizeof(hidpdo->HidDesc));
-            RtlCopyMemory(&hidpdo->HidDesc,
-                          &parsed,
-                          min(sizeof(hidpdo->HidDesc),
-                              parsed.wHIDDescLength));
+        if (!hidpdo || !inBuf || inLen == 0) {
+            status = STATUS_INVALID_PARAMETER;
+            info   = 0;
+            break;
         }
-    }
 
-    status = I2CctrlHw_Write(devctx->Self,
-                             inBuf,
-                             inLen,
-                             &bytesDone,
-                             0);
+        if (hidpdo->HidDesc.bNumDescriptors < 1 ||
+            hidpdo->HidDesc.DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE)
+        {
+            status = STATUS_INVALID_DEVICE_STATE;
+            info   = 0;
+            break;
+        }
 
-    if (!NT_SUCCESS(status)) {
-        hidpdo->HidErrorCount++;
-        info = 0;
+        if (inLen > hidpdo->HidDesc.DescriptorList[0].wReportLength ||
+            inLen > HID_REPORT_MAX_LEN)
+        {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            info   = 0;
+            break;
+        }
+
+        {
+            HID_I2C_DESCRIPTOR_V10 parsed;
+            NTSTATUS descStatus =
+                I2cCtrl_ReadAndValidateHidDescriptor(devctx,
+                                                     (UCHAR)hidpdo->SlaveAddress,
+                                                     (PUCHAR)&parsed,
+                                                     sizeof(parsed),
+                                                     &parsed);
+
+            if (NT_SUCCESS(descStatus)) {
+                RtlZeroMemory(&hidpdo->HidDesc, sizeof(hidpdo->HidDesc));
+                RtlCopyMemory(&hidpdo->HidDesc,
+                              &parsed,
+                              min(sizeof(hidpdo->HidDesc),
+                                  parsed.wHIDDescLength));
+            }
+        }
+
+        status = I2CctrlHw_Write(devctx->Self,
+                                 inBuf,
+                                 inLen,
+                                 &bytesDone,
+                                 0);
+
+        if (!NT_SUCCESS(status)) {
+            hidpdo->HidErrorCount++;
+            info = 0;
+            break;
+        }
+
+        status = STATUS_SUCCESS;
+        info   = bytesDone;
         break;
     }
 
-    status = STATUS_SUCCESS;
-    info   = bytesDone;
-    break;
-}
-
-case IOCTL_HID_GET_FEATURE:
-{
-    PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-    ULONG  outLen    = isl->Parameters.DeviceIoControl.OutputBufferLength;
-    PUCHAR outBuf    = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-    ULONG  bytesDone = 0U;
-
-    I2cCtrl_Log("HID_GET_FEATURE HidPdo=%p OutLen=%lu Buf=%p",
-                hidpdo, outLen, outBuf);
-
-    if (hidpdo == NULL || outBuf == NULL || outLen == 0U) {
-        status = STATUS_INVALID_PARAMETER;
-        info   = 0U;
-        break;
-    }
-
-    if (outLen > HID_REPORT_MAX_LEN) {
-        status = STATUS_INVALID_BUFFER_SIZE;
-        info   = 0U;
-        break;
-    }
-
+    case IOCTL_HID_GET_FEATURE:
     {
-        HID_I2C_DESCRIPTOR_V10 parsed;
-        NTSTATUS descStatus = I2cCtrl_ReadAndValidateHidDescriptor(devctx,
-                                                                   (UCHAR)hidpdo->SlaveAddress,
-                                                                   (PUCHAR)&parsed,
-                                                                   sizeof(parsed),
-                                                                   &parsed);
-        if (NT_SUCCESS(descStatus)) {
-            RtlCopyMemory(&hidpdo->HidDesc, &parsed, sizeof(HID_I2C_DESCRIPTOR_V10));
-        } else {
-            I2cCtrl_Log("HID_GET_FEATURE: descriptor validation failed Slave=0x%02X Status=0x%08lx",
+        PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
+        ULONG  outLen    = isl->Parameters.DeviceIoControl.OutputBufferLength;
+        PUCHAR outBuf    = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+        ULONG  bytesDone = 0U;
+
+        I2cCtrl_Log("HID_GET_FEATURE HidPdo=%p OutLen=%lu Buf=%p",
+                    hidpdo, outLen, outBuf);
+
+        if (hidpdo == NULL || outBuf == NULL || outLen == 0U) {
+            status = STATUS_INVALID_PARAMETER;
+            info   = 0U;
+            break;
+        }
+
+        if (outLen > HID_REPORT_MAX_LEN) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            info   = 0U;
+            break;
+        }
+
+        {
+            HID_I2C_DESCRIPTOR_V10 parsed;
+            NTSTATUS descStatus = I2cCtrl_ReadAndValidateHidDescriptor(devctx,
+                                                                       (UCHAR)hidpdo->SlaveAddress,
+                                                                       (PUCHAR)&parsed,
+                                                                       sizeof(parsed),
+                                                                       &parsed);
+            if (NT_SUCCESS(descStatus)) {
+                RtlCopyMemory(&hidpdo->HidDesc, &parsed, sizeof(HID_I2C_DESCRIPTOR_V10));
+            } else {
+                I2cCtrl_Log("HID_GET_FEATURE: descriptor validation failed Slave=0x%02X Status=0x%08lx",
+                            (unsigned)hidpdo->SlaveAddress,
+                            descStatus);
+            }
+        }
+
+        if (outLen >= 1U) {
+            UCHAR reportId = outBuf[0];
+            (void)devctx->Ops->IssueWriteByte(devctx, reportId);
+        }
+
+        status = devctx->Ops->IssueBlockRead(devctx,
+                                             (UCHAR)hidpdo->SlaveAddress,
+                                             hidpdo->DataRegister,
+                                             outBuf,
+                                             outLen,
+                                             &bytesDone);
+
+        if (!NT_SUCCESS(status)) {
+            I2cCtrl_Log("HID_GET_FEATURE failed Slave=0x%02X Len=%lu Status=0x%08lx",
                         (unsigned)hidpdo->SlaveAddress,
-                        descStatus);
+                        outLen,
+                        status);
+            hidpdo->HidErrorCount++;
+            info = 0U;
+            break;
         }
-    }
 
-    if (outLen >= 1U) {
-        UCHAR reportId = outBuf[0];
-        (void)devctx->Ops->IssueWriteByte(devctx, reportId);
-    }
-
-    status = devctx->Ops->IssueBlockRead(devctx,
-                                         (UCHAR)hidpdo->SlaveAddress,
-                                         hidpdo->DataRegister,
-                                         outBuf,
-                                         outLen,
-                                         &bytesDone);
-
-    if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("HID_GET_FEATURE failed Slave=0x%02X Len=%lu Status=0x%08lx",
-                    (unsigned)hidpdo->SlaveAddress,
-                    outLen,
-                    status);
-        hidpdo->HidErrorCount++;
-        info = 0U;
+        status = STATUS_SUCCESS;
+        info   = bytesDone;
         break;
     }
 
-    status = STATUS_SUCCESS;
-    info   = bytesDone;
-    break;
-}
-
-case IOCTL_HID_SET_FEATURE:
-{
-    PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-    ULONG  inLen     = isl->Parameters.DeviceIoControl.InputBufferLength;
-    PUCHAR inBuf     = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-    ULONG  bytesDone = 0U;
-
-    I2cCtrl_Log("HID_SET_FEATURE HidPdo=%p InLen=%lu Buf=%p",
-                hidpdo, inLen, inBuf);
-
-    if (hidpdo == NULL || inBuf == NULL || inLen == 0U) {
-        status = STATUS_INVALID_PARAMETER;
-        info   = 0U;
-        break;
-    }
-
-    if (inLen > HID_REPORT_MAX_LEN) {
-        status = STATUS_INVALID_BUFFER_SIZE;
-        info   = 0U;
-        break;
-    }
-
+    case IOCTL_HID_SET_FEATURE:
     {
-        HID_I2C_DESCRIPTOR_V10 parsed;
-        NTSTATUS descStatus = I2cCtrl_ReadAndValidateHidDescriptor(devctx,
-                                                                   (UCHAR)hidpdo->SlaveAddress,
-                                                                   (PUCHAR)&parsed,
-                                                                   sizeof(parsed),
-                                                                   &parsed);
-        if (NT_SUCCESS(descStatus)) {
-            RtlCopyMemory(&hidpdo->HidDesc, &parsed, sizeof(HID_I2C_DESCRIPTOR_V10));
-        } else {
-            I2cCtrl_Log("HID_SET_FEATURE: descriptor validation failed Slave=0x%02X Status=0x%08lx",
-                        (unsigned)hidpdo->SlaveAddress,
-                        descStatus);
+        PI2CCTRL_PDO hidpdo = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
+        ULONG  inLen     = isl->Parameters.DeviceIoControl.InputBufferLength;
+        PUCHAR inBuf     = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
+        ULONG  bytesDone = 0U;
+
+        I2cCtrl_Log("HID_SET_FEATURE HidPdo=%p InLen=%lu Buf=%p",
+                    hidpdo, inLen, inBuf);
+
+        if (hidpdo == NULL || inBuf == NULL || inLen == 0U) {
+            status = STATUS_INVALID_PARAMETER;
+            info   = 0U;
+            break;
         }
-    }
 
-    status = devctx->Ops->IssueBlockWrite(devctx,
-                                          (UCHAR)hidpdo->SlaveAddress,
-                                          hidpdo->DataRegister,
-                                          inBuf,
-                                          inLen,
-                                          &bytesDone);
+        if (inLen > HID_REPORT_MAX_LEN) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+            info   = 0U;
+            break;
+        }
 
-    if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("HID_SET_FEATURE failed Slave=0x%02X Len=%lu Status=0x%08lx",
-                    (unsigned)hidpdo->SlaveAddress,
-                    inLen,
-                    status);
-        hidpdo->HidErrorCount++;
-        info = 0U;
+        {
+            HID_I2C_DESCRIPTOR_V10 parsed;
+            NTSTATUS descStatus = I2cCtrl_ReadAndValidateHidDescriptor(devctx,
+                                                                       (UCHAR)hidpdo->SlaveAddress,
+                                                                       (PUCHAR)&parsed,
+                                                                       sizeof(parsed),
+                                                                       &parsed);
+            if (NT_SUCCESS(descStatus)) {
+                RtlCopyMemory(&hidpdo->HidDesc, &parsed, sizeof(HID_I2C_DESCRIPTOR_V10));
+            } else {
+                I2cCtrl_Log("HID_SET_FEATURE: descriptor validation failed Slave=0x%02X Status=0x%08lx",
+                            (unsigned)hidpdo->SlaveAddress,
+                            descStatus);
+            }
+        }
+
+        status = devctx->Ops->IssueBlockWrite(devctx,
+                                              (UCHAR)hidpdo->SlaveAddress,
+                                              hidpdo->DataRegister,
+                                              inBuf,
+                                              inLen,
+                                              &bytesDone);
+
+        if (!NT_SUCCESS(status)) {
+            I2cCtrl_Log("HID_SET_FEATURE failed Slave=0x%02X Len=%lu Status=0x%08lx",
+                        (unsigned)hidpdo->SlaveAddress,
+                        inLen,
+                        status);
+            hidpdo->HidErrorCount++;
+            info = 0U;
+            break;
+        }
+
+        status = STATUS_SUCCESS;
+        info   = bytesDone;
         break;
     }
 
-    status = STATUS_SUCCESS;
-    info   = bytesDone;
-    break;
-}
+    default:
+        I2cCtrl_Log("DispatchIoctl: unknown IOCTL 0x%08lx - trying façades",
+                    (ULONG)isl->Parameters.DeviceIoControl.IoControlCode);
 
-default:
-    I2cCtrl_Log("DispatchIoctl: unknown IOCTL 0x%08lx",
-                (ULONG)isl->Parameters.DeviceIoControl.IoControlCode);
-    break;
-}
+        /* First: ACPIEx façade (it sets IoStatus and completes IRP itself) */
+        status = I2cCtrl_AcpiexDeviceControl(DeviceObject, Irp, isl);
+        if (status != STATUS_INVALID_DEVICE_REQUEST &&
+            status != STATUS_NOT_SUPPORTED)
+        {
+            I2cCtrl_Log("DispatchIoctl: IOCTL handled by ACPIEx façade Status=0x%08lx",
+                        status);
+            return status;
+        }
+
+        /* Second: SPBCx façade (I2cCtrl_SPBCX_DDC completes IRP itself) */
+        status = I2cCtrl_SPBCX_DDC(DeviceObject, Irp);
+        if (status != STATUS_INVALID_DEVICE_REQUEST &&
+            status != STATUS_NOT_SUPPORTED)
+        {
+            I2cCtrl_Log("DispatchIoctl: IOCTL handled by SPBCx façade Status=0x%08lx",
+                        status);
+            return status;
+        }
+
+        I2cCtrl_Log("DispatchIoctl: IOCTL 0x%08lx not handled by façades",
+                    (ULONG)isl->Parameters.DeviceIoControl.IoControlCode);
+
+        status = STATUS_INVALID_DEVICE_REQUEST;
+        info   = 0U;
+        break;
+    }
 
 CompleteDirect:
-Irp->IoStatus.Status      = status;
-Irp->IoStatus.Information = info;
+    Irp->IoStatus.Status      = status;
+    Irp->IoStatus.Information = info;
 
-I2cCtrl_Log("DispatchIoctl: complete Irp=%p Status=0x%08lx Info=%Iu",
-            Irp, status, info);
+    I2cCtrl_Log("DispatchIoctl: complete Irp=%p Status=0x%08lx Info=%Iu",
+                Irp, status, info);
 
-IoCompleteRequest(Irp, IO_NO_INCREMENT);
-return status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return status;
 }
 
 
@@ -10310,7 +10348,7 @@ ApplyDefaults:
 VOID
 I2cCtrl_ApplyControllerPolicy(
     PI2CCTRL_FDO    Dx,
-    PI2CCTRL_TARGET TgtOpt
+    PI2CCTRL_TARGET TargetOpt
     )
 {
     ULONG   speed;
@@ -10325,11 +10363,11 @@ I2cCtrl_ApplyControllerPolicy(
     use10bit = Dx->Use10BitAddrDefault;
 
     /* Override from target options if bound */
-    if (TgtOpt != NULL && TgtOpt->Bound) {
-        if (TgtOpt->SpeedHz != 0U) {
-            speed = TgtOpt->SpeedHz;
+    if (TargetOpt != NULL && TargetOpt->Bound) {
+        if (TargetOpt->SpeedHz != 0U) {
+            speed = TargetOpt->SpeedHz;
         }
-        if ((TgtOpt->Flags & I2CCTRL_FLAG_10BIT) != 0U) {
+        if ((TargetOpt->Flags & I2CCTRL_FLAG_10BIT) != 0U) {
             use10bit = TRUE;
         }
     }

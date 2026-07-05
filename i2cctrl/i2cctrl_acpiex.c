@@ -76,7 +76,7 @@ NTSTATUS
 I2cCtrl_AcpiexSetTarget(
     PI2CCTRL_FDO Dx,
     PI2CCTRL_ACPIEX_HANDLE H,
-    I2CCTRL_TARGET_CONFIG In
+    I2CCTRL_TARGET In
 )
 {
     NTSTATUS status = STATUS_SUCCESS;
@@ -383,9 +383,9 @@ NTSTATUS I2cCtrl_AcpiexDeviceControl(PDEVICE_OBJECT Fdo,
 
     switch (code) {
     case IOCTL_SET_TARGET:
-        if (inBuf != NULL && inLen >= sizeof(I2CCTRL_TARGET_CONFIG)) {
+        if (inBuf != NULL && inLen >= sizeof(I2CCTRL_TARGET)) {
             status = I2cCtrl_AcpiexSetTarget(Dx, H,
-                      *(PI2CCTRL_TARGET_CONFIG)inBuf);
+                      *(PI2CCTRL_TARGET)inBuf);
         } else {
             status = STATUS_INVALID_PARAMETER;
         }

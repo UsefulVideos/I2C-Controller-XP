@@ -100,7 +100,7 @@ typedef I2CCTRL_TARGET *PI2CCTRL_TARGET;
    --------------------------------------------------------------------------- */
 NTSTATUS I2cCtrl_DispatchCreate(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS I2cCtrl_DispatchClose(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS I2cCtrl_DispatchDeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS I2cCtrl_SPBCX_DDC(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 /* ---------------------------------------------------------------------------
    Function prototypes for façade IOCTL handlers (canonical signatures)

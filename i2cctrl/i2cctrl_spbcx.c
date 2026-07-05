@@ -20,16 +20,16 @@ I2cCtrl_DispatchCreate(
 {
     PIO_STACK_LOCATION isl = IoGetCurrentIrpStackLocation(Irp);
     PI2CCTRL_FDO dx   = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
-    PI2CCTRL_TARGET   tgt;
+    PI2CCTRL_TARGET   Target;
 
     I2CCTRL_REQUIRE_PASSIVE();
     I2CCTRL_REQUIRE_PTR(dx);
 
     /* Allocate per-handle target binding context */
-    tgt = (PI2CCTRL_TARGET)I2cCtrl_Alloc(NonPagedPool,
+    Target = (PI2CCTRL_TARGET)I2cCtrl_Alloc(NonPagedPool,
                                          sizeof(I2CCTRL_TARGET),
                                          TAG_I2C_MISC);
-    if (tgt == NULL) {
+    if (Target == NULL) {
         Irp->IoStatus.Status      = STATUS_INSUFFICIENT_RESOURCES;
         Irp->IoStatus.Information = 0;
         I2cCtrl_SafeCompleteIrp(Irp, STATUS_INSUFFICIENT_RESOURCES);
@@ -37,14 +37,14 @@ I2cCtrl_DispatchCreate(
     }
 
     /* Initialize context */
-    RtlZeroMemory(tgt, sizeof(*tgt));
-    tgt->Bound   = FALSE;
-    tgt->Address = 0;
-    tgt->SpeedHz = 100000; /* default safe speed */
-    tgt->Flags   = 0;
+    RtlZeroMemory(Target, sizeof(*Target));
+    Target->Bound   = FALSE;
+    Target->Address = 0;
+    Target->SpeedHz = 100000; /* default safe speed */
+    Target->Flags   = 0;
 
     /* Attach to FileObject */
-    isl->FileObject->FsContext = tgt;
+    isl->FileObject->FsContext = Target;
 
     Irp->IoStatus.Status      = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
@@ -59,13 +59,13 @@ I2cCtrl_DispatchClose(
     )
 {
     PIO_STACK_LOCATION isl = IoGetCurrentIrpStackLocation(Irp);
-    PI2CCTRL_TARGET tgt    = (PI2CCTRL_TARGET)isl->FileObject->FsContext;
+    PI2CCTRL_TARGET Target    = (PI2CCTRL_TARGET)isl->FileObject->FsContext;
 
     I2CCTRL_REQUIRE_PASSIVE();
 
-    if (tgt != NULL) {
+    if (Target != NULL) {
         /* Free the per-handle target binding context */
-        I2cCtrl_Free(tgt, TAG_I2C_MISC);
+        I2cCtrl_Free(Target, TAG_I2C_MISC);
         isl->FileObject->FsContext = NULL;
     }
 
@@ -83,12 +83,12 @@ I2cCtrl_DispatchClose(
 NTSTATUS
 I2cCtrl_IoctlSetTarget(
     PI2CCTRL_FDO    Dx,
-    PI2CCTRL_TARGET Tgt,
+    PI2CCTRL_TARGET Target,
     PVOID           InBuf,
     ULONG           InLen
     )
 {
-    PI2CCTRL_TARGET_CONFIG cfg;
+    PI2CCTRL_TARGET cfg;
     ULONG                  speed;
     ULONG                  addr;
     ULONG                  highNs;
@@ -99,12 +99,12 @@ I2cCtrl_IoctlSetTarget(
     PAGED_CODE();
 
     /* ---- Validate pointers ---- */
-    if (Dx == NULL || Tgt == NULL || InBuf == NULL) {
+    if (Dx == NULL || Target == NULL || InBuf == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
     /* ---- Validate buffer size ---- */
-    if (InLen < sizeof(I2CCTRL_TARGET_CONFIG)) {
+    if (InLen < sizeof(I2CCTRL_TARGET)) {
         return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -113,11 +113,11 @@ I2cCtrl_IoctlSetTarget(
         return STATUS_DEVICE_NOT_READY;
     }
 
-    cfg = (PI2CCTRL_TARGET_CONFIG)InBuf;
+    cfg = (PI2CCTRL_TARGET)InBuf;
 
     /* ---- Normalize and clamp address ---- */
     addr = (cfg->Address & 0x03FF);   /* allow 7-bit or 10-bit */
-    Tgt->Address = (USHORT)addr;
+    Target->Address = (USHORT)addr;
 
     /* ---- Clamp speed to safe range ---- */
     speed = cfg->SpeedHz;
@@ -126,11 +126,11 @@ I2cCtrl_IoctlSetTarget(
     } else if (speed > 400000UL) {
         speed = 400000UL;
     }
-    Tgt->SpeedHz = speed;
+    Target->SpeedHz = speed;
 
     /* ---- Copy flags safely ---- */
-    Tgt->Flags = cfg->Flags;
-    Tgt->Bound = TRUE;
+    Target->Flags = cfg->Flags;
+    Target->Bound = TRUE;
 
     /* ---- Update FDO saved context ---- */
     Dx->SavedBusAddress = addr;
@@ -174,7 +174,7 @@ if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
 
     /* ---- Configure addressing mode ---- */
     Dx->Use10BitAddrDefault =
-        ((Tgt->Flags & I2CCTRL_FLAG_10BIT) != 0) ? TRUE : FALSE;
+        ((Target->Flags & I2CCTRL_FLAG_10BIT) != 0) ? TRUE : FALSE;
 
     return STATUS_SUCCESS;
 }
@@ -363,7 +363,7 @@ NTSTATUS
 I2cCtrl_ExecuteTransfer(
     PDEVICE_OBJECT   DeviceObject,
     PI2CCTRL_FDO     fdoExt,
-    PI2CCTRL_TARGET  tgt,
+    PI2CCTRL_TARGET  Target,
     BOOLEAN          IsRead,
     PUCHAR           Buffer,
     ULONG            Length,
@@ -392,10 +392,10 @@ I2cCtrl_ExecuteTransfer(
     RtlZeroMemory(&hwst, sizeof(hwst));
 
     /* Validate input parameters */
-    if (tgt == NULL || Buffer == NULL || BytesTransferred == NULL) {
+    if (Target == NULL || Buffer == NULL || BytesTransferred == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
-    if (!tgt->Bound) {
+    if (!Target->Bound) {
         return STATUS_DEVICE_NOT_READY;
     }
     if (Length == 0U) {
@@ -419,7 +419,7 @@ I2cCtrl_ExecuteTransfer(
     fdoExt->XferCtx.Phases[0].IsRead = isReadLocal;
     fdoExt->XferCtx.Phases[0].Length = Length;
     fdoExt->XferCtx.Phases[0].Buffer = Buffer;
-    fdoExt->TargetAddress            = tgt->Address;
+    fdoExt->TargetAddress            = Target->Address;
 
     KeClearEvent(&fdoExt->TransferEvent);
 
@@ -995,7 +995,7 @@ NTSTATUS
 I2cCtrl_IoctlTransfer(
     PDEVICE_OBJECT   DeviceObject,
     PI2CCTRL_FDO     Dx,
-    PI2CCTRL_TARGET  Tgt,
+    PI2CCTRL_TARGET  Target,
     PVOID            InOutBuf,
     ULONG            InOutLen
     )
@@ -1019,10 +1019,10 @@ I2cCtrl_IoctlTransfer(
     maxLen = 64U * 1024U; /* conservative cap: 64KB */
 
     /* Validate parameters */
-    if (DeviceObject == NULL || Dx == NULL || Tgt == NULL) {
+    if (DeviceObject == NULL || Dx == NULL || Target == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
-    if (!Tgt->Bound) {
+    if (!Target->Bound) {
         return STATUS_DEVICE_NOT_READY;
     }
     if (InOutLen > 0U && InOutBuf == NULL) {
@@ -1109,8 +1109,8 @@ I2cCtrl_IoctlTransfer(
     }
 
     /* Update abstract bus context for diagnostics */
-    Dx->SavedBusAddress = Tgt->Address;
-    Dx->SavedBusSpeed   = Tgt->SpeedHz;
+    Dx->SavedBusAddress = Target->Address;
+    Dx->SavedBusSpeed   = Target->SpeedHz;
 
     return status;
 }
@@ -1124,7 +1124,7 @@ NTSTATUS
 I2cCtrl_IoctlSequence(
     PDEVICE_OBJECT   DeviceObject,
     PI2CCTRL_FDO     Dx,
-    PI2CCTRL_TARGET  Tgt,
+    PI2CCTRL_TARGET  Target,
     PVOID            InOutBuf,
     ULONG            InOutLen
     )
@@ -1147,10 +1147,10 @@ I2cCtrl_IoctlSequence(
     legacyLen  = 0U;
 
     /* ---- Validate device + target state ---- */
-    if (Dx == NULL || Tgt == NULL) {
+    if (Dx == NULL || Target == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
-    if (!Tgt->Bound) {
+    if (!Target->Bound) {
         return STATUS_DEVICE_NOT_READY;
     }
     if (!Dx->Started || Dx->Removed || Dx->Stopping) {
@@ -1178,7 +1178,7 @@ I2cCtrl_IoctlSequence(
     /* ---- Fill SPBCX compatibility context ---- */
     RtlZeroMemory(&compat, sizeof(compat));
 
-    compat.TargetAddress             = Tgt->Address;
+    compat.TargetAddress             = Target->Address;
     compat.SequenceHdr.TransferCount = hdr->TransferCount;
     compat.BufferLen                 = payloadLen;
     compat.Flags                     = hdr->Flags;
@@ -1209,12 +1209,12 @@ I2cCtrl_IoctlSequence(
     /* Clamp to USHORT for legacy hardware */
     legacyLen = (payloadLen > 0xFFFFU) ? 0xFFFFU : (USHORT)payloadLen;
     Dx->XferCtx.Length      = (USHORT)legacyLen;
-    Dx->XferCtx.Address7Bit = (UCHAR)(Tgt->Address & 0x7FU);
+    Dx->XferCtx.Address7Bit = (UCHAR)(Target->Address & 0x7FU);
     Dx->XferCtx.Status      = STATUS_PENDING;
     Dx->XferCtx.StopSeen    = FALSE;
 
     /* Save target address for diagnostics */
-    Dx->TargetAddress = Tgt->Address;
+    Dx->TargetAddress = Target->Address;
 
     /* ---- Execute the sequence via hardened path ---- */
     status = I2cCtrl_StartSequence(Dx, &compat);
@@ -1229,7 +1229,7 @@ I2cCtrl_IoctlSequence(
 NTSTATUS
 I2cCtrl_IoctlProbe(
     PI2CCTRL_FDO     Dx,
-    PI2CCTRL_TARGET  Tgt,
+    PI2CCTRL_TARGET  Target,
     PVOID            InOutBuf,
     ULONG            InOutLen
     )
@@ -1249,10 +1249,10 @@ I2cCtrl_IoctlProbe(
     RtlZeroMemory(&compat, sizeof(compat));
 
     /* ---- Validate device/target state ---- */
-    if (Dx == NULL || Tgt == NULL) {
+    if (Dx == NULL || Target == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
-    if (!Tgt->Bound) {
+    if (!Target->Bound) {
         return STATUS_DEVICE_NOT_READY;
     }
     if (!Dx->Started || Dx->Removed || Dx->Stopping) {
@@ -1296,7 +1296,7 @@ I2cCtrl_IoctlProbe(
     Dx->XferCtx.Position     = 0U;
 
     /* Save target address for diagnostics */
-    Dx->TargetAddress = Tgt->Address;
+    Dx->TargetAddress = Target->Address;
 
     /* ---- Execute hardened probe ---- */
     status = I2cCtrl_StartProbe(Dx, &compat);
@@ -1307,9 +1307,8 @@ I2cCtrl_IoctlProbe(
     return status;
 }
 
-
 NTSTATUS
-I2cCtrl_DispatchDeviceControl(
+I2cCtrl_SPBCX_DDC(
     PDEVICE_OBJECT DeviceObject,
     PIRP           Irp
     )
@@ -1317,7 +1316,7 @@ I2cCtrl_DispatchDeviceControl(
     NTSTATUS            status;
     PIO_STACK_LOCATION  isl;
     PI2CCTRL_FDO        dx;
-    PI2CCTRL_TARGET     tgt;
+    PI2CCTRL_TARGET     Target;
     ULONG               code;
     ULONG               inlen;
     ULONG               outlen;
@@ -1327,11 +1326,11 @@ I2cCtrl_DispatchDeviceControl(
     ULONG               method;
     ULONG               bytesOut;
 
-    /* C89: declare first, then execute */
+    /* C89 init */
     status   = STATUS_INVALID_DEVICE_REQUEST;
     isl      = IoGetCurrentIrpStackLocation(Irp);
     dx       = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
-    tgt      = (isl && isl->FileObject) ? (PI2CCTRL_TARGET)isl->FileObject->FsContext : NULL;
+    Target      = (isl && isl->FileObject) ? (PI2CCTRL_TARGET)isl->FileObject->FsContext : NULL;
     code     = isl ? isl->Parameters.DeviceIoControl.IoControlCode : 0;
     inlen    = isl ? isl->Parameters.DeviceIoControl.InputBufferLength : 0;
     outlen   = isl ? isl->Parameters.DeviceIoControl.OutputBufferLength : 0;
@@ -1341,8 +1340,16 @@ I2cCtrl_DispatchDeviceControl(
     bytesOut = 0;
     method   = code & 0x3;
 
-    I2CCTRL_LOG_ENTER("I2cCtrl_DispatchDeviceControl");
-    I2CCTRL_REQUIRE_PASSIVE();
+    /* Log only at PASSIVE_LEVEL */
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        I2cCtrl_Log("SPBCX_DDC: enter DevExt=%p Ioctl=0x%08lx", dx, code);
+    }
+
+    /* SPBCx façade ALWAYS requires PASSIVE_LEVEL */
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        status = STATUS_INVALID_DEVICE_STATE;
+        goto complete;
+    }
 
     /* Device state validation */
     if (dx == NULL || dx->Removed || !dx->Started) {
@@ -1368,7 +1375,6 @@ I2cCtrl_DispatchDeviceControl(
             goto complete;
         }
         if (method == METHOD_OUT_DIRECT) {
-            /* For OUT_DIRECT, return data via MDL */
             outMapped = inMapped;
         }
     }
@@ -1378,81 +1384,71 @@ I2cCtrl_DispatchDeviceControl(
 
     case IOCTL_SET_TARGET:
     {
-        PVOID in;
-        in = sysbuf;
-        if (method != METHOD_BUFFERED) {
-            in = inMapped;
-        }
-        if (in == NULL || inlen < sizeof(I2CCTRL_TARGET_CONFIG)) {
+        PVOID in = (method == METHOD_BUFFERED ? sysbuf : inMapped);
+
+        if (in == NULL || inlen < sizeof(I2CCTRL_TARGET)) {
             status = STATUS_INVALID_PARAMETER;
             break;
         }
 
-        status = I2cCtrl_IoctlSetTarget(dx, tgt, in, inlen);
-        if (NT_SUCCESS(status) && tgt != NULL && tgt->Bound) {
-            dx->TargetAddress   = tgt->Address;
-            dx->SavedBusAddress = tgt->Address;
-            dx->SavedBusSpeed   = tgt->SpeedHz;
-            I2CCTRL_LOG_INFO("SET_TARGET: bound addr=0x%02x speed=%luHz\n",
-                             dx->TargetAddress, dx->SavedBusSpeed, 0, 0);
+        status = I2cCtrl_IoctlSetTarget(dx, Target, in, inlen);
+
+        if (NT_SUCCESS(status) && Target != NULL && Target->Bound) {
+            dx->TargetAddress   = Target->Address;
+            dx->SavedBusAddress = Target->Address;
+            dx->SavedBusSpeed   = Target->SpeedHz;
+
+            if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+                I2cCtrl_Log("SPBCX_DDC: SET_TARGET addr=0x%02x speed=%luHz",
+                            dx->TargetAddress, dx->SavedBusSpeed);
+            }
         }
         break;
     }
 
     case IOCTL_XFER_DESC:
     {
-        PVOID in;
-        ULONG wrote;
-        in   = sysbuf;
-        wrote= 0;
+        PVOID in = (method == METHOD_BUFFERED ? sysbuf : inMapped);
+        ULONG wrote = 0;
 
-        if (method != METHOD_BUFFERED) {
-            in = inMapped;
-        }
         if (in == NULL || inlen < sizeof(I2CCTRL_XFER_DESC)) {
             status = STATUS_INVALID_PARAMETER;
             break;
         }
-        if (tgt == NULL || !tgt->Bound) {
+        if (Target == NULL || !Target->Bound) {
             status = STATUS_DEVICE_NOT_READY;
             break;
         }
 
-        status = I2cCtrl_IoctlTransfer(DeviceObject, dx, tgt, in, inlen);
+        status = I2cCtrl_IoctlTransfer(DeviceObject, dx, Target, in, inlen);
+
         if (NT_SUCCESS(status)) {
             wrote = I2cCtrl_GetTransferBytesWritten(&dx->XferCtx);
             if (wrote > outlen) {
                 wrote = outlen;
             }
             bytesOut = wrote;
-            /* If OUT_DIRECT, ensure caller expects data in MDL; your callee should have written to outMapped */
         }
         break;
     }
 
     case IOCTL_SEQUENCE:
     {
-        PVOID in;
-        ULONG wrote;
+        PVOID in = (method == METHOD_BUFFERED ? sysbuf : inMapped);
+        ULONG wrote = 0;
 
-        in    = sysbuf;
-        wrote = 0U;
-
-        if (method != METHOD_BUFFERED) {
-            in = inMapped;
-        }
         if (in == NULL || inlen < sizeof(I2CCTRL_SEQUENCE_HDR)) {
             status = STATUS_INVALID_PARAMETER;
             break;
         }
-        if (tgt == NULL || !tgt->Bound) {
+        if (Target == NULL || !Target->Bound) {
             status = STATUS_DEVICE_NOT_READY;
             break;
         }
 
-        status = I2cCtrl_IoctlSequence(DeviceObject, dx, tgt, in, inlen);
+        status = I2cCtrl_IoctlSequence(DeviceObject, dx, Target, in, inlen);
+
         if (NT_SUCCESS(status)) {
-            /* Use context-based helper instead of global */
             wrote = I2cCtrl_GetSequenceBytesWritten(&dx->XferCtx);
             if (wrote > outlen) {
                 wrote = outlen;
@@ -1464,26 +1460,18 @@ I2cCtrl_DispatchDeviceControl(
 
     case IOCTL_PROBE:
     {
-        PVOID in;
-        ULONG expected;
-        in       = sysbuf;
-        expected = sizeof(I2CCTRL_PROBE_RESULT);
+        PVOID in = (method == METHOD_BUFFERED ? sysbuf : inMapped);
+        ULONG expected = sizeof(I2CCTRL_PROBE_RESULT);
 
-        if (method != METHOD_BUFFERED) {
-            in = inMapped;
-        }
         if (in == NULL || inlen < sizeof(I2CCTRL_PROBE)) {
             status = STATUS_INVALID_PARAMETER;
             break;
         }
 
-        status = I2cCtrl_IoctlProbe(dx, tgt, in, inlen);
+        status = I2cCtrl_IoctlProbe(dx, Target, in, inlen);
+
         if (NT_SUCCESS(status)) {
-            if (expected > outlen) {
-                bytesOut = outlen;
-            } else {
-                bytesOut = expected;
-            }
+            bytesOut = (expected > outlen ? outlen : expected);
         }
         break;
     }
@@ -1498,7 +1486,12 @@ complete:
     Irp->IoStatus.Information = NT_SUCCESS(status) ? bytesOut : 0;
 
     I2cCtrl_SafeCompleteIrp(Irp, status);
-    I2CCTRL_LOG_EXIT("I2cCtrl_DispatchDeviceControl");
+
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        I2cCtrl_Log("SPBCX_DDC: exit Status=0x%08lx BytesOut=%lu",
+                    status, bytesOut);
+    }
+
     return status;
 }
 

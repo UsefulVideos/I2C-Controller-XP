@@ -912,7 +912,7 @@ I2cCtrl_LoadRegistryPolicy(
 VOID
 I2cCtrl_ApplyControllerPolicy(
     PI2CCTRL_FDO Dx,
-    PI2CCTRL_TARGET TgtOpt
+    PI2CCTRL_TARGET TargetOpt
     );
 
 /* Run transfer with retries/backoff/timeout policy */
