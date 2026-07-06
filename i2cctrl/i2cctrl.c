@@ -1570,6 +1570,11 @@ I2cCtrl_EnumerateAcpiChildren(
     PDEVICE_OBJECT pdo;
     PI2CCTRL_PDO childDx;
     KIRQL oldIrql;
+	/* --- CID locals (C89 requires declarations at top) --- */
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER cidBuf = NULL;
+    UNICODE_STRING cidUni;
+    ACPI_METHOD_ARGUMENT UNALIGNED *cidArg;
+    ULONG i;
 
     if (ChildCountOut) {
         *ChildCountOut = 0;
@@ -1649,96 +1654,199 @@ I2cCtrl_EnumerateAcpiChildren(
     ExFreePoolWithTag(outBuf, 'Acpi');
     outBuf = NULL;
 
+/* ------------------------------------------------------------
+   3) Read _HID (universal)
+   ------------------------------------------------------------ */
+outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 512;
+outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
+if (!outBuf) goto Done;
+
+RtlZeroMemory(outBuf, outLen);
+
+status = I2cCtrl_AcpiEvalMethod(
+             fdoExt->AcpiDeviceObject,
+             fdoExt->AcpiHandle,
+             "_HID",
+             outBuf,
+             outLen
+         );
+
+if (!NT_SUCCESS(status) || outBuf->Count == 0) {
+    I2cCtrl_Log("Enumerate: _HID missing or empty\n");
+    goto Done;
+}
+
+/* ------------------------------------------------------------
+   ACPI 1.0b vs ACPI 2.0+ HID parsing
+   ------------------------------------------------------------ */
+if (!fdoExt->AcpiIs20Plus) {
+
+    /* ------------------------------
+       ACPI 1.0b: Data[] = arguments[]
+       ------------------------------ */
+    arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&outBuf->Data[0];
+
+} else {
+
+    /* ------------------------------
+       ACPI 2.0+: Data[] = packed bytes
+       ------------------------------ */
+    UCHAR *raw = &outBuf->Data[0];
+
+    /* First packed argument begins at Data[0] */
+    arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
+}
+
+/* arg now points to the first HID argument */
+
+/* ------------------------------------------------------------
+   4) Iterate HID entries (universal) + optional _CID
+   ------------------------------------------------------------ */
+for (; outBuf->Count > 0; outBuf->Count--, arg = ACPI_METHOD_NEXT_ARGUMENT(arg)) {
+
+    if (arg->Type != ACPI_METHOD_ARGUMENT_STRING ||
+        arg->DataLength == 0)
+    {
+        continue;
+    }
+
+    /* Convert HID to Unicode */
+    hidAnsi.Buffer = (PCHAR)arg->Data;
+    hidAnsi.Length = (USHORT)arg->DataLength;
+    hidAnsi.MaximumLength = (USHORT)arg->DataLength;
+
+    RtlInitUnicodeString(&hidUni, NULL);
+
+    if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&hidUni, &hidAnsi, TRUE))) {
+        continue;
+    }
+
+    I2cCtrl_Log("Enumerate: HID=\"%ws\"\n", hidUni.Buffer);
+
     /* ------------------------------------------------------------
-       3) Read _HID (universal)
+       4b) Read _CID (optional, ACPI compatible IDs)
        ------------------------------------------------------------ */
     outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 512;
-    outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
-    if (!outBuf) goto Done;
+    cidBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
+    if (!cidBuf) {
+        RtlFreeUnicodeString(&hidUni);
+        goto Done;
+    }
 
-    RtlZeroMemory(outBuf, outLen);
+    RtlZeroMemory(cidBuf, outLen);
 
     status = I2cCtrl_AcpiEvalMethod(
                  fdoExt->AcpiDeviceObject,
                  fdoExt->AcpiHandle,
-                 "_HID",
-                 outBuf,
+                 "_CID",
+                 cidBuf,
                  outLen
              );
 
-    if (!NT_SUCCESS(status) || outBuf->Count == 0) {
-        I2cCtrl_Log("Enumerate: _HID missing or empty\n");
-        goto Done;
+    if (NT_SUCCESS(status) && cidBuf->Count > 0) {
+
+        if (!fdoExt->AcpiIs20Plus) {
+            cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cidBuf->Data[0];
+        } else {
+            cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cidBuf->Data[0];
+        }
+
+        for (i = 0; i < cidBuf->Count; i++, cidArg = ACPI_METHOD_NEXT_ARGUMENT(cidArg)) {
+
+            if (cidArg->Type != ACPI_METHOD_ARGUMENT_STRING ||
+                cidArg->DataLength == 0)
+            {
+                continue;
+            }
+
+            hidAnsi.Buffer = (PCHAR)cidArg->Data;
+            hidAnsi.Length = (USHORT)cidArg->DataLength;
+            hidAnsi.MaximumLength = (USHORT)cidArg->DataLength;
+
+            RtlInitUnicodeString(&cidUni, NULL);
+
+            if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&cidUni, &hidAnsi, TRUE))) {
+                continue;
+            }
+
+            I2cCtrl_Log("Enumerate: CID=\"%ws\"\n", cidUni.Buffer);
+
+            if (childDx->CompatibleId.Buffer == NULL) {
+                childDx->CompatibleId = cidUni;
+            } else {
+                I2cCtrl_AddCidToMultiSz(childDx, cidUni.Buffer);
+                RtlFreeUnicodeString(&cidUni);
+            }
+        }
     }
 
-    arg = (ACPI_METHOD_ARGUMENT UNALIGNED*)&outBuf->Data[0];
+    ExFreePoolWithTag(cidBuf, 'Acpi');
+    cidBuf = NULL;
 
-    /* ------------------------------------------------------------
-       4) Iterate HID entries (universal)
-       ------------------------------------------------------------ */
-    for (; outBuf->Count > 0; outBuf->Count--, arg = ACPI_METHOD_NEXT_ARGUMENT(arg)) {
+/* --------------------------------------------------------
+   5) Check _STA (universal)
+   -------------------------------------------------------- */
+staLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 32;
+staBuf = ExAllocatePoolWithTag(NonPagedPool, staLen, 'Acpi');
+if (!staBuf) {
+    RtlFreeUnicodeString(&hidUni);
+    goto Done;
+}
 
-        if (arg->Type != ACPI_METHOD_ARGUMENT_STRING ||
-            arg->DataLength == 0)
-        {
-            continue;
-        }
+RtlZeroMemory(staBuf, staLen);
 
-        /* Convert HID to Unicode */
-        hidAnsi.Buffer = (PCHAR)arg->Data;
-        hidAnsi.Length = (USHORT)arg->DataLength;
-        hidAnsi.MaximumLength = (USHORT)arg->DataLength;
+status = I2cCtrl_AcpiEvalMethod(
+             fdoExt->AcpiDeviceObject,
+             fdoExt->AcpiHandle,
+             "_STA",
+             staBuf,
+             staLen
+         );
 
-        RtlInitUnicodeString(&hidUni, NULL);
+if (!NT_SUCCESS(status) || staBuf->Count == 0) {
+    I2cCtrl_Log("Enumerate: _STA missing\n");
+    ExFreePoolWithTag(staBuf, 'Acpi');
+    staBuf = NULL;
+    RtlFreeUnicodeString(&hidUni);
+    continue;
+}
 
-        if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&hidUni, &hidAnsi, TRUE))) {
-            continue;
-        }
+/* --------------------------------------------------------
+   ACPI 1.0b vs ACPI 2.0+ STA parsing
+   -------------------------------------------------------- */
+if (!fdoExt->AcpiIs20Plus) {
 
-        I2cCtrl_Log("Enumerate: HID=\"%ws\"\n", hidUni.Buffer);
+    /* ------------------------------
+       ACPI 1.0b: Data[] = arguments[]
+       ------------------------------ */
+    staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&staBuf->Data[0];
 
-        /* --------------------------------------------------------
-           5) Check _STA (universal)
-           -------------------------------------------------------- */
-        staLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 32;
-        staBuf = ExAllocatePoolWithTag(NonPagedPool, staLen, 'Acpi');
-        if (!staBuf) {
-            RtlFreeUnicodeString(&hidUni);
-            goto Done;
-        }
+} else {
 
-        RtlZeroMemory(staBuf, staLen);
+    /* ------------------------------
+       ACPI 2.0+: Data[] = packed bytes
+       ------------------------------ */
+    UCHAR *raw = &staBuf->Data[0];
 
-        status = I2cCtrl_AcpiEvalMethod(
-                     fdoExt->AcpiDeviceObject,
-                     fdoExt->AcpiHandle,
-                     "_STA",
-                     staBuf,
-                     staLen
-                 );
+    /* First packed argument begins at Data[0] */
+    staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
+}
 
-        if (!NT_SUCCESS(status) || staBuf->Count == 0) {
-            I2cCtrl_Log("Enumerate: _STA missing\n");
-            ExFreePoolWithTag(staBuf, 'Acpi');
-            staBuf = NULL;
-            RtlFreeUnicodeString(&hidUni);
-            continue;
-        }
+/* --------------------------------------------------------
+   Validate _STA result
+   -------------------------------------------------------- */
+if (staArg->Type != ACPI_METHOD_ARGUMENT_INTEGER ||
+    ((ULONG)staArg->Argument & 0x01) == 0)
+{
+    I2cCtrl_Log("Enumerate: _STA indicates not present\n");
+    ExFreePoolWithTag(staBuf, 'Acpi');
+    staBuf = NULL;
+    RtlFreeUnicodeString(&hidUni);
+    continue;
+}
 
-        staArg = (ACPI_METHOD_ARGUMENT UNALIGNED*)&staBuf->Data[0];
-
-        if (staArg->Type != ACPI_METHOD_ARGUMENT_INTEGER ||
-            ((ULONG)staArg->Argument & 0x01) == 0)
-        {
-            I2cCtrl_Log("Enumerate: _STA indicates not present\n");
-            ExFreePoolWithTag(staBuf, 'Acpi');
-            staBuf = NULL;
-            RtlFreeUnicodeString(&hidUni);
-            continue;
-        }
-
-        ExFreePoolWithTag(staBuf, 'Acpi');
-        staBuf = NULL;
+ExFreePoolWithTag(staBuf, 'Acpi');
+staBuf = NULL;
 
         /* --------------------------------------------------------
            6) Create PDO (universal)
@@ -2160,9 +2268,10 @@ I2cCtrl_CheckForAcpiI2cMethods(
 }
 
 
-/* --- Robust _CRS GPIO parsing with hex dump and defensive pin search; C89-compliant --- */
-
-/* Helper: hex dump a buffer to TraceEvents in lines of 16 bytes */
+/* -----------------------------------------------------------------------
+ * I2cCtrl_HexDump
+ * Helper: hex dump a buffer to TraceEvents in lines of 16 bytes
+ * ----------------------------------------------------------------------- */
 VOID
 I2cCtrl_HexDump(
     const UCHAR *buf,
@@ -2224,24 +2333,27 @@ I2cCtrl_HexDump(
 
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_ParseCrsForGpio
+ * I2cCtrl_ParseCrsForGpio (ACPI 1.0b + ACPI 2.0+ unified)
  *
  * Parse ACPI _CRS buffer for a GPIO Connection Descriptor (Large Item 0x8C).
  * Extracts:
  *   - First GPIO pin number
  *   - ActiveLow flag
  *
- * XP/2003-safe, C89-compliant, no assumptions about alignment.
+ * XP/2003-safe, C89-compliant, ACPI-version-aware.
  * ----------------------------------------------------------------------- */
 BOOLEAN
 I2cCtrl_ParseCrsForGpio(
-    const UCHAR *buf,
-    ULONG        len,
-    PULONG       gpioPinOut,
-    PBOOLEAN     activeLowOut
+    PI2CCTRL_FDO fdoExt,
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER crsBuf,
+    ULONG crsLen,
+    PULONG gpioPinOut,
+    PBOOLEAN activeLowOut
     )
 {
-    ULONG i;
+    UCHAR *resPtr;
+    ULONG resLen;
+    ULONG pos;
 
     if (gpioPinOut == NULL || activeLowOut == NULL) {
         return FALSE;
@@ -2250,39 +2362,87 @@ I2cCtrl_ParseCrsForGpio(
     *gpioPinOut   = 0;
     *activeLowOut = FALSE;
 
-    if (buf == NULL || len < 3) {
-        I2cCtrl_Log("ParseCrsForGpio: invalid buffer len=%lu\n", len);
+    if (crsBuf == NULL || crsLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER)) {
+        I2cCtrl_Log("ParseCrsForGpio: invalid CRS buffer\n");
         return FALSE;
     }
 
-    i = 0;
-    while (i + 1 < len) {
+    /* ------------------------------------------------------------
+       ACPI 1.0b vs ACPI 2.0+ CRS extraction
+       ------------------------------------------------------------ */
+    if (!fdoExt->AcpiIs20Plus) {
 
-        UCHAR tag = buf[i];
+        /* ACPI 1.0b: Data[] = ACPI_METHOD_ARGUMENT array */
+        ACPI_METHOD_ARGUMENT UNALIGNED *crsArg;
+        crsArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&crsBuf->Data[0];
 
+        if (crsArg->Type != ACPI_METHOD_ARGUMENT_BUFFER ||
+            crsArg->DataLength == 0)
+        {
+            I2cCtrl_Log("ParseCrsForGpio: _CRS invalid (ACPI 1.0b)\n");
+            return FALSE;
+        }
+
+        resPtr = (UCHAR *)crsArg->Data;
+        resLen = (ULONG)crsArg->DataLength;
+
+    } else {
+
+        /* ACPI 2.0+: Data[] = packed bytes */
+        ACPI_METHOD_ARGUMENT UNALIGNED *crsArg2;
+        UCHAR *raw = &crsBuf->Data[0];
+
+        crsArg2 = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
+
+        if (crsArg2->Type != ACPI_METHOD_ARGUMENT_BUFFER ||
+            crsArg2->DataLength == 0)
+        {
+            I2cCtrl_Log("ParseCrsForGpio: _CRS invalid (ACPI 2.0+)\n");
+            return FALSE;
+        }
+
+        resPtr = (UCHAR *)crsArg2->Data;
+        resLen = (ULONG)crsArg2->DataLength;
+    }
+
+    I2cCtrl_Log("ParseCrsForGpio: CRS length=%lu bytes\n", resLen);
+
+    /* ------------------------------------------------------------
+       Parse resource descriptors
+       ------------------------------------------------------------ */
+    pos = 0;
+    while (pos < resLen) {
+
+        UCHAR tag = resPtr[pos];
+
+        /* Small descriptor */
         if ((tag & 0x80) == 0) {
             UCHAR smallLen = (UCHAR)(tag & 0x07);
-            if (i + 1 + smallLen > len) break;
-            i += 1 + smallLen;
+            pos += (ULONG)smallLen + 1;
             continue;
         }
 
-        if (i + 3 > len) break;
+        /* Large descriptor */
+        if (pos + 3 > resLen) break;
 
         {
             UCHAR  largeType    = (UCHAR)(tag & 0x7F);
-            USHORT largeLen     = (USHORT)(buf[i + 1] | ((USHORT)buf[i + 2] << 8));
-            ULONG  payloadStart = i + 3;
+            USHORT largeLen     = (USHORT)(resPtr[pos+1] | ((USHORT)resPtr[pos+2] << 8));
+            ULONG  payloadStart = pos + 3;
 
-            if (payloadStart + largeLen > len) break;
+            if (payloadStart + largeLen > resLen) break;
 
+            /* ----------------------------------------------------
+               GPIO Connection Descriptor (0x8C)
+               ---------------------------------------------------- */
             if (largeType == 0x8C) {
 
-                const UCHAR *p = buf + payloadStart;
+                const UCHAR *p = resPtr + payloadStart;
                 ULONG        n = (ULONG)largeLen;
 
                 I2cCtrl_HexDump(p, n, "GPIO");
 
+                /* Modern GPIO descriptor */
                 if (n >= 12) {
 
                     USHORT pinCount  = (USHORT)(p[10] | ((USHORT)p[11] << 8));
@@ -2290,8 +2450,8 @@ I2cCtrl_ParseCrsForGpio(
 
                     if (pinCount >= 1 &&
                         pinOffset < n &&
-                        (ULONG)pinOffset + pinCount <= n) {
-
+                        (ULONG)pinOffset + pinCount <= n)
+                    {
                         UCHAR firstPin = p[pinOffset];
                         UCHAR flags    = p[1];
                         BOOLEAN activeLow = ((flags & 0x01) ? TRUE : FALSE);
@@ -2308,6 +2468,7 @@ I2cCtrl_ParseCrsForGpio(
                     }
                 }
 
+                /* Fallback GPIO descriptor */
                 if (n >= 7) {
                     UCHAR flags = p[5];
                     UCHAR pin   = p[6];
@@ -2323,7 +2484,7 @@ I2cCtrl_ParseCrsForGpio(
                 }
             }
 
-            i = payloadStart + largeLen;
+            pos = payloadStart + largeLen;
         }
     }
 
@@ -5067,10 +5228,44 @@ I2cCtrl_StartCompletion(
 
     if (NT_SUCCESS(Irp->IoStatus.Status)) {
 
-        /* 1) Let the FDO process StartDevice (may set UnsupportedPlatform). */
+        /* ------------------------------------------------------------
+           1) ACPI _CRS parsing (logging only, no undefined functions)
+           ------------------------------------------------------------ */
+        {
+            ULONG crsLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 1024;
+            PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER crsBuf;
+
+            crsBuf = ExAllocatePoolWithTag(NonPagedPool, crsLen, 'Acpi');
+            if (crsBuf) {
+
+                RtlZeroMemory(crsBuf, crsLen);
+
+                if (NT_SUCCESS(I2cCtrl_AcpiEvalMethod(
+                                   fdoExt->AcpiDeviceObject,
+                                   fdoExt->AcpiHandle,
+                                   "_CRS",
+                                   crsBuf,
+                                   crsLen)))
+                {
+                    I2cCtrl_Log("StartCompletion: _CRS evaluated, length=%lu\n",
+                                crsBuf->Count);
+
+                    /* ⭐ No undefined parsing calls here.
+                       ⭐ Logging only, CRS buffer freed below. */
+                }
+
+                ExFreePoolWithTag(crsBuf, 'Acpi');
+            }
+        }
+
+        /* ------------------------------------------------------------
+           2) Let the FDO process StartDevice (may set UnsupportedPlatform)
+           ------------------------------------------------------------ */
         I2cCtrl_StartDevice(fdoExt, Irp);
 
-        /* 2) Only enumerate children if the controller is supported. */
+        /* ------------------------------------------------------------
+           3) Only enumerate children if the controller is supported
+           ------------------------------------------------------------ */
         if (!fdoExt->UnsupportedPlatform) {
 
             I2cCtrl_Log("StartCompletion: calling I2cCtrl_CreateI2cDevice()\n");
@@ -5085,12 +5280,13 @@ I2cCtrl_StartCompletion(
         }
     }
 
-    /* 3) RELEASE THE REMOVE LOCK - REQUIRED! */
+    /* ------------------------------------------------------------
+       4) RELEASE THE REMOVE LOCK - REQUIRED!
+       ------------------------------------------------------------ */
     IoReleaseRemoveLock(&fdoExt->RemoveLock, Irp);
 
     return STATUS_CONTINUE_COMPLETION;
 }
-
 
 /* ---------------------------------------------------------------------------
  * I2cCtrl_CompletionSignalEvent - XP/2003-safe, C89-compliant
@@ -14119,4 +14315,66 @@ I2cCtrl_IsRawI2cSpeaker(
     }
 
     return TRUE;
+}
+
+/* -----------------------------------------------------------------------
+ * I2cCtrl_AddCidToMultiSz
+ *
+ * Append a Unicode string (CID) to an existing MULTI_SZ buffer.
+ * MULTI_SZ format:
+ *   str1\0str2\0...strN\0\0
+ *
+ * Assumes childDx->CompatibleId already contains a valid MULTI_SZ
+ * or a single string. Expands buffer as needed.
+ *
+ * XP/2003-safe, C89-compliant.
+ * ----------------------------------------------------------------------- */
+VOID
+I2cCtrl_AddCidToMultiSz(
+    PI2CCTRL_PDO childDx,
+    PWSTR        newCid
+    )
+{
+    UNICODE_STRING *multi;
+    SIZE_T oldLen, newLen, totalLen;
+    PWSTR newBuf;
+
+    if (childDx == NULL || newCid == NULL) {
+        return;
+    }
+
+    multi = &childDx->CompatibleId;
+
+    /* Existing MULTI_SZ length (bytes) */
+    oldLen = (SIZE_T)multi->Length;
+
+    /* New CID length (bytes) including terminating NUL */
+    newLen = (wcslen(newCid) + 1) * sizeof(WCHAR);
+
+    /* MULTI_SZ must end with an extra NUL */
+    totalLen = oldLen + newLen + sizeof(WCHAR);
+
+    newBuf = (PWSTR)ExAllocatePoolWithTag(NonPagedPool, totalLen, 'cidM');
+    if (!newBuf) {
+        return;
+    }
+
+    /* Copy old MULTI_SZ */
+    RtlCopyMemory(newBuf, multi->Buffer, oldLen);
+
+    /* Append new CID */
+    RtlCopyMemory((PUCHAR)newBuf + oldLen, newCid, newLen);
+
+    /* Final double-NUL terminator */
+    *(PWSTR)((PUCHAR)newBuf + oldLen + newLen) = L'\0';
+
+    /* Free old buffer */
+    if (multi->Buffer) {
+        ExFreePoolWithTag(multi->Buffer, 'cidM');
+    }
+
+    /* Update MULTI_SZ */
+    multi->Buffer = newBuf;
+    multi->Length = (USHORT)(totalLen - sizeof(WCHAR));
+    multi->MaximumLength = (USHORT)totalLen;
 }

@@ -2135,4 +2135,10 @@ I2cCtrl_IsRawI2cSpeaker(
     PI2CCTRL_PDO Pdo
 );
 
+VOID
+I2cCtrl_AddCidToMultiSz(
+    PI2CCTRL_PDO childDx,
+    PWSTR        newCid
+    );
+
 #endif /* _I2CCTRL_EXT_H_ */
