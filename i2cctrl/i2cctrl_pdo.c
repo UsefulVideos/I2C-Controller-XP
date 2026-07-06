@@ -188,10 +188,20 @@ I2cCtrl_PdoDispatchPower(
     PIO_STACK_LOCATION ps;
     DEVICE_POWER_STATE newState;
 
-    PAGED_CODE();
+PAGED_CODE();
 
-    pdoExt = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
-    ps     = IoGetCurrentIrpStackLocation(Irp);
+/* IRQL-safe logging: only at PASSIVE_LEVEL */
+if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+    if (irpSp != NULL) {
+        I2cCtrl_Log("PDO Power Dispatch: Minor=%lu for PDO %p\n",
+                    (ULONG)irpSp->MinorFunction,
+                    DeviceObject);
+    }
+}
+
+pdoExt = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
+ps     = IoGetCurrentIrpStackLocation(Irp);
 
     PoStartNextPowerIrp(Irp);
 
@@ -245,9 +255,19 @@ I2cCtrl_PdoDispatch(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
     PAGED_CODE();
 
-    if (DeviceObject == NULL || Irp == NULL) {
-        return STATUS_INVALID_PARAMETER;
-    }
+if (DeviceObject == NULL || Irp == NULL) {
+    return STATUS_INVALID_PARAMETER;
+}
+
+irpSp = IoGetCurrentIrpStackLocation(Irp);
+
+/* Add logging ONLY at PASSIVE_LEVEL */
+if (KeGetCurrentIrql() == PASSIVE_LEVEL && irpSp != NULL) {
+    I2cCtrl_Log("PDO Dispatch: Major=%lu Minor=%lu for PDO %p\n",
+                (ULONG)irpSp->MajorFunction,
+                (ULONG)irpSp->MinorFunction,
+                DeviceObject);
+}
 
 pdoExt = (PI2CCTRL_PDO)DeviceObject->DeviceExtension;
 

@@ -88,7 +88,10 @@ I2CCTRL_GLOBAL g_I2cCtrlGlobal = {0};
    --------------------------------------------------------------------------- */
 VOID     DriverUnload(PDRIVER_OBJECT DriverObject);
 
-/* --- Invalid IRP handler (remove-lock safe, XP/2003 correct) --- */
+/* ---------------------------------------------------------------------------
+ * I2cCtrl_InvalidIrp
+ * Handle unsupported IRPs (remove-lock safe, XP/2003 correct)
+ * --------------------------------------------------------------------------- */
 NTSTATUS
 I2cCtrl_InvalidIrp(
     PDEVICE_OBJECT DeviceObject,
@@ -105,6 +108,10 @@ I2cCtrl_InvalidIrp(
     /* Default failure */
     status = STATUS_INVALID_DEVICE_REQUEST;
 
+    I2cCtrl_Log("Invalid IRP: Major=%lu (Ctrl%lu)\n",
+                (ULONG)isl->MajorFunction,
+                (devctx ? devctx->ControllerId : 0U));
+
     /* POWER IRPs must follow WDM rules */
     if (isl->MajorFunction == IRP_MJ_POWER) {
 
@@ -112,9 +119,9 @@ I2cCtrl_InvalidIrp(
 
         if (devctx->LowerDevice != NULL) {
 
-            /* Acquire remove lock for forwarded IRP */
             status = IoAcquireRemoveLock(&devctx->RemoveLock, Irp);
             if (!NT_SUCCESS(status)) {
+                I2cCtrl_Log("InvalidIrp: RemoveLock failed (0x%08lx)\n", status);
                 Irp->IoStatus.Status      = status;
                 Irp->IoStatus.Information = 0;
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -132,7 +139,6 @@ I2cCtrl_InvalidIrp(
             return PoCallDriver(devctx->LowerDevice, Irp);
         }
 
-        /* No lower device -> complete locally */
         Irp->IoStatus.Status      = status;
         Irp->IoStatus.Information = 0;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -142,9 +148,9 @@ I2cCtrl_InvalidIrp(
     /* Non-POWER IRPs */
     if (devctx->LowerDevice != NULL) {
 
-        /* Acquire remove lock for forwarded IRP */
         status = IoAcquireRemoveLock(&devctx->RemoveLock, Irp);
         if (!NT_SUCCESS(status)) {
+            I2cCtrl_Log("InvalidIrp: RemoveLock failed (0x%08lx)\n", status);
             Irp->IoStatus.Status      = status;
             Irp->IoStatus.Information = 0;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -162,7 +168,6 @@ I2cCtrl_InvalidIrp(
         return IoCallDriver(devctx->LowerDevice, Irp);
     }
 
-    /* PDO or no lower device -> fail */
     Irp->IoStatus.Status      = status;
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -594,16 +599,14 @@ DriverUnload(
     /* Enforce PASSIVE_LEVEL for pageable code paths */
     irql = KeGetCurrentIrql();
     if (irql != PASSIVE_LEVEL) {
-        TraceEvents(TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
-                    "DriverUnload called at IRQL %lu", (ULONG)irql);
+        I2cCtrl_Log("DriverUnload called at IRQL %lu\n", (ULONG)irql);
         return;
     }
     PAGED_CODE();
 
     UNREFERENCED_PARAMETER(DriverObject);
 
-    TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
-                "I2CCTRL: DriverUnload invoked");
+    I2cCtrl_Log("I2CCTRL: DriverUnload invoked\n");
 
     /*
      * Release global resources created in DriverEntry/AddDevice.
@@ -616,9 +619,9 @@ DriverUnload(
 
         delStatus = IoDeleteSymbolicLink(&g_SymbolicLinkName);
         if (!NT_SUCCESS(delStatus)) {
-            TraceEvents(TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
-                        "IoDeleteSymbolicLink failed (0x%08X)", delStatus);
+            I2cCtrl_Log("IoDeleteSymbolicLink failed (0x%08lx)\n", delStatus);
         }
+
         RtlFreeUnicodeString(&g_SymbolicLinkName);
         g_SymbolicLinkName.Buffer = NULL;
         g_SymbolicLinkName.Length = 0;
@@ -638,13 +641,12 @@ DriverUnload(
     /* Reinitialize global lock to avoid stale state */
     I2CCTRL_INIT_LOCK(&g_I2cCtrlGlobal.GlobalLock);
 
-    /* Optionally scrub remaining global struct for determinism */
+    /* Optional scrub for determinism */
     /* RtlZeroMemory(&g_I2cCtrlGlobal, sizeof(g_I2cCtrlGlobal)); */
 
     /* Shutdown ETW tracing provider */
     I2cCtrlEtwShutdown();
 }
-
 
 /* -----------------------------------------------------------------------
  * DriverEntry - I²C Controller bus driver entry point
@@ -742,8 +744,7 @@ I2cCtrl_Create(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
-                "Create handle (Ctrl%lu)", dx->ControllerId);
+    I2cCtrl_Log("Create handle (Ctrl%lu)\n", dx->ControllerId);
 
     /* Acquire remove lock for this IRP */
     status = IoAcquireRemoveLock(&dx->RemoveLock, Irp);
@@ -786,10 +787,13 @@ I2cCtrl_Create(PDEVICE_OBJECT DeviceObject, PIRP Irp)
  * Handle IRP_MJ_CLOSE (remove-lock safe, XP/2003 correct)
  * --------------------------------------------------------------------------- */
 NTSTATUS
-I2cCtrl_Close(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+I2cCtrl_Close(
+    PDEVICE_OBJECT DeviceObject,
+    PIRP Irp
+    )
 {
-    PI2CCTRL_FDO        dx;
-    NTSTATUS            status;
+    PI2CCTRL_FDO dx;
+    NTSTATUS     status;
 
     ASSERT(DeviceObject != NULL);
     ASSERT(Irp != NULL);
@@ -802,8 +806,8 @@ I2cCtrl_Close(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
-                "Close handle (Ctrl%lu)", dx->ControllerId);
+    /* Updated logging */
+    I2cCtrl_Log("Close handle (Ctrl%lu)\n", dx->ControllerId);
 
 #ifdef TRACK_OPEN_HANDLES
     if (dx->OpenHandleCount > 0U) {
@@ -820,7 +824,7 @@ I2cCtrl_Close(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         return status;
     }
 
-    /* If this is an FDO with a lower device, forward the IRP */
+    /* Forward to lower device if this is an FDO */
     if (dx->LowerDevice != NULL) {
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
@@ -3471,23 +3475,79 @@ if (!fdoExt->InitDone) {
 /* Minimal mask until ISR is connected */
 fdoExt->IntrMask = I2C_INT_STOP_DETECTED | I2C_INT_TX_ABORT;
 
+/* Mask all interrupts at the hardware level */
 if (fdoExt->Ops != NULL && fdoExt->Ops->MaskInterrupts != NULL) {
     fdoExt->Ops->MaskInterrupts(fdoExt, 0U);
 }
 
+/* Request controller disable */
 if (fdoExt->Ops != NULL && fdoExt->Ops->Enable != NULL) {
     (VOID)fdoExt->Ops->Enable(fdoExt, FALSE);
 }
 
+/* Wait for disable latch */
 status = I2cCtrl_WaitForEnableState(fdoExt, FALSE, 500U);
 if (!NT_SUCCESS(status)) {
+
     I2cCtrl_Log("StartDevice: disable did not latch\n");
+
+    /* ---------------------------------------------------------
+     * Universal controller status snapshot on failure
+     * --------------------------------------------------------- */
+    if (fdoExt->Ops != NULL && fdoExt->Ops->GetStatus != NULL) {
+
+        I2C_HW_STATUS hwst;
+        NTSTATUS st2;
+
+        RtlZeroMemory(&hwst, sizeof(hwst));
+
+        st2 = fdoExt->Ops->GetStatus(fdoExt, &hwst);
+        if (NT_SUCCESS(st2)) {
+
+            ULONG s = hwst.StatusReg;
+
+            I2cCtrl_Log("I2C: controller status snapshot (disable failure):\n");
+            I2cCtrl_Log("I2C:   StatusReg = 0x%08lx\n", s);
+
+            if ((s & I2C_STAT_BUSY) != 0U) {
+                I2cCtrl_Log("I2C:   BUSY bit set\n");
+            } else {
+                I2cCtrl_Log("I2C:   BUSY bit clear\n");
+            }
+
+            if ((s & I2C_STAT_TX_EMPTY) != 0U) {
+                I2cCtrl_Log("I2C:   TX_EMPTY\n");
+            }
+
+            if ((s & I2C_STAT_RX_FULL) != 0U) {
+                I2cCtrl_Log("I2C:   RX_FULL\n");
+            }
+
+            if ((s & I2C_STAT_NACK) != 0U) {
+                I2cCtrl_Log("I2C:   NACK detected\n");
+            }
+
+            if ((s & I2C_STAT_ARB_LOST) != 0U) {
+                I2cCtrl_Log("I2C:   ARB_LOST detected\n");
+            }
+
+            if ((s & I2C_STAT_CLK_STRETCH) != 0U) {
+                I2cCtrl_Log("I2C:   CLK_STRETCH active\n");
+            }
+        }
+        else {
+            I2cCtrl_Log("I2C: GetStatus failed during disable failure snapshot\n");
+        }
+    }
+
+    /* Mark hardware failure and tear down MMIO */
     fdoExt->HardwareFailure = TRUE;
 
     MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
     fdoExt->Mmio       = NULL;
     fdoExt->MmioLength = 0U;
     fdoExt->MmioPhys.QuadPart = 0;
+
     return status;
 }
 
@@ -5625,7 +5685,6 @@ I2cctrlIsEqualGuid(const GUID* a, const GUID* b)
 //
 // I2cCtrl_DispatchPnP - top-level PnP dispatch
 // Routes to PDO or FDO handlers based on extension signature.
-// Unknown or invalid extensions are failed locally.
 // XP/2003-safe, C89-compliant.
 //
 NTSTATUS
@@ -5637,6 +5696,8 @@ I2cCtrl_DispatchPnP(
     PIO_STACK_LOCATION     isl;
     PI2CCTRL_COMMON_HEADER hdr;
     NTSTATUS               status;
+    KIRQL                  irql;
+    ULONG                  cid;
 
     PAGED_CODE();
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
@@ -5649,11 +5710,22 @@ I2cCtrl_DispatchPnP(
     hdr    = (PI2CCTRL_COMMON_HEADER)DeviceObject->DeviceExtension;
     status = Irp->IoStatus.Status;
 
-    /* IMPORTANT:
-     * Logging removed here because PnP IRPs may run inside
-     * registry unload, NTFS teardown, or other contexts where
-     * ZwCreateFile / ZwWriteFile are unsafe.
-     */
+    /* Log only when safe (PASSIVE_LEVEL) */
+    irql = KeGetCurrentIrql();
+    if (irql == PASSIVE_LEVEL && isl != NULL) {
+
+        cid = 0;
+
+        /* Only FDO has ControllerId; PDO does not */
+        if (hdr != NULL && hdr->Signature == I2CCTRL_FDO_SIGNATURE) {
+            cid = ((PI2CCTRL_FDO)hdr)->ControllerId;
+        }
+
+        I2cCtrl_Log("PnP IRP: Major=%lu Minor=%lu (Ctrl%lu)\n",
+                    (ULONG)isl->MajorFunction,
+                    (ULONG)isl->MinorFunction,
+                    cid);
+    }
 
     if (hdr == NULL) {
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
@@ -6858,11 +6930,22 @@ I2cCtrl_DispatchPower(
 
     PAGED_CODE();
 
-    if (DeviceObject == NULL || Irp == NULL) {
-        return STATUS_INVALID_PARAMETER;
-    }
+if (DeviceObject == NULL || Irp == NULL) {
+    return STATUS_INVALID_PARAMETER;
+}
 
-    ext = DeviceObject->DeviceExtension;
+/* IRQL-safe logging: only at PASSIVE_LEVEL */
+if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+    PIO_STACK_LOCATION irpSp = IoGetCurrentIrpStackLocation(Irp);
+    if (irpSp != NULL) {
+        I2cCtrl_Log("Power Dispatch: Major=%lu Minor=%lu for DevObj=%p\n",
+                    (ULONG)irpSp->MajorFunction,
+                    (ULONG)irpSp->MinorFunction,
+                    DeviceObject);
+    }
+}
+
+ext = DeviceObject->DeviceExtension;
     if (ext == NULL) {
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
         Irp->IoStatus.Information = 0;

@@ -94,6 +94,12 @@ I2cCtrl_FdoDispatch(
         return STATUS_INVALID_PARAMETER;
     }
 
+    /* Logging only at PASSIVE_LEVEL */
+    if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+        I2cCtrl_Log("FDO Dispatch: Major=%lu\n",
+                    (ULONG)IoGetCurrentIrpStackLocation(Irp)->MajorFunction);
+    }
+
     irpSp  = IoGetCurrentIrpStackLocation(Irp);
     fdoExt = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
 
@@ -446,7 +452,14 @@ I2cCtrl_FdoDispatchPower(
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_INVALID_PARAMETER;
     }
-
+	
+	/* IRQL-safe logging: only at PASSIVE_LEVEL */
+if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
+    I2cCtrl_Log("FDO Power Dispatch: Minor=%lu for FDO %p\n",
+                (ULONG)isl->MinorFunction,
+                DeviceObject);
+}
+	
     /* ACPI capability gating: only use D1/D2 if ACPI >= 2.0 AND device supports them */
     allowD1 = (devctx->AcpiIs20Plus && devctx->SupportsD1) ? TRUE : FALSE;
     allowD2 = (devctx->AcpiIs20Plus && devctx->SupportsD2) ? TRUE : FALSE;
