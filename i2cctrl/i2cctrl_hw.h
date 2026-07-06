@@ -259,6 +259,8 @@ VOID     I2CctrlHw_Flush(PDEVICE_OBJECT DevObj);
 #define WHL_LPSS_CLK_UPDATE  0x204   /* secondary clock control (unused)  */
 #define WHL_LPSS_RST_CTL     0x208   /* reset control                     */
 #define WHL_LPSS_RST_STS     0x20C   /* reset status                      */
+#define WHL_LPSS_PWR_OFFSET  0x0C
+
 
 /* Offsets for CNL-LP / WHL power wells */
 #define WHL_PW_CTL_OFFSET       0x5C0   /* Request PW1/PW2 */

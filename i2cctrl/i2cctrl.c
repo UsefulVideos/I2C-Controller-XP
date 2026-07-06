@@ -3359,6 +3359,36 @@ if (desc->Type == CmResourceTypeMemory) {
                     I2cCtrl_Log("LPSS/PMC: PW_STS timeout, PW wells not forced ON\n");
                 }
             }
+
+            /* 3. Report LPSS controller power state */
+            {
+                ULONG pwr;
+                ULONG state;
+
+                pwr = READ_REGISTER_ULONG(
+                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_LPSS_PWR_OFFSET)
+                );
+
+                state = (pwr & 0x3);
+
+                if (state == 0x0)
+                {
+                    I2cCtrl_Log("LPSS/PMC: controller power state = D0 (fully on)\n");
+                }
+                else if (state == 0x1)
+                {
+                    I2cCtrl_Log("LPSS/PMC: controller power state = D3hot (clock gated)\n");
+                }
+                else if (state == 0x2)
+                {
+                    I2cCtrl_Log("LPSS/PMC: controller power state = D3cold (power removed)\n");
+                }
+                else
+                {
+                    I2cCtrl_Log("LPSS/PMC: controller power state = unknown (raw=0x%08lx)\n",
+                                pwr);
+                }
+            }
         }
         else
         {
@@ -4615,12 +4645,49 @@ I2cCtrl_WaitForEnableState(
             }
 
             /* Interpret enable state from StatusReg bit0 */
-            if (((hwst.StatusReg & 0x1U) != 0U) == targetOn) {
+            if (((hwst.StatusReg & I2C_CTRL_ENABLE) != 0U) == targetOn) {
+
+                /* ---------------------------------------------------------
+                 * Universal controller health snapshot
+                 * --------------------------------------------------------- */
+                {
+                    ULONG s = hwst.StatusReg;
+
+                    I2cCtrl_Log("I2C: enable latched, controller status snapshot:\n");
+                    I2cCtrl_Log("I2C:   StatusReg = 0x%08lx\n", s);
+
+                    if ((s & I2C_STAT_BUSY) != 0U) {
+                        I2cCtrl_Log("I2C:   BUSY bit set\n");
+                    } else {
+                        I2cCtrl_Log("I2C:   BUSY bit clear\n");
+                    }
+
+                    if ((s & I2C_STAT_TX_EMPTY) != 0U) {
+                        I2cCtrl_Log("I2C:   TX_EMPTY\n");
+                    }
+
+                    if ((s & I2C_STAT_RX_FULL) != 0U) {
+                        I2cCtrl_Log("I2C:   RX_FULL\n");
+                    }
+
+                    if ((s & I2C_STAT_NACK) != 0U) {
+                        I2cCtrl_Log("I2C:   NACK detected\n");
+                    }
+
+                    if ((s & I2C_STAT_ARB_LOST) != 0U) {
+                        I2cCtrl_Log("I2C:   ARB_LOST detected\n");
+                    }
+
+                    if ((s & I2C_STAT_CLK_STRETCH) != 0U) {
+                        I2cCtrl_Log("I2C:   CLK_STRETCH active\n");
+                    }
+                }
+
                 return STATUS_SUCCESS; /* latched as requested */
             }
         }
 
-        KeStallExecutionProcessor(1U); /* ~1µs */
+        KeStallExecutionProcessor(1U); /* ~1us */
     }
 
     I2cCtrl_Log("WaitForEnableState: timeout expired (targetOn=%lu)\n",
