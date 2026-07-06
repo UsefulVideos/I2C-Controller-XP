@@ -2064,13 +2064,19 @@ I2cCtrl_AcpiEvalMethod(
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    if (AcpiPdo == NULL ||
-        MethodName == NULL ||
+    /* ACPI PDO must exist */
+    if (AcpiPdo == NULL) {
+        I2cCtrl_Log("AcpiEvalMethod: no ACPI PDO (Method=%s)\n", MethodName);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Other parameter checks */
+    if (MethodName == NULL ||
         OutBuf == NULL ||
         OutBufLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
     {
-        I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Pdo=%p, Method=%s, OutLen=%lu)\n",
-                    AcpiPdo, MethodName, OutBufLen);
+        I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Method=%s, OutLen=%lu)\n",
+                    MethodName, OutBufLen);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -13433,12 +13439,7 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     PDEVICE_OBJECT top;
     PDEVICE_OBJECT current;
     PDEVICE_OBJECT lower;
-    PDEVICE_OBJECT acpiPdo;
-    PCWSTR pnp;
-    PCWSTR hwid;
-    PCWSTR inst;
-
-    acpiPdo = NULL;
+    PDEVICE_OBJECT acpiPdo = NULL;
 
     if (Fdo == NULL) {
         I2cCtrl_Log("FindAcpiPdo: Fdo=NULL\n");
@@ -13451,52 +13452,15 @@ I2cCtrl_FindAcpiPdoForPciDevice(
     }
 
     ext = (PI2CCTRL_FDO)Fdo->DeviceExtension;
-
     if (ext == NULL) {
         I2cCtrl_Log("FindAcpiPdo: FDO invalid (ext=NULL)\n");
         return NULL;
     }
 
-    /* Safe string extraction */
-    if (ext->PnpId != NULL) {
-        pnp = ext->PnpId;
-    } else {
-        pnp = L"<null>";
-    }
-
-    if (ext->HardwareId.Buffer != NULL) {
-        hwid = ext->HardwareId.Buffer;
-    } else {
-        hwid = L"<null>";
-    }
-
-    if (ext->InstanceId.Buffer != NULL) {
-        inst = ext->InstanceId.Buffer;
-    } else {
-        inst = L"<null>";
-    }
-
-    /* Validate extension state */
-    if (ext->Signature != I2CCTRL_FDO_SIGNATURE ||
-        ext->Removed ||
-        ext->Stopping ||
-        ext->SurpriseRemoved ||
-        !ext->Started)
-    {
-        I2cCtrl_Log(
-            "FindAcpiPdo: FDO invalid "
-            "(Ext=%p Sig=0x%08lx Removed=%lu Stopping=%lu Surprise=%lu Started=%lu "
-            "PnpId=\"%ws\" HardwareId=\"%ws\" InstanceId=\"%ws\")\n",
-            ext,
-            ext->Signature,
-            ext->Removed,
-            ext->Stopping,
-            ext->SurpriseRemoved,
-            ext->Started,
-            pnp,
-            hwid,
-            inst
-        );
+    /* Only check signature; ignore Started/Removed flags */
+    if (ext->Signature != I2CCTRL_FDO_SIGNATURE) {
+        I2cCtrl_Log("FindAcpiPdo: bad signature (Ext=%p Sig=0x%08lx)\n",
+                    ext, ext->Signature);
         return NULL;
     }
 
@@ -13510,9 +13474,6 @@ I2cCtrl_FindAcpiPdoForPciDevice(
         return NULL;
     }
 
-    I2cCtrl_Log("FindAcpiPdo: top=%p driver=%wZ\n",
-                top, &top->DriverObject->DriverName);
-
     current = top;
 
     for (;;) {
@@ -13525,10 +13486,8 @@ I2cCtrl_FindAcpiPdoForPciDevice(
 
         lower = IoGetLowerDeviceObject(current);
         if (lower == NULL) {
-
             I2cCtrl_Log("FindAcpiPdo: bottom=%p driver=%wZ\n",
                         current, &current->DriverObject->DriverName);
-
             ObDereferenceObject(current);
             break;
         }
@@ -13580,7 +13539,6 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     PAGED_CODE();
 
-    /* Get PCI BDF */
     pciPdo = IoGetDeviceAttachmentBaseRef(Fdo);
     if (pciPdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: IoGetDeviceAttachmentBaseRef returned NULL\n");
@@ -13600,14 +13558,12 @@ I2cCtrl_FindAcpiPdoByAdr(
     I2cCtrl_Log("FindAcpiPdoByAdr: PCI BDF=%lu:%lu.%lu expected _ADR=0x%08lx\n",
                 bus, dev, fun, adrValue);
 
-    /* Get ACPI PDO from stack */
     acpiPdo = I2cCtrl_FindAcpiPdoForPciDevice(Fdo);
     if (acpiPdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: no ACPI PDO in stack\n");
         return NULL;
     }
 
-    /* Enumerate ACPI namespace */
     next = 0;
 
     for (;;) {
@@ -13673,13 +13629,11 @@ I2cCtrl_GetPciBusDevFun(
     ULONG addr = 0;
     ULONG bytes = 0;
 
-    /* Validate parameters */
     if (PciPdo == NULL || Bus == NULL || Dev == NULL || Fun == NULL) {
         I2cCtrl_Log("GetPciBusDevFun: invalid parameter\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Must run at PASSIVE_LEVEL */
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
         I2cCtrl_Log("GetPciBusDevFun: wrong IRQL\n");
         return STATUS_INVALID_DEVICE_REQUEST;
@@ -13687,7 +13641,6 @@ I2cCtrl_GetPciBusDevFun(
 
     PAGED_CODE();
 
-    /* Query PCI address property */
     status = IoGetDeviceProperty(
                  PciPdo,
                  DevicePropertyAddress,
@@ -13702,7 +13655,6 @@ I2cCtrl_GetPciBusDevFun(
         return (NT_SUCCESS(status) ? STATUS_UNSUCCESSFUL : status);
     }
 
-    /* Decode PCI BDF */
     *Fun =  (addr      ) & 0x07;
     *Dev = ((addr >> 3) & 0x1F);
     *Bus = ((addr >> 8) & 0xFF);
@@ -13716,17 +13668,40 @@ I2cCtrl_GetPciBusDevFun(
 BOOLEAN
 I2cCtrl_IsAcpiDriver(PDRIVER_OBJECT drv)
 {
+    UNICODE_STRING name;
+    UNICODE_STRING target;
+    USHORT i;
+
     if (drv == NULL || drv->DriverName.Buffer == NULL) {
         I2cCtrl_Log("IsAcpiDriver: drv or name=NULL\n");
         return FALSE;
     }
 
-    I2cCtrl_Log("IsAcpiDriver: checking driver=%wZ\n", &drv->DriverName);
+    name = drv->DriverName;
 
-    /* Strict case-insensitive exact match */
-    if (_wcsicmp(drv->DriverName.Buffer, L"\\Driver\\ACPI") == 0) {
-        I2cCtrl_Log("IsAcpiDriver: MATCH (exact)\n");
-        return TRUE;
+    I2cCtrl_Log("IsAcpiDriver: checking driver=%wZ\n", &name);
+
+    /* Case-insensitive match for "ACPI" anywhere in the name */
+    RtlInitUnicodeString(&target, L"ACPI");
+
+    if (name.Length < target.Length) {
+        I2cCtrl_Log("IsAcpiDriver: no match (too short)\n");
+        return FALSE;
+    }
+
+    /* Slide a window across the driver name */
+    for (i = 0; i <= name.Length - target.Length; i += sizeof(WCHAR)) {
+
+        UNICODE_STRING window;
+
+        window.Buffer = (PWCHAR)((PUCHAR)name.Buffer + i);
+        window.Length = target.Length;
+        window.MaximumLength = target.Length;
+
+        if (RtlCompareUnicodeString(&window, &target, TRUE) == 0) {
+            I2cCtrl_Log("IsAcpiDriver: MATCH (substring)\n");
+            return TRUE;
+        }
     }
 
     I2cCtrl_Log("IsAcpiDriver: no match\n");
