@@ -1614,11 +1614,35 @@ I2cCtrl_EnumerateAcpiChildren(
              );
 
     if (NT_SUCCESS(status) && outBuf->Count > 0) {
-        arg = (ACPI_METHOD_ARGUMENT UNALIGNED*)&outBuf->Data[0];
-        if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
-            adrVal = (ULONG)arg->Argument;
-            haveAdr = TRUE;
-            I2cCtrl_Log("Enumerate: _ADR=0x%08lx\n", adrVal);
+
+        if (!fdoExt->AcpiIs20Plus) {
+            /* ------------------------------
+               ACPI 1.0b: Data[] = arguments[]
+               ------------------------------ */
+            ACPI_METHOD_ARGUMENT UNALIGNED *arg;
+            arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&outBuf->Data[0];
+
+            if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
+                adrVal = (ULONG)arg->Argument;
+                haveAdr = TRUE;
+                I2cCtrl_Log("Enumerate: _ADR=0x%08lx (ACPI 1.0b)\n", adrVal);
+            }
+
+        } else {
+            /* ------------------------------
+               ACPI 2.0+: Data[] = packed bytes
+               ------------------------------ */
+            UCHAR *raw = &outBuf->Data[0];
+            ACPI_METHOD_ARGUMENT UNALIGNED *arg;
+
+            /* First packed argument begins at Data[0] */
+            arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
+
+            if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
+                adrVal = (ULONG)arg->Argument;
+                haveAdr = TRUE;
+                I2cCtrl_Log("Enumerate: _ADR=0x%08lx (ACPI 2.0+)\n", adrVal);
+            }
         }
     }
 
