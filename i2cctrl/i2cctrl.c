@@ -3487,6 +3487,35 @@ if (desc->Type == CmResourceTypeMemory) {
     }
 }
 
+/* >>> INSERT FAIL RIGHT HERE <<< */
+
+/* Hard fail if BAR0 looks completely powered-off (all zeros) */
+{
+    ULONG off;
+    ULONG nonZero = 0;
+
+    for (off = 0; off < 0x40; off += 4) {
+        ULONG v = READ_REGISTER_ULONG((PULONG)(fdoExt->MmioBase + off));
+        if (v != 0) {
+            nonZero++;
+        }
+    }
+
+    if (nonZero == 0) {
+        I2cCtrl_Log("StartDevice: BAR0 appears fully zero -> controller unpowered, bailing out\n");
+
+        fdoExt->HardwareFailure = TRUE;
+
+        MmUnmapIoSpace(fdoExt->Mmio, fdoExt->MmioLength);
+        fdoExt->Mmio              = NULL;
+        fdoExt->MmioLength        = 0;
+        fdoExt->MmioPhys.QuadPart = 0;
+
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+}
+
+
 /* -------------------------------------------------------------
  * LPSS/PMC POWER-UP (Intel LPSS only)
  * ------------------------------------------------------------- */
