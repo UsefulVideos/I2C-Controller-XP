@@ -5951,8 +5951,6 @@ I2cCtrl_DispatchPnP(
     PIO_STACK_LOCATION     isl;
     PI2CCTRL_COMMON_HEADER hdr;
     NTSTATUS               status;
-    KIRQL                  irql;
-    ULONG                  cid;
 
     PAGED_CODE();
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
@@ -5965,22 +5963,7 @@ I2cCtrl_DispatchPnP(
     hdr    = (PI2CCTRL_COMMON_HEADER)DeviceObject->DeviceExtension;
     status = Irp->IoStatus.Status;
 
-    /* Log only when safe (PASSIVE_LEVEL) */
-    irql = KeGetCurrentIrql();
-    if (irql == PASSIVE_LEVEL && isl != NULL) {
-
-        cid = 0;
-
-        /* Only FDO has ControllerId; PDO does not */
-        if (hdr != NULL && hdr->Signature == I2CCTRL_FDO_SIGNATURE) {
-            cid = ((PI2CCTRL_FDO)hdr)->ControllerId;
-        }
-
-        I2cCtrl_Log("PnP IRP: Major=%lu Minor=%lu (Ctrl%lu)\n",
-                    (ULONG)isl->MajorFunction,
-                    (ULONG)isl->MinorFunction,
-                    cid);
-    }
+    /* All logging removed for safety */
 
     if (hdr == NULL) {
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;

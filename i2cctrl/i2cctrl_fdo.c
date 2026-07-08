@@ -94,11 +94,7 @@ I2cCtrl_FdoDispatch(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Logging only at PASSIVE_LEVEL */
-    if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
-        I2cCtrl_Log("FDO Dispatch: Major=%lu\n",
-                    (ULONG)IoGetCurrentIrpStackLocation(Irp)->MajorFunction);
-    }
+    /* All logging removed */
 
     irpSp  = IoGetCurrentIrpStackLocation(Irp);
     fdoExt = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
