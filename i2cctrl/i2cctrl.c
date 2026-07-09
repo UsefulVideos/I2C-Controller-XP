@@ -1953,6 +1953,15 @@ I2cCtrl_AcpiOpen(
     if (fdoExt == NULL)
         return STATUS_INVALID_PARAMETER;
 
+    /* NEW: reject dead FDOs */
+    if (fdoExt->Removed || fdoExt->Stopping || !fdoExt->Started) {
+        I2cCtrl_Log("AcpiOpen: FDO not active (Removed=%lu Stopping=%lu Started=%lu)\n",
+                    fdoExt->Removed ? 1UL : 0UL,
+                    fdoExt->Stopping ? 1UL : 0UL,
+                    fdoExt->Started ? 1UL : 0UL);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
     if (fdoExt->AcpiBound &&
         fdoExt->AcpiDeviceObject != NULL)
     {
@@ -1966,7 +1975,7 @@ I2cCtrl_AcpiOpen(
         return STATUS_NOT_FOUND;
     }
 
-    /* DO NOT ObReferenceObject(acpiPdo) — FindAcpiPdoForPciDevice already returns a referenced PDO */
+    /* NEW: FindAcpiPdoForPciDevice now ALWAYS returns a referenced PDO */
 
     fdoExt->AcpiDeviceObject = acpiPdo;
     fdoExt->AcpiFileObject   = NULL;
@@ -1999,13 +2008,12 @@ I2cCtrl_AcpiClose(
     I2cCtrl_Log("AcpiClose: unbinding ACPI for HWID=%ws\n",
                 fdoExt->PnpId ? fdoExt->PnpId : L"<null>");
 
-    /* Release the single reference held from AcpiOpen */
+    /* NEW: release exactly the one reference taken in FindAcpiPdoForPciDevice */
     if (fdoExt->AcpiDeviceObject != NULL) {
         ObDereferenceObject(fdoExt->AcpiDeviceObject);
         fdoExt->AcpiDeviceObject = NULL;
     }
 
-    /* Clear ACPI state */
     fdoExt->AcpiFileObject = NULL;
     fdoExt->AcpiHandle     = NULL;
     fdoExt->AcpiBound      = FALSE;
@@ -13469,7 +13477,15 @@ I2cCtrl_FindAcpiPdoForPciDevice(
         return NULL;
     }
 
-    /* Only check signature; ignore Started/Removed flags */
+    /* NEW: reject dead FDOs */
+    if (ext->Removed || ext->Stopping || !ext->Started) {
+        I2cCtrl_Log("FindAcpiPdo: FDO not active (Removed=%lu Stopping=%lu Started=%lu)\n",
+                    ext->Removed ? 1UL : 0UL,
+                    ext->Stopping ? 1UL : 0UL,
+                    ext->Started ? 1UL : 0UL);
+        return NULL;
+    }
+
     if (ext->Signature != I2CCTRL_FDO_SIGNATURE) {
         I2cCtrl_Log("FindAcpiPdo: bad signature (Ext=%p Sig=0x%08lx)\n",
                     ext, ext->Signature);
@@ -13492,6 +13508,10 @@ I2cCtrl_FindAcpiPdoForPciDevice(
 
         if (I2cCtrl_IsAcpiDriver(current->DriverObject)) {
             I2cCtrl_Log("FindAcpiPdo: SUCCESS ACPI PDO=%p\n", current);
+
+            /* NEW: take a reference before returning */
+            ObReferenceObject(current);
+
             acpiPdo = current;
             break;
         }
@@ -13538,6 +13558,7 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     ULONGLONG acpiAdr64 = 0;
     ULONG acpiAdr = 0;
+    PI2CCTRL_FDO ext;
 
     if (Fdo == NULL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: Fdo=NULL\n");
@@ -13546,6 +13567,20 @@ I2cCtrl_FindAcpiPdoByAdr(
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
         I2cCtrl_Log("FindAcpiPdoByAdr: wrong IRQL\n");
+        return NULL;
+    }
+
+    ext = (PI2CCTRL_FDO)Fdo->DeviceExtension;
+    if (ext == NULL) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: FDO invalid (ext=NULL)\n");
+        return NULL;
+    }
+
+    if (ext->Removed || ext->Stopping || !ext->Started) {
+        I2cCtrl_Log("FindAcpiPdoByAdr: FDO not active (Removed=%lu Stopping=%lu Started=%lu)\n",
+                    ext->Removed ? 1UL : 0UL,
+                    ext->Stopping ? 1UL : 0UL,
+                    ext->Started ? 1UL : 0UL);
         return NULL;
     }
 
@@ -13690,6 +13725,16 @@ I2cCtrl_IsAcpiDriver(PDRIVER_OBJECT drv)
     }
 
     name = drv->DriverName;
+
+    /* NEW: guard against malformed UNICODE_STRING */
+    if (name.Length == 0 ||
+        name.MaximumLength < name.Length ||
+        (name.Length % sizeof(WCHAR)) != 0)
+    {
+        I2cCtrl_Log("IsAcpiDriver: malformed driver name (Len=%u Max=%u)\n",
+                    name.Length, name.MaximumLength);
+        return FALSE;
+    }
 
     I2cCtrl_Log("IsAcpiDriver: checking driver=%wZ\n", &name);
 
