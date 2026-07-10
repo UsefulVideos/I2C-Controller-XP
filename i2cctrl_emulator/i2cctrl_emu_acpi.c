@@ -35,7 +35,7 @@ I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
     /* Find the ACPI PDO by walking down the stack from our FDO */
     attached = EmuGetAttachedDevice(ext->Self);
     if (attached == NULL) {
-        I2CCTRL_EMU_LOG("ACPI: no attached device stack\n");
+        I2cCtrl_Emu_Log("ACPI: no attached device stack\n");
         return STATUS_SUCCESS; /* non-fatal */
     }
 
@@ -50,9 +50,9 @@ I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
         status = EmuSendQueryInterface(ext->Self, &guid, (USHORT)sizeof(INTERFACE), buffer);
         if (NT_SUCCESS(status)) {
             ext->AcpiInterfaceReady = TRUE;
-            I2CCTRL_EMU_LOG("ACPI: Interface acquired\n");
+            I2cCtrl_Emu_Log("ACPI: Interface acquired\n");
         } else {
-            I2CCTRL_EMU_LOG("ACPI: Interface unavailable 0x%08lX\n", status);
+            I2cCtrl_Emu_Log("ACPI: Interface unavailable 0x%08lX\n", status);
             status = STATUS_SUCCESS; /* non-fatal */
         }
     }
@@ -77,10 +77,10 @@ I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO_EXT ext, const PWSTR* ids, ULONG 
     if (ext == NULL) return STATUS_INVALID_PARAMETER;
 
     if (ext->AcpiPdo != NULL) {
-        I2CCTRL_EMU_LOG("ACPI: prime children (ACPI PDO present)\n");
+        I2cCtrl_Emu_Log("ACPI: prime children (ACPI PDO present)\n");
         (VOID)EmuEvalAcpiMethodViaIoctl(ext->AcpiPdo, L"_DSM");
     } else {
-        I2CCTRL_EMU_LOG("ACPI: prime children (no ACPI PDO)\n");
+        I2cCtrl_Emu_Log("ACPI: prime children (no ACPI PDO)\n");
     }
 
     return STATUS_SUCCESS;
@@ -101,7 +101,7 @@ I2CCTRL_EMU_AcpiAttachChildProperties(PI2CCTRL_EMU_FDO_EXT ext,
     UNREFERENCED_PARAMETER(HardwareId);
     UNREFERENCED_PARAMETER(Index);
 
-    I2CCTRL_EMU_LOG("ACPI: attach properties to child[%lu]\n", Index);
+    I2cCtrl_Emu_Log("ACPI: attach properties to child[%lu]\n", Index);
     return STATUS_SUCCESS;
 }
 
@@ -227,6 +227,6 @@ EmuEvalAcpiMethodViaIoctl(PDEVICE_OBJECT pdo, PCWSTR methodName)
         status = iosb.Status;
     }
 
-    I2CCTRL_EMU_LOG("ACPI: eval %ws -> 0x%08lX\n", methodName, status);
+    I2cCtrl_Emu_Log("ACPI: eval %ws -> 0x%08lX\n", methodName, status);
     return status;
 }

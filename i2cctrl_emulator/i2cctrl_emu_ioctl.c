@@ -90,7 +90,7 @@ I2CCTRL_EMU_IoctlDispatchBuffered(
             /* Signal data available */
             ext->RawIntr |= 0x00000001UL; /* arbitrary RX flag */
             status = STATUS_SUCCESS;
-            I2CCTRL_EMU_LOG("PUSH_REPORT queued %lu bytes\n", inLen);
+            I2cCtrl_Emu_Log("PUSH_REPORT queued %lu bytes\n", inLen);
         } else {
             status = STATUS_INVALID_PARAMETER;
         }
@@ -100,7 +100,7 @@ I2CCTRL_EMU_IoctlDispatchBuffered(
         EmuFifoReset(&ext->RxFifo);
         ext->RawIntr = 0UL;
         status = STATUS_SUCCESS;
-        I2CCTRL_EMU_LOG("RESET\n");
+        I2cCtrl_Emu_Log("RESET\n");
         break;
 
     default:

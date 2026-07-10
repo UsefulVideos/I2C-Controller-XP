@@ -237,12 +237,11 @@ NTSTATUS I2CCTRL_EMU_IoctlDispatchBuffered(PI2CCTRL_EMU_FDO_EXT ext,
  * --------------------------------------------------------------------------- */
 extern ULONG g_EmuVerbose;
 
-#define I2CCTRL_EMU_LOG(...) \
-    do { \
-        if (g_EmuVerbose) { \
-            KdPrint(("I2CCTRL_EMU: " __VA_ARGS__)); \
-        } \
-    } while (0)
+VOID
+I2cCtrl_Emu_Log(
+    PCSTR Format,
+    ...
+    );
 
 /* ACPI helper prototypes (implemented in I2CCTRL_EMU_ACPI.c) */
 NTSTATUS I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext);

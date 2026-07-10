@@ -29,7 +29,7 @@ I2CCTRL_EMU_Enable(
 {
     PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
     ext->Enabled = on ? TRUE : FALSE;
-    I2CCTRL_EMU_LOG("Enable=%u\n", (unsigned)ext->Enabled);
+    I2cCtrl_Emu_Log("Enable=%u\n", (unsigned)ext->Enabled);
     return STATUS_SUCCESS;
 }
 
@@ -44,7 +44,7 @@ I2CCTRL_EMU_SetTarget7bit(
 {
     PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
     ext->Target7bit = addr & 0x7FU;
-    I2CCTRL_EMU_LOG("SetTarget7bit=0x%02X\n", (unsigned)ext->Target7bit);
+    I2cCtrl_Emu_Log("SetTarget7bit=0x%02X\n", (unsigned)ext->Target7bit);
     return STATUS_SUCCESS;
 }
 
@@ -59,7 +59,7 @@ I2CCTRL_EMU_IssueWriteByte(
 {
     PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
     ext->LastReg = reg;
-    I2CCTRL_EMU_LOG("IssueWriteByte reg=0x%02X\n", (unsigned)reg);
+    I2cCtrl_Emu_Log("IssueWriteByte reg=0x%02X\n", (unsigned)reg);
     return STATUS_SUCCESS;
 }
 
@@ -73,7 +73,7 @@ I2CCTRL_EMU_IssueReadToken(
 {
     PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
     ext->RawIntr |= 0x00000001UL;
-    I2CCTRL_EMU_LOG("IssueReadToken\n");
+    I2cCtrl_Emu_Log("IssueReadToken\n");
     return STATUS_SUCCESS;
 }
 
@@ -130,5 +130,5 @@ I2CCTRL_EMU_AckInterrupts(
 {
     PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
     ext->RawIntr &= ~rawIntr;
-    I2CCTRL_EMU_LOG("AckInterrupts mask=0x%08lX\n", rawIntr);
+    I2cCtrl_Emu_Log("AckInterrupts mask=0x%08lX\n", rawIntr);
 }

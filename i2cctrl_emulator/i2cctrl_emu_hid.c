@@ -133,7 +133,7 @@ I2CCTRL_EMU_HidInitProfile(
     /* Ensure clean RX state */
     EmuFifoReset(&ext->RxFifo);
     ext->RawIntr = 0UL;
-    I2CCTRL_EMU_LOG("Init profile VID=0x%04X PID=0x%04X Len=%u\n",
+    I2cCtrl_Emu_Log("Init profile VID=0x%04X PID=0x%04X Len=%u\n",
         (unsigned)g_EmuHidDescriptor.wVendorID,
         (unsigned)g_EmuHidDescriptor.wProductID,
         (unsigned)g_EmuHidDescriptor.wHIDDescLength);
@@ -172,7 +172,7 @@ I2CCTRL_EMU_HidPrimeForRegister(
 
         (VOID)EmuFifoPushBlock(&ext->RxFifo, header, (ULONG)sizeof(header));
         ext->RawIntr |= 0x00000001UL;
-        I2CCTRL_EMU_LOG("Primed HID header len=%u\n", (unsigned)g_EmuHidDescriptor.wHIDDescLength);
+        I2cCtrl_Emu_Log("Primed HID header len=%u\n", (unsigned)g_EmuHidDescriptor.wHIDDescLength);
         break;
 
     case I2CCTRL_EMU_REG_REPORT_DESC:
@@ -180,7 +180,7 @@ I2CCTRL_EMU_HidPrimeForRegister(
         len = (ULONG)sizeof(g_EmuReportDescriptor);
         (VOID)EmuFifoPushBlock(&ext->RxFifo, src, len);
         ext->RawIntr |= 0x00000001UL;
-        I2CCTRL_EMU_LOG("Primed report descriptor len=%lu\n", len);
+        I2cCtrl_Emu_Log("Primed report descriptor len=%lu\n", len);
         break;
 
     default:
@@ -211,7 +211,7 @@ I2CCTRL_EMU_HidPrimeFullDescriptor(
 
     (VOID)EmuFifoPushBlock(&ext->RxFifo, src, len);
     ext->RawIntr |= 0x00000001UL;
-    I2CCTRL_EMU_LOG("Primed full HID descriptor len=%lu\n", len);
+    I2cCtrl_Emu_Log("Primed full HID descriptor len=%lu\n", len);
 }
 
 /* Utility: return descriptor length (for consistency with validators) */
