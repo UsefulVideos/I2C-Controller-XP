@@ -1,12 +1,12 @@
 /* -----------------------------------------------------------------------
-   i2chid_acpi.c - ACPI parsing for HID-over-I2C (PNP0C50) on XP/2003
+   I2CHID_acpi.c - ACPI parsing for HID-over-I2C (PNP0C50) on XP/2003
    ----------------------------------------------------------------------- */
 
-#include "i2chid_spinlock_fix.h"
+#include "I2CHID_spinlock_fix.h"
 #include "..\i2cctrl\i2cctrl_DPI.h"
 #include "..\i2cctrl\i2cctrl_ioctl.h"  /* IOCTL_I2C_READ, IOCTL_I2C_WRITE, I2CCTRL_TRANSFER */
-#include "i2chid_DPI.h"
-#include "i2chid_acpi.h"
+#include "I2CHID_DPI.h"
+#include "I2CHID_acpi.h"
 #include "..\i2cctrl\i2cctrl_ext.h"   /* include ONLY for shared enums, logging, GUIDs */
 
 
@@ -286,7 +286,7 @@ I2cRead(
 
 /* Helper: query HID descriptor length by reading first two bytes over I2C */
 NTSTATUS
-I2cHid_QueryHidDescriptorLength(
+I2CHID_QueryHidDescriptorLength(
     IN PDEVICE_OBJECT ControllerDevice,
     IN UCHAR I2cAddr,
     IN ULONG HidDescAddr,
@@ -320,7 +320,7 @@ I2cHid_QueryHidDescriptorLength(
 
 /* Public entry: parse ACPI for PNP0C50 and populate DPI */
 NTSTATUS
-I2cHid_AcpiParsePnp0C50(
+I2CHID_AcpiParsePnp0C50(
     IN PDEVICE_OBJECT PhysicalDeviceObject,
     IN PCM_RESOURCE_LIST RawResources,
     IN PCM_RESOURCE_LIST TranslatedResources,
@@ -363,7 +363,7 @@ I2cHid_AcpiParsePnp0C50(
 
     /* Query HID descriptor length directly from device if ControllerDevice is set later */
     if (hidDescAddr != 0 && Dpi->ControllerDevice != NULL) {
-        (void)I2cHid_QueryHidDescriptorLength(Dpi->ControllerDevice,
+        (void)I2CHID_QueryHidDescriptorLength(Dpi->ControllerDevice,
                                               i2cAddr,
                                               hidDescAddr,
                                               &hidDescLen);

@@ -171,7 +171,7 @@ I2cCtrlEtwBanner(
     ULONG mask = g_I2cCtrlTraceEnableMask;
     DbgPrintEx(DPFLTR_IHVDRIVER_ID,
                TRACE_LEVEL_INFORMATION,
-               "I2CCTRL: Tracing initialized (ver=%s, build=%s, mask=0x%08lx)\n",
+               "Tracing initialized (ver=%s, build=%s, mask=0x%08lx)\n",
                DriverVersion ? DriverVersion : "unknown",
                BuildInfo ? BuildInfo : "unknown",
                mask);

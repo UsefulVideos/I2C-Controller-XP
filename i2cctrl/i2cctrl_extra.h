@@ -4,8 +4,8 @@
  * Not to be confused with i2cctrl_ext.h.
  */
 
-#ifndef _I2CCTRL_EXTRA_H_
-#define _I2CCTRL_EXTRA_H_
+#ifndef _I2cCtrl_EXTRA_H_
+#define _I2cCtrl_EXTRA_H_
 
 #include <ntddk.h>
 
@@ -15,7 +15,7 @@ typedef struct _I2C_TRANSFER_CONTEXT I2C_TRANSFER_CONTEXT;
 /* ---------------------------------------------------------------------------
    Probe result structure for IOCTL_PROBE
    --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_PROBE_RESULT {
+typedef struct _I2cCtrl_PROBE_RESULT {
     UCHAR   Address7Bit;  /* probed address (7-bit) */
     BOOLEAN Found;        /* TRUE if device acknowledged */
     UCHAR   TenBit;       /* 0 = 7-bit, 1 = 10-bit */
@@ -38,4 +38,4 @@ I2cCtrl_GetSequenceBytesWritten(
     I2C_TRANSFER_CONTEXT *xc
     );
 
-#endif /* _I2CCTRL_EXTRA_H_ */
+#endif /* _I2cCtrl_EXTRA_H_ */

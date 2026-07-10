@@ -6,10 +6,10 @@ I2CctrlHw_WaitForIdle(PDEVICE_OBJECT DevObj,
                       ULONG TimeoutMs);
 
 /*
- * Local duplicate of ZwDeviceIoControlFile, renamed to I2Cctrl_ControlFile.
+ * Local duplicate of ZwDeviceIoControlFile, renamed to I2cCtrl_ControlFile.
  * This is a direct replacement, not a wrapper or a different semantic.
  */
-NTSTATUS NTAPI I2Cctrl_ControlFile(
+NTSTATUS NTAPI I2cCtrl_ControlFile(
     PDEVICE_OBJECT DevObj,           /* added: device object for hardware helpers */
     HANDLE         FileHandle,
     HANDLE         Event OPTIONAL,

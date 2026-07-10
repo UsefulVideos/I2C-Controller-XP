@@ -1,7 +1,7 @@
 #pragma once
 
 //
-// i2chid_comp_sal.h
+// I2CHID_comp_sal.h
 // Compatibility header to neutralize SAL annotations
 // for older WDK/XP compilers that don't recognize them.
 //

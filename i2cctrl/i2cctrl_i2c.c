@@ -7,7 +7,7 @@
 __forceinline ULONG RReg(PI2CCTRL_FDO fdoExt, ULONG Off)
 {
     if (fdoExt == NULL) {
-        KdPrint(("I2CCTRL: RReg NULL fdoExt\n"));
+        I2cCtrl_Log("RReg NULL fdoExt\n");
         return 0;
     }
 
@@ -17,7 +17,7 @@ __forceinline ULONG RReg(PI2CCTRL_FDO fdoExt, ULONG Off)
 __forceinline VOID WReg(PI2CCTRL_FDO fdoExt, ULONG Off, ULONG Val)
 {
     if (fdoExt == NULL) {
-        KdPrint(("I2CCTRL: WReg NULL fdoExt\n"));
+        I2cCtrl_Log("WReg NULL fdoExt\n");
         return;
     }
 

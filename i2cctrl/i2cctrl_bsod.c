@@ -29,12 +29,12 @@ I2cCtrl_SafeCompleteIrp(
         /* Avoid APC-level issues: never block here */
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         if (irql > DISPATCH_LEVEL) {
-            KdPrint(("I2CCTRL: SafeCompleteIrp: completed at IRQL %lu\n", (ULONG)irql));
+            I2cCtrl_Log("SafeCompleteIrp: completed at IRQL %lu\n", (ULONG)irql);
         }
     }
     else {
         TraceEvents(TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL, "SafeCompleteIrp: NULL IRP", 0, 0);
-        KdPrint(("I2CCTRL: SafeCompleteIrp: NULL IRP\n"));
+        I2cCtrl_Log("SafeCompleteIrp: NULL IRP\n");
     }
 }
 

@@ -34,9 +34,9 @@
    --------------------------------------------------------------------------- */
 
 #include "i2chid.h"
-#include "i2chid_DPI.h"
-#include "i2chid_ACPI.h"
-#include "i2chid_hid.h"
+#include "I2CHID_DPI.h"
+#include "I2CHID_ACPI.h"
+#include "I2CHID_hid.h"
 #include "..\i2cctrl\i2cctrl_etw.h"
 #pragma warning(disable:4201) // nameless struct/union
 
@@ -209,7 +209,7 @@ I2CHID_InitHidDescriptors(
 
     /* Validate input */
     if (ext == NULL) {
-        KdPrint(("I2CHID(InitHidDescriptors): NULL extension\n"));
+        I2CHID_Log("I2CHID(InitHidDescriptors): NULL extension\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -218,7 +218,7 @@ I2CHID_InitHidDescriptors(
 
     /* Validate report descriptor buffer */
     if (rd == NULL) {
-        KdPrint(("I2CHID(InitHidDescriptors): ReportDesc buffer is NULL\n"));
+        I2CHID_Log("I2CHID(InitHidDescriptors): ReportDesc buffer is NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -227,7 +227,7 @@ I2CHID_InitHidDescriptors(
     needLen = (ULONG)g_HidReportDescSize;
 
     if (needLen == 0U) {
-        KdPrint(("I2CHID(InitHidDescriptors): source report descriptor size is 0\n"));
+        I2CHID_Log("I2CHID(InitHidDescriptors): source report descriptor size is 0\n");
         return STATUS_INVALID_PARAMETER;
     }
     if (needLen > maxLen) {
@@ -255,7 +255,7 @@ I2CHID_InitHidDescriptors(
     ext->HidStatic.ReportDescLength          = (USHORT)needLen;
     hd->DescriptorList[0].wReportLength      = (USHORT)ext->HidStatic.ReportDescLength;
 
-    KdPrint(("I2CHID(InitHidDescriptors): built %lu-byte report descriptor\n", needLen));
+    I2CHID_Log("I2CHID(InitHidDescriptors): built %lu-byte report descriptor\n", needLen);
     return STATUS_SUCCESS;
 }
 
@@ -530,7 +530,7 @@ I2CHID_ReadAndValidateHidDescriptor(
 
     /* Step 3: validate and parse into temporary structure */
     if (!I2CHID_ParseHidDescriptorV10(outBuf, descLen, &temp)) {
-        KdPrint(("I2CHID(detect): HID descriptor validation failed at 0x%02X\n", addr));
+        I2CHID_Log("I2CHID(detect): HID descriptor validation failed at 0x%02X\n", addr);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -709,7 +709,7 @@ I2CHID_AddDevice(
         &fdo
         );
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: IoCreateDevice failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_AddDevice: IoCreateDevice failed (0x%08X)\n", status);
         return status;
     }
 
@@ -721,7 +721,7 @@ I2CHID_AddDevice(
     ext->PhysicalDevice = PhysicalDeviceObject;
     ext->LowerDevice    = IoAttachDeviceToDeviceStack(fdo, PhysicalDeviceObject);
     if (ext->LowerDevice == NULL) {
-        KdPrint(("I2CHID_AddDevice: IoAttachDeviceToDeviceStack returned NULL\n"));
+        I2CHID_Log("I2CHID_AddDevice: IoAttachDeviceToDeviceStack returned NULL\n");
         status = STATUS_NO_SUCH_DEVICE;
         goto FailIoCreateDevice;
     }
@@ -771,9 +771,9 @@ I2CHID_AddDevice(
     /* DPI: initialize from bus-provided block if available on PDO */
     status = I2CHID_FetchBusDpi(PhysicalDeviceObject, &ext->Dpi);
     if (NT_SUCCESS(status)) {
-        status = I2cHid_DpiInitializeFromBus(&ext->Dpi, &ext->Dpi);
+        status = I2CHID_DpiInitializeFromBus(&ext->Dpi, &ext->Dpi);
         if (!NT_SUCCESS(status)) {
-            KdPrint(("I2CHID_AddDevice: DPI init from bus failed (0x%08X)\n", status));
+            I2CHID_Log("I2CHID_AddDevice: DPI init from bus failed (0x%08X)\n", status);
             goto FailAttached;
         }
     } else {
@@ -783,23 +783,23 @@ I2CHID_AddDevice(
         ext->Dpi.MaxX        = 4095;
         ext->Dpi.MaxY        = 4095;
         ext->Dpi.Sensitivity = 4;
-        KdPrint(("I2CHID_AddDevice: Bus DPI not available, using defaults\n"));
+        I2CHID_Log("I2CHID_AddDevice: Bus DPI not available, using defaults\n");
     }
 
     /* Ensure DPI’s ControllerDevice is known to downstream routines */
     ext->Dpi.ControllerDevice = ext->LowerDevice; /* used by I2cRead / HID query helpers */
 
     /* Apply HID-specific registry overrides (non-fatal) */
-    status = I2cHid_DpiApplyRegistryPolicy(&ext->Dpi, NULL);
+    status = I2CHID_DpiApplyRegistryPolicy(&ext->Dpi, NULL);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: DPI registry policy apply failed (0x%08X), continuing with defaults\n", status));
+        I2CHID_Log("I2CHID_AddDevice: DPI registry policy apply failed (0x%08X), continuing with defaults\n", status);
         status = STATUS_SUCCESS;
     }
 
     /* Open controller handle (optional if you only use device objects) */
-    status = I2CHID_I2CCTRL_Open(&ext->ControllerHandle);
+    status = I2CHID_I2cCtrl_Open(&ext->ControllerHandle);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: Controller open failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_AddDevice: Controller open failed (0x%08X)\n", status);
         goto FailAttached;
     }
     controllerOpened = TRUE;
@@ -807,37 +807,37 @@ I2CHID_AddDevice(
     /* Touchpad detection via I2C controller global callback (no direct link needed) */
     ctrlExt = (struct _I2CCTRL_FDO *)ext->LowerDevice->DeviceExtension;
     if (ctrlExt == NULL) {
-        KdPrint(("I2CHID_AddDevice: Lower controller extension is NULL\n"));
+        I2CHID_Log("I2CHID_AddDevice: Lower controller extension is NULL\n");
         status = STATUS_NO_SUCH_DEVICE;
         goto FailControllerOpened;
     }
 
     status = I2CHID_DetectTouchpad(ctrlExt, &detectResult);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: DetectTouchpad failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_AddDevice: DetectTouchpad failed (0x%08X)\n", status);
         goto FailControllerOpened;
     }
 
     /* NOTE: if your detect result struct uses a different field name than IsTouchpad,
              replace detectResult.IsTouchpad below accordingly. */
     if (!detectResult.IsTouchpad) {
-        KdPrint(("I2CHID_AddDevice: No touchpad detected, aborting HID init\n"));
+        I2CHID_Log("I2CHID_AddDevice: No touchpad detected, aborting HID init\n");
         status = STATUS_NO_SUCH_DEVICE;
         goto FailControllerOpened;
     }
-    KdPrint(("I2CHID_AddDevice: Touchpad detected, proceeding with HID init\n"));
+    I2CHID_Log("I2CHID_AddDevice: Touchpad detected, proceeding with HID init\n");
 
     /* HID descriptors from static table or device via I2C */
     status = I2CHID_InitHidDescriptors(ext);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: HID descriptor init failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_AddDevice: HID descriptor init failed (0x%08X)\n", status);
         goto FailControllerOpened;
     }
 
     /* Register HID-over-I2C interface for user-mode clients */
-    status = I2cHid_DpiRegisterInterface(fdo, &iflink);
+    status = I2CHID_DpiRegisterInterface(fdo, &iflink);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID_AddDevice: Interface registration failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_AddDevice: Interface registration failed (0x%08X)\n", status);
         goto FailControllerOpened;
     }
     ifaceRegistered = TRUE;
@@ -849,7 +849,7 @@ I2CHID_AddDevice(
     if (NT_SUCCESS(status)) {
         dosLinkCreated = TRUE;
     } else {
-        KdPrint(("I2CHID_AddDevice: DOS symlink create failed (0x%08X) - continuing\n", status));
+        I2CHID_Log("I2CHID_AddDevice: DOS symlink create failed (0x%08X) - continuing\n", status);
         status = STATUS_SUCCESS;
     }
 
@@ -857,17 +857,17 @@ I2CHID_AddDevice(
     fdo->Flags |= DO_POWER_PAGABLE;
     fdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
-    KdPrint(("I2CHID_AddDevice: FDO %p initialized and attached (Lower=%p)\n", fdo, ext->LowerDevice));
+    I2CHID_Log("I2CHID_AddDevice: FDO %p initialized and attached (Lower=%p)\n", fdo, ext->LowerDevice);
     return STATUS_SUCCESS;
 
 /* --- Failure paths with proper cleanup (reverse order of acquisition) --- */
 FailControllerOpened:
     if (controllerOpened) {
-        I2CHID_I2CCTRL_Close(ext->ControllerHandle);
+        I2CHID_I2cCtrl_Close(ext->ControllerHandle);
         controllerOpened = FALSE;
     }
     if (ifaceRegistered) {
-        I2cHid_DpiUnregisterInterface(&iflink);
+        I2CHID_DpiUnregisterInterface(&iflink);
         ifaceRegistered = FALSE;
     }
     /* Delete DOS link only if it was successfully created */
@@ -937,14 +937,14 @@ I2CHID_ApplyFeatureReport(
 
     /* Validate inputs */
     if ((ext == NULL) || (inBuf == NULL)) {
-        KdPrint(("I2CHID(ApplyFeatureReport): invalid parameters ext=%p inBuf=%p\n", ext, inBuf));
+        I2CHID_Log("I2CHID(ApplyFeatureReport): invalid parameters ext=%p inBuf=%p\n", ext, inBuf);
         return STATUS_INVALID_PARAMETER;
     }
 
     /* Expected payload size: ReportID + 8 ULONGs */
     needLen = 1U + (8U * 4U);
     if (inLen < needLen) {
-        KdPrint(("I2CHID(ApplyFeatureReport): buffer too small (have=%lu need=%lu)\n", inLen, needLen));
+        I2CHID_Log("I2CHID(ApplyFeatureReport): buffer too small (have=%lu need=%lu)\n", inLen, needLen);
         return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -962,7 +962,7 @@ I2CHID_ApplyFeatureReport(
 #define READ_NEXT_ULONG_LE(dest)                                      \
     do {                                                              \
         if ((offset + 4U) > inLen) {                                  \
-            KdPrint(("I2CHID(ApplyFeatureReport): overrun at off=%lu\n", offset)); \
+            I2CHID_Log("I2CHID(ApplyFeatureReport): overrun at off=%lu\n", offset); \
             return STATUS_BUFFER_TOO_SMALL;                           \
         }                                                             \
         (dest) = ((ULONG)inBuf[offset])                               \
@@ -1037,7 +1037,7 @@ I2CHID_ApplyFeatureReport(
     /* Persist updated config back to registry */
     status = I2CHID_SaveRegistryConfig(ext);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID(ApplyFeatureReport): registry save failed 0x%08X\n", status));
+        I2CHID_Log("I2CHID(ApplyFeatureReport): registry save failed 0x%08X\n", status);
         return status; /* Non-fatal for runtime, but report failure to caller */
     }
 
@@ -1103,7 +1103,7 @@ I2CHID_StartDevice(
 
     /* Validate parameters */
     if (ext == NULL) {
-        KdPrint(("I2CHID(StartDevice): ext=NULL\n"));
+        I2CHID_Log("I2CHID(StartDevice): ext=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -1162,7 +1162,7 @@ I2CHID_StartDevice(
                              FALSE);
 
                 if (!NT_SUCCESS(status)) {
-                    KdPrint(("I2CHID(StartDevice): IoConnectInterrupt failed 0x%08X\n", status));
+                    I2CHID_Log("I2CHID(StartDevice): IoConnectInterrupt failed 0x%08X\n", status);
                     /* Prevent partial init; return failure */
                     return status;
                 }
@@ -1174,23 +1174,23 @@ I2CHID_StartDevice(
         }
 
         if (!haveInterrupt) {
-            KdPrint(("I2CHID(StartDevice): No interrupt resource found; proceeding without ISR\n"));
+            I2CHID_Log("I2CHID(StartDevice): No interrupt resource found; proceeding without ISR\n");
         }
     } else {
-        KdPrint(("I2CHID(StartDevice): No translated resources; skipping ISR mapping\n"));
+        I2CHID_Log("I2CHID(StartDevice): No translated resources; skipping ISR mapping\n");
     }
 
     /* Initialize DPC for deferred ISR processing (safe even without ISR) */
     KeInitializeDpc(&ext->InterruptDpc, I2CHID_InterruptDpc, ext);
 
     /* Parse ACPI resources for HID-over-I²C (PNP0C50) */
-    status = I2cHid_AcpiParsePnp0C50(
+    status = I2CHID_AcpiParsePnp0C50(
                  ext->PhysicalDevice,   /* FDO’s physical device object */
                  raw,
                  translated,
                  &ext->Dpi);            /* DPI context with ControllerDevice member */
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID(StartDevice): ACPI parse failed 0x%08X\n", status));
+        I2CHID_Log("I2CHID(StartDevice): ACPI parse failed 0x%08X\n", status);
         /* If ACPI parsing fails, tear down interrupt and return error */
         if (ext->InterruptConnected && (ext->InterruptObject != NULL)) {
             IoDisconnectInterrupt(ext->InterruptObject);
@@ -1204,7 +1204,7 @@ I2CHID_StartDevice(
     if (ext->LowerDevice != NULL) {
         ext->Dpi.ControllerDevice = ext->LowerDevice;
     } else {
-        KdPrint(("I2CHID(StartDevice): LowerDevice=NULL; ControllerDevice not set\n"));
+        I2CHID_Log("I2CHID(StartDevice): LowerDevice=NULL; ControllerDevice not set\n");
         ext->Dpi.ControllerDevice = NULL;
     }
 
@@ -1213,16 +1213,16 @@ I2CHID_StartDevice(
         ULONG hidLen;
         hidLen = 0U;
 
-        (void)I2cHid_QueryHidDescriptorLength(
+        (void)I2CHID_QueryHidDescriptorLength(
             ext->Dpi.ControllerDevice,
             ext->Dpi.I2cAddr7Bit,
             (ULONG)(ULONG_PTR)ext->Dpi.HidDescriptor,
             &hidLen);
 
         ext->Dpi.HidDescriptorLength = hidLen;
-        KdPrint(("I2CHID(StartDevice): HID descriptor length=%lu\n", hidLen));
+        I2CHID_Log("I2CHID(StartDevice): HID descriptor length=%lu\n", hidLen);
     } else {
-        KdPrint(("I2CHID(StartDevice): HID descriptor or ControllerDevice missing; skip length query\n"));
+        I2CHID_Log("I2CHID(StartDevice): HID descriptor or ControllerDevice missing; skip length query\n");
     }
 
     /* Mark device started only after all init steps succeed */
@@ -1249,7 +1249,7 @@ I2CHID_StopDevice(
 
     /* Defensive: validate extension and started state */
     if (Ext == NULL) {
-        KdPrint(("I2CHID(StopDevice): Ext=NULL\n"));
+        I2CHID_Log("I2CHID(StopDevice): Ext=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -1261,12 +1261,12 @@ I2CHID_StopDevice(
     }
 
     if (!Ext->Started) {
-        KdPrint(("I2CHID(StopDevice): Device not started; nothing to stop\n"));
+        I2CHID_Log("I2CHID(StopDevice): Device not started; nothing to stop\n");
         Ext->LastStopStatus = STATUS_SUCCESS;
         return STATUS_SUCCESS;
     }
 
-    KdPrint(("I2CHID(StopDevice): Teardown begin\n"));
+    I2CHID_Log("I2CHID(StopDevice): Teardown begin\n");
 
     /* 1) Stop input path: cancel idle/selective suspend, drain DPCs */
     InterlockedExchange(&Ext->IdleArmed, 0);
@@ -1278,7 +1278,7 @@ I2CHID_StopDevice(
         IoDisconnectInterrupt(Ext->InterruptObject);
         Ext->InterruptObject    = NULL;
         Ext->InterruptConnected = FALSE;
-        KdPrint(("I2CHID(StopDevice): Interrupt disconnected\n"));
+        I2CHID_Log("I2CHID(StopDevice): Interrupt disconnected\n");
     }
 
     /* 3) Cancel and complete all pending read IRPs (queued to ReadQueue) */
@@ -1308,14 +1308,14 @@ I2CHID_StopDevice(
         MmUnmapIoSpace(Ext->MmioBase, Ext->MmioLength);
         Ext->MmioBase   = NULL;
         Ext->MmioLength = 0;
-        KdPrint(("I2CHID(StopDevice): MMIO unmapped\n"));
+        I2CHID_Log("I2CHID(StopDevice): MMIO unmapped\n");
     }
 
     /* 5) Close controller/bus handles */
     if (Ext->ControllerHandle != NULL) {
-        I2CHID_I2CCTRL_Close(Ext->ControllerHandle);
+        I2CHID_I2cCtrl_Close(Ext->ControllerHandle);
         Ext->ControllerHandle = NULL;
-        KdPrint(("I2CHID(StopDevice): ControllerHandle closed\n"));
+        I2CHID_Log("I2CHID(StopDevice): ControllerHandle closed\n");
     }
 
     /* 6) Free dynamic HID report descriptor (if allocated) */
@@ -1323,16 +1323,16 @@ I2CHID_StopDevice(
         ExFreePoolWithTag(Ext->HidStatic.ReportDesc, 'dRhI'); /* "IHRd" */
         Ext->HidStatic.ReportDesc       = NULL;
         Ext->HidStatic.ReportDescLength = 0;
-        KdPrint(("I2CHID(StopDevice): Report descriptor freed\n"));
+        I2CHID_Log("I2CHID(StopDevice): Report descriptor freed\n");
     }
 
     /* 7) Unregister user-mode interface and delete legacy DOS link */
     if (Ext->Symlink.Buffer != NULL) {
-        I2cHid_DpiUnregisterInterface(&Ext->Symlink);
+        I2CHID_DpiUnregisterInterface(&Ext->Symlink);
         Ext->Symlink.Buffer         = NULL;
         Ext->Symlink.Length         = 0;
         Ext->Symlink.MaximumLength  = 0;
-        KdPrint(("I2CHID(StopDevice): Interface unregistered\n"));
+        I2CHID_Log("I2CHID(StopDevice): Interface unregistered\n");
     }
 
     /* 8) Clear ACPI/HID-over-I²C context */
@@ -1373,7 +1373,7 @@ I2CHID_StopDevice(
     Ext->Started        = FALSE;
     Ext->LastStopStatus = STATUS_SUCCESS;
 
-    KdPrint(("I2CHID(StopDevice): Teardown complete\n"));
+    I2CHID_Log("I2CHID(StopDevice): Teardown complete\n");
     return STATUS_SUCCESS;
 }
 
@@ -1413,7 +1413,7 @@ I2CHID_RestartDevice(
 
     /* Validate input */
     if (ext == NULL) {
-        KdPrint(("I2CHID(Restart): ext=NULL\n"));
+        I2CHID_Log("I2CHID(Restart): ext=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -1424,7 +1424,7 @@ I2CHID_RestartDevice(
     le = NULL;
     irp = NULL;
 
-    KdPrint(("I2CHID(Restart): begin for FDO %p (Lower=%p)\n", ext->Self, ext->LowerDevice));
+    I2CHID_Log("I2CHID(Restart): begin for FDO %p (Lower=%p)\n", ext->Self, ext->LowerDevice);
 
     /* Block new I/O paths during restart */
     ext->Started = FALSE;
@@ -1440,7 +1440,7 @@ I2CHID_RestartDevice(
         IoDisconnectInterrupt(ext->InterruptObject);
         ext->InterruptObject    = NULL;
         ext->InterruptConnected = FALSE;
-        KdPrint(("I2CHID(Restart): Interrupt disconnected\n"));
+        I2CHID_Log("I2CHID(Restart): Interrupt disconnected\n");
     }
 
     /* Prepare temp lists to complete IRPs outside of spin locks */
@@ -1506,11 +1506,11 @@ I2CHID_RestartDevice(
                     ext->InterruptAffinity,
                     FALSE);
         if (!NT_SUCCESS(status)) {
-            KdPrint(("I2CHID(Restart): IoConnectInterrupt failed 0x%08X\n", status));
+            I2CHID_Log("I2CHID(Restart): IoConnectInterrupt failed 0x%08X\n", status);
             return status;
         }
         ext->InterruptConnected = TRUE;
-        KdPrint(("I2CHID(Restart): Interrupt connected\n"));
+        I2CHID_Log("I2CHID(Restart): Interrupt connected\n");
     } else {
         KdPrint(("I2CHID(Restart): No interrupt to connect (haveInt=%lu, obj=%p)\n",
                  (ULONG)haveInt, (PVOID)ext->InterruptObject));
@@ -1556,13 +1556,13 @@ I2CHID_RemoveDevice(
 
     /* Validate inputs */
     if (DeviceObject == NULL) {
-        KdPrint(("I2CHID(RemoveDevice): DeviceObject=NULL\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): DeviceObject=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
     ext = (PI2CHID_FDO)DeviceObject->DeviceExtension;
     if (ext == NULL) {
-        KdPrint(("I2CHID(RemoveDevice): DeviceExtension=NULL\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): DeviceExtension=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -1570,7 +1570,7 @@ I2CHID_RemoveDevice(
     remTag = (PVOID)DeviceObject; /* unique tag for this removal context */
     status = IoAcquireRemoveLock(&ext->RemoveLock, remTag);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID(RemoveDevice): IoAcquireRemoveLock failed 0x%08X\n", status));
+        I2CHID_Log("I2CHID(RemoveDevice): IoAcquireRemoveLock failed 0x%08X\n", status);
         return status;
     }
 
@@ -1592,7 +1592,7 @@ I2CHID_RemoveDevice(
         IoDisconnectInterrupt(ext->InterruptObject);
         ext->InterruptObject    = NULL;
         ext->InterruptConnected = FALSE;
-        KdPrint(("I2CHID(RemoveDevice): Interrupt disconnected\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): Interrupt disconnected\n");
     }
 
     /* Prepare temp lists for safe completion outside of spin locks */
@@ -1637,32 +1637,32 @@ I2CHID_RemoveDevice(
         MmUnmapIoSpace(ext->MmioBase, ext->MmioLength);
         ext->MmioBase   = NULL;
         ext->MmioLength = 0;
-        KdPrint(("I2CHID(RemoveDevice): MMIO unmapped\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): MMIO unmapped\n");
     }
 
     /* 5) Close controller/bus handles */
     if (ext->ControllerHandle != NULL) {
-        I2CHID_I2CCTRL_Close(ext->ControllerHandle);
+        I2CHID_I2cCtrl_Close(ext->ControllerHandle);
         ext->ControllerHandle = NULL;
-        KdPrint(("I2CHID(RemoveDevice): ControllerHandle closed\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): ControllerHandle closed\n");
     }
 
     /* 6) Free dynamic HID report descriptor only if it was allocated dynamically.
           If your build uses a static global (g_HidReportDesc), this block will be a no-op. */
     if ((ext->HidStatic.ReportDesc != NULL) && (ext->HidStatic.ReportDesc != (PUCHAR)g_HidReportDesc)) {
         ExFreePoolWithTag(ext->HidStatic.ReportDesc, 'dRhI'); /* "IHRd" */
-        KdPrint(("I2CHID(RemoveDevice): Report descriptor freed\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): Report descriptor freed\n");
     }
     ext->HidStatic.ReportDesc       = NULL;
     ext->HidStatic.ReportDescLength = 0;
 
     /* 7) Unregister user-mode interface and delete legacy DOS link if present */
     if (ext->Symlink.Buffer != NULL) {
-        I2cHid_DpiUnregisterInterface(&ext->Symlink);
+        I2CHID_DpiUnregisterInterface(&ext->Symlink);
         ext->Symlink.Buffer        = NULL;
         ext->Symlink.Length        = 0;
         ext->Symlink.MaximumLength = 0;
-        KdPrint(("I2CHID(RemoveDevice): Interface unregistered\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): Interface unregistered\n");
     }
 
     RtlInitUnicodeString(&sym, I2CHID_PT_DOSLINK);
@@ -1706,7 +1706,7 @@ I2CHID_RemoveDevice(
     if (ext->LowerDevice != NULL) {
         IoDetachDevice(ext->LowerDevice);
         ext->LowerDevice = NULL;
-        KdPrint(("I2CHID(RemoveDevice): Detached from lower device\n"));
+        I2CHID_Log("I2CHID(RemoveDevice): Detached from lower device\n");
     }
 
     /* 12) Release remove lock and wait for all outstanding IRPs to drain before deletion */
@@ -1715,7 +1715,7 @@ I2CHID_RemoveDevice(
     /* 13) Delete device object */
     IoDeleteDevice(DeviceObject);
 
-    KdPrint(("I2CHID(RemoveDevice): Device removed, resources freed\n"));
+    I2CHID_Log("I2CHID(RemoveDevice): Device removed, resources freed\n");
     return STATUS_SUCCESS;
 }
 
@@ -1751,7 +1751,7 @@ I2CHID_CompletionSignalEvent(
 
     /* Defensive: validate Context */
     if (Context == NULL) {
-        KdPrint(("I2CHID(Completion): Context=NULL, nothing to signal\n"));
+        I2CHID_Log("I2CHID(Completion): Context=NULL, nothing to signal\n");
         return STATUS_SUCCESS;
     }
 
@@ -1759,18 +1759,18 @@ I2CHID_CompletionSignalEvent(
 
     /* Signal the event to wake up waiting thread */
     KeSetEvent(ev, IO_NO_INCREMENT, FALSE);
-    KdPrint(("I2CHID(Completion): Event signaled\n"));
+    I2CHID_Log("I2CHID(Completion): Event signaled\n");
 
     /* Defensive: validate IRP */
     if (Irp == NULL) {
-        KdPrint(("I2CHID(Completion): Irp=NULL, returning STATUS_SUCCESS\n"));
+        I2CHID_Log("I2CHID(Completion): Irp=NULL, returning STATUS_SUCCESS\n");
         return STATUS_SUCCESS;
     }
 
     /* Leave IoStatus untouched – lower driver sets it.
        Returning STATUS_MORE_PROCESSING_REQUIRED prevents IoCompleteRequest
        from being called again by the I/O manager. */
-    KdPrint(("I2CHID(Completion): Returning STATUS_MORE_PROCESSING_REQUIRED to stop double completion\n"));
+    I2CHID_Log("I2CHID(Completion): Returning STATUS_MORE_PROCESSING_REQUIRED to stop double completion\n");
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
@@ -1804,7 +1804,7 @@ I2CHID_DispatchPnP(
 
     /* Defensive: lower device must be valid for pass-downs */
     if (ext->LowerDevice == NULL) {
-        KdPrint(("I2CHID(PnP): LowerDevice is NULL, failing IRP (Minor=0x%02X)\n", isl->MinorFunction));
+        I2CHID_Log("I2CHID(PnP): LowerDevice is NULL, failing IRP (Minor=0x%02X)\n", isl->MinorFunction);
         Irp->IoStatus.Status = STATUS_NO_SUCH_DEVICE;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         IoReleaseRemoveLock(&ext->RemoveLock, Irp);
@@ -1822,11 +1822,11 @@ I2CHID_DispatchPnP(
         PCM_RESOURCE_LIST    raw;
         PCM_RESOURCE_LIST    translated;
 
-        KdPrint(("I2CHID(PnP): IRP_MN_START_DEVICE\n"));
+        I2CHID_Log("I2CHID(PnP): IRP_MN_START_DEVICE\n");
 
         /* Defensive: ensure lower device is valid */
         if (ext->LowerDevice == NULL) {
-            KdPrint(("I2CHID(PnP): LowerDevice=NULL, cannot start\n"));
+            I2CHID_Log("I2CHID(PnP): LowerDevice=NULL, cannot start\n");
             Irp->IoStatus.Status = STATUS_NO_SUCH_DEVICE;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             IoReleaseRemoveLock(&ext->RemoveLock, Irp);
@@ -1850,7 +1850,7 @@ I2CHID_DispatchPnP(
         }
 
         if (!NT_SUCCESS(lowerStatus)) {
-            KdPrint(("I2CHID(PnP): Lower START_DEVICE failed 0x%08X\n", lowerStatus));
+            I2CHID_Log("I2CHID(PnP): Lower START_DEVICE failed 0x%08X\n", lowerStatus);
             Irp->IoStatus.Status = lowerStatus;
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             IoReleaseRemoveLock(&ext->RemoveLock, Irp);
@@ -1872,11 +1872,11 @@ I2CHID_DispatchPnP(
             ext->Started = TRUE;
             ext->Removed = FALSE;
             Irp->IoStatus.Status = STATUS_SUCCESS;
-            KdPrint(("I2CHID(PnP): StartDevice succeeded\n"));
+            I2CHID_Log("I2CHID(PnP): StartDevice succeeded\n");
         } else {
             ext->Started = FALSE;
             Irp->IoStatus.Status = startStatus;
-            KdPrint(("I2CHID(PnP): StartDevice failed 0x%08X\n", startStatus));
+            I2CHID_Log("I2CHID(PnP): StartDevice failed 0x%08X\n", startStatus);
         }
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1885,7 +1885,7 @@ I2CHID_DispatchPnP(
     }
 
     case IRP_MN_STOP_DEVICE:
-        KdPrint(("I2CHID(PnP): IRP_MN_STOP_DEVICE\n"));
+        I2CHID_Log("I2CHID(PnP): IRP_MN_STOP_DEVICE\n");
 
         /* Stop hardware and disconnect interrupt (PASSIVE_LEVEL only) */
         I2CHID_StopDevice(ext);
@@ -1898,7 +1898,7 @@ I2CHID_DispatchPnP(
         return status;
 
     case IRP_MN_SURPRISE_REMOVAL:
-        KdPrint(("I2CHID(PnP): IRP_MN_SURPRISE_REMOVAL\n"));
+        I2CHID_Log("I2CHID(PnP): IRP_MN_SURPRISE_REMOVAL\n");
 
         ext->Removed = TRUE;
 
@@ -1917,7 +1917,7 @@ I2CHID_DispatchPnP(
         PLIST_ENTRY     le;
         PIRP            pending;
 
-        KdPrint(("I2CHID(PnP): IRP_MN_REMOVE_DEVICE\n"));
+        I2CHID_Log("I2CHID(PnP): IRP_MN_REMOVE_DEVICE\n");
 
         ext->Removed = TRUE;
         ext->Started = FALSE;
@@ -1983,12 +1983,12 @@ I2CHID_DispatchPnP(
         IoReleaseRemoveLockAndWait(&ext->RemoveLock, Irp);
         IoDeleteDevice(DeviceObject);
 
-        KdPrint(("I2CHID(PnP): REMOVE_DEVICE completed, resources freed\n"));
+        I2CHID_Log("I2CHID(PnP): REMOVE_DEVICE completed, resources freed\n");
         return status;
     }
 
     default:
-        KdPrint(("I2CHID(PnP): Minor=0x%02X pass-through\n", isl->MinorFunction));
+        I2CHID_Log("I2CHID(PnP): Minor=0x%02X pass-through\n", isl->MinorFunction);
         IoSkipCurrentIrpStackLocation(Irp);
         status = IoCallDriver(ext->LowerDevice, Irp);
         IoReleaseRemoveLock(&ext->RemoveLock, Irp);
@@ -3244,7 +3244,7 @@ I2CHID_HandleGestures(
 
     /* Scroll detection: large Y movement with sustained contact */
     if (contact->Size >= ext->Cfg.ScrollSizeThreshold) {
-        KdPrint(("I2CHID: Scroll gesture detected at Y=%ld\n", contact->Y));
+        I2CHID_Log("I2CHID: Scroll gesture detected at Y=%ld\n", contact->Y);
     }
 }
 
@@ -3561,7 +3561,7 @@ I2CHID_ProcessReport(
         isPalm = I2CHID_IsPalm(&rpt->Contacts[0], ext->Cfg.PalmThreshold);
     }
     if (isPalm) {
-        KdPrint(("I2CHID: Palm contact rejected\n"));
+        I2CHID_Log("I2CHID: Palm contact rejected\n");
         return;
     }
 
@@ -3652,7 +3652,7 @@ I2CHID_SaveRegistryConfig(
 
     /* Validate input */
     if (ext == NULL) {
-        KdPrint(("I2CHID(SaveRegistryConfig): ext=NULL\n"));
+        I2CHID_Log("I2CHID(SaveRegistryConfig): ext=NULL\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -3665,7 +3665,7 @@ I2CHID_SaveRegistryConfig(
 
     status = ZwOpenKey(&hKey, KEY_SET_VALUE, &oa);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CHID(SaveRegistryConfig): ZwOpenKey failed 0x%08X\n", status));
+        I2CHID_Log("I2CHID(SaveRegistryConfig): ZwOpenKey failed 0x%08X\n", status);
         return status;
     }
 
@@ -3697,9 +3697,175 @@ I2CHID_SaveRegistryConfig(
 
     ZwClose(hKey);
 
-    KdPrint(("I2CHID(SaveRegistryConfig): configuration persisted to registry\n"));
+    I2CHID_Log("I2CHID(SaveRegistryConfig): configuration persisted to registry\n");
     return STATUS_SUCCESS;
 }
+
+/* -----------------------------------------------------------------------
+ * kernel logger with printf-style formatting + timestamp prefix
+ * ----------------------------------------------------------------------- */
+VOID
+I2CHID_Log(
+    PCSTR Format,
+    ...
+    )
+{
+    CHAR  buffer[512];
+    CHAR  final[600];
+    va_list args;
+    NTSTATUS status;
+
+    UNICODE_STRING      path;
+    OBJECT_ATTRIBUTES   oa;
+    IO_STATUS_BLOCK     iosb;
+    HANDLE              hFile;
+
+    LARGE_INTEGER       sysTime, localTime;
+    TIME_FIELDS         tf;
+
+    PAGED_CODE();
+
+    //
+    // Hard safety guards: prevent use-after-free crashes
+    //
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        return;
+    }
+
+    if (Format == NULL) {
+        return;
+    }
+
+    //
+    // SAFE pointer formatting:
+    // Convert all %p to 0x%I64X BEFORE calling VPrintf.
+    // This prevents the CRT from dereferencing freed pointers.
+    //
+    {
+        CHAR safeFmt[256];
+        SIZE_T i = 0, j = 0;
+
+        while (Format[i] != '\0' && j < sizeof(safeFmt) - 1) {
+            if (Format[i] == '%' && Format[i+1] == 'p') {
+                safeFmt[j++] = '0';
+                safeFmt[j++] = 'x';
+                safeFmt[j++] = '%';
+                safeFmt[j++] = 'I';
+                safeFmt[j++] = '6';
+                safeFmt[j++] = '4';
+                safeFmt[j++] = 'X';
+                i += 2;
+                continue;
+            }
+            safeFmt[j++] = Format[i++];
+        }
+        safeFmt[j] = '\0';
+
+        va_start(args, Format);
+        status = RtlStringCbVPrintfA(buffer, sizeof(buffer), safeFmt, args);
+        va_end(args);
+
+        if (!NT_SUCCESS(status)) {
+            return;
+        }
+    }
+
+    /* Get local time */
+    KeQuerySystemTime(&sysTime);
+    ExSystemTimeToLocalTime(&sysTime, &localTime);
+    RtlTimeToTimeFields(&localTime, &tf);
+
+    /* Format timestamp prefix: [DD/MM/YYYY, HH:MM AM/PM] */
+    {
+        CHAR ts[64];
+        ULONG hour = tf.Hour;
+        BOOLEAN pm = FALSE;
+
+        if (hour == 0) {
+            hour = 12;
+        } else if (hour == 12) {
+            pm = TRUE;
+        } else if (hour > 12) {
+            hour -= 12;
+            pm = TRUE;
+        }
+
+        RtlStringCbPrintfA(
+            ts,
+            sizeof(ts),
+            "[%02u/%02u/%04u, %02u:%02u %s] ",
+            tf.Day,
+            tf.Month,
+            tf.Year,
+            hour,
+            tf.Minute,
+            pm ? "PM" : "AM"
+        );
+
+        RtlStringCbPrintfA(
+            final,
+            sizeof(final),
+            "%s%s",
+            ts,
+            buffer
+        );
+    }
+
+    /* Open log file */
+    RtlInitUnicodeString(&path, L"\\SystemRoot\\System32\\i2cctrl.log");
+
+    InitializeObjectAttributes(
+        &oa,
+        &path,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
+    );
+
+    status = ZwCreateFile(
+                 &hFile,
+                 FILE_APPEND_DATA | SYNCHRONIZE,
+                 &oa,
+                 &iosb,
+                 NULL,
+                 FILE_ATTRIBUTE_NORMAL,
+                 0,
+                 FILE_OPEN_IF,
+                 FILE_SYNCHRONOUS_IO_NONALERT,
+                 NULL,
+                 0
+             );
+
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
+
+    /* Write timestamped line */
+    ZwWriteFile(
+        hFile,
+        NULL,
+        NULL,
+        NULL,
+        &iosb,
+        final,
+        (ULONG)strlen(final),
+        NULL,
+        NULL
+    );
+
+    ZwClose(hFile);
+
+    //
+    // Mirror to ETW/WPP without the timestamp prefix.
+    //
+    TraceEvents(
+        TRACE_LEVEL_INFORMATION,
+        TRACE_FLAG_BUS,
+        "%s",
+        buffer
+    );
+}
+
 
 //
 // End of file

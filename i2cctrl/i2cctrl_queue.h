@@ -3,8 +3,8 @@
  * C89 compliant, XP/2003 build environment.
  */
 
-#ifndef _I2CCTRL_QUEUE_H_
-#define _I2CCTRL_QUEUE_H_
+#ifndef _I2cCtrl_QUEUE_H_
+#define _I2cCtrl_QUEUE_H_
 
 #include <ntddk.h>
 #include "i2cctrl_ext.h"
@@ -27,4 +27,4 @@ I2cCtrl_FlushQueue(
     PI2CCTRL_FDO Dx
     );
 
-#endif /* _I2CCTRL_QUEUE_H_ */
+#endif /* _I2cCtrl_QUEUE_H_ */

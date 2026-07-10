@@ -16,7 +16,7 @@
 #include "i2cctrl_hw.h"
 #include "i2cctrl.h"
 #include "I2cCtrl_Isr.h"
-
+#include "i2cctrl_log.h"
 /* MUST COME BEFORE ANY FAÇADE HEADERS */
 #include "i2cctrl_ext.h"        /* defines I2CCTRL_TARGET fully */
 
@@ -447,7 +447,7 @@ const ULONG g_I2cControllersCount =
 //
 // HID-over-I2C devices (touchpads + some touchscreens)
 //
-const I2CHID_DEVICE_ID g_I2cHidDevices[] = {
+const I2CHID_DEVICE_ID g_I2CHIDDevices[] = {
 
     /* -------------------------------------------------------------
      * Generic HID-over-I2C
@@ -550,8 +550,8 @@ const I2CHID_DEVICE_ID g_I2cHidDevices[] = {
     { L"ACPI\\CHPN0001", HID_QUIRK_CHICONY, HID_FLAG_TOUCHPAD }
 };
 
-const ULONG g_I2cHidDevicesCount =
-    sizeof(g_I2cHidDevices) / sizeof(g_I2cHidDevices[0]);
+const ULONG g_I2CHIDDevicesCount =
+    sizeof(g_I2CHIDDevices) / sizeof(g_I2CHIDDevices[0]);
 
 const WCHAR* SpeakerIds[] = {
     L"MX98357A",
@@ -606,7 +606,7 @@ DriverUnload(
 
     UNREFERENCED_PARAMETER(DriverObject);
 
-    I2cCtrl_Log("I2CCTRL: DriverUnload invoked\n");
+    I2cCtrl_Log("DriverUnload invoked\n");
 
     /*
      * Release global resources created in DriverEntry/AddDevice.
@@ -860,9 +860,9 @@ I2cCtrl_FindHidMatch(
     if (HidId == NULL || *HidId == L'\0')
         return NULL;
 
-    for (i = 0; i < g_I2cHidDevicesCount; i++) {
+    for (i = 0; i < g_I2CHIDDevicesCount; i++) {
 
-        PCWSTR entry = g_I2cHidDevices[i].HidId;
+        PCWSTR entry = g_I2CHIDDevices[i].HidId;
 
         if (entry == NULL || *entry == L'\0')
             continue;
@@ -874,7 +874,7 @@ I2cCtrl_FindHidMatch(
             /* skip '*' and compare suffix case-insensitive */
             if (_wcsicmp(HidId + (wcslen(HidId) - wcslen(entry) + 1),
                          entry + 1) == 0) {
-                return &g_I2cHidDevices[i];
+                return &g_I2CHIDDevices[i];
             }
             continue;
         }
@@ -883,7 +883,7 @@ I2cCtrl_FindHidMatch(
          * Exact case-insensitive match
          * --------------------------------------------------------- */
         if (_wcsicmp(HidId, entry) == 0) {
-            return &g_I2cHidDevices[i];
+            return &g_I2CHIDDevices[i];
         }
     }
 
@@ -1012,8 +1012,7 @@ I2cCtrl_ReadBurstPolled(
 
     /* Defensive parameter validation */
     if (devctx == NULL || buffer == NULL || length == 0) {
-        I2cCtrl_Log("ReadBurstPolled: invalid parameters (devctx=%p, buffer=%p, length=%u)",
-                    devctx, buffer, length);
+        I2cCtrl_Log("ReadBurstPolled: invalid parameters (devctx=%p, buffer=%p, length=%u)",devctx, buffer, length);
         return STATUS_INVALID_PARAMETER;
     }
     if (devctx->Ops == NULL ||
@@ -3004,171 +3003,6 @@ case I2CCTRL_OPCODE_BLOCK_READ:
     }
 }
 
-
-/* -----------------------------------------------------------------------
- * kernel logger with printf-style formatting + timestamp prefix
- * ----------------------------------------------------------------------- */
-VOID
-I2cCtrl_Log(
-    PCSTR Format,
-    ...
-    )
-{
-    CHAR  buffer[512];
-    CHAR  final[600];
-    va_list args;
-    NTSTATUS status;
-
-    UNICODE_STRING      path;
-    OBJECT_ATTRIBUTES   oa;
-    IO_STATUS_BLOCK     iosb;
-    HANDLE              hFile;
-
-    LARGE_INTEGER       sysTime, localTime;
-    TIME_FIELDS         tf;
-
-    PAGED_CODE();
-
-    //
-    // Hard safety guards: prevent use-after-free crashes
-    //
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
-        return;
-    }
-
-    if (Format == NULL) {
-        return;
-    }
-
-    //
-    // SAFE pointer formatting:
-    // Convert all %p to 0x%I64X BEFORE calling VPrintf.
-    // This prevents the CRT from dereferencing freed pointers.
-    //
-    {
-        CHAR safeFmt[256];
-        SIZE_T i = 0, j = 0;
-
-        while (Format[i] != '\0' && j < sizeof(safeFmt) - 1) {
-            if (Format[i] == '%' && Format[i+1] == 'p') {
-                safeFmt[j++] = '0';
-                safeFmt[j++] = 'x';
-                safeFmt[j++] = '%';
-                safeFmt[j++] = 'I';
-                safeFmt[j++] = '6';
-                safeFmt[j++] = '4';
-                safeFmt[j++] = 'X';
-                i += 2;
-                continue;
-            }
-            safeFmt[j++] = Format[i++];
-        }
-        safeFmt[j] = '\0';
-
-        va_start(args, Format);
-        status = RtlStringCbVPrintfA(buffer, sizeof(buffer), safeFmt, args);
-        va_end(args);
-
-        if (!NT_SUCCESS(status)) {
-            return;
-        }
-    }
-
-    /* Get local time */
-    KeQuerySystemTime(&sysTime);
-    ExSystemTimeToLocalTime(&sysTime, &localTime);
-    RtlTimeToTimeFields(&localTime, &tf);
-
-    /* Format timestamp prefix: [DD/MM/YYYY, HH:MM AM/PM] */
-    {
-        CHAR ts[64];
-        ULONG hour = tf.Hour;
-        BOOLEAN pm = FALSE;
-
-        if (hour == 0) {
-            hour = 12;
-        } else if (hour == 12) {
-            pm = TRUE;
-        } else if (hour > 12) {
-            hour -= 12;
-            pm = TRUE;
-        }
-
-        RtlStringCbPrintfA(
-            ts,
-            sizeof(ts),
-            "[%02u/%02u/%04u, %02u:%02u %s] ",
-            tf.Day,
-            tf.Month,
-            tf.Year,
-            hour,
-            tf.Minute,
-            pm ? "PM" : "AM"
-        );
-
-        RtlStringCbPrintfA(
-            final,
-            sizeof(final),
-            "%s%s",
-            ts,
-            buffer
-        );
-    }
-
-    /* Open log file */
-    RtlInitUnicodeString(&path, L"\\SystemRoot\\System32\\i2cctrl.log");
-
-    InitializeObjectAttributes(
-        &oa,
-        &path,
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-        NULL,
-        NULL
-    );
-
-    status = ZwCreateFile(
-                 &hFile,
-                 FILE_APPEND_DATA | SYNCHRONIZE,
-                 &oa,
-                 &iosb,
-                 NULL,
-                 FILE_ATTRIBUTE_NORMAL,
-                 0,
-                 FILE_OPEN_IF,
-                 FILE_SYNCHRONOUS_IO_NONALERT,
-                 NULL,
-                 0
-             );
-
-    if (!NT_SUCCESS(status)) {
-        return;
-    }
-
-    /* Write timestamped line */
-    ZwWriteFile(
-        hFile,
-        NULL,
-        NULL,
-        NULL,
-        &iosb,
-        final,
-        (ULONG)strlen(final),
-        NULL,
-        NULL
-    );
-
-    ZwClose(hFile);
-
-    //
-    // Mirror to ETW/WPP without the timestamp prefix.
-    //
-    TraceEvents(
-        TRACE_LEVEL_INFORMATION,
-        TRACE_FLAG_BUS,
-        "%s",
-        buffer
-    );
-}
 
 /* -----------------------------------------------------------------------
  * I2cCtrl_StartDevice - XP/2003-safe, HAL-generic, C89-compliant.
@@ -5884,7 +5718,7 @@ I2cCtrl_RebindWorkerRoutine(
     }
 
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
-    KdPrint(("I2CCTRL: RebindWorkerRoutine invoked for FDO %p\n", devctx));
+    I2cCtrl_Log("RebindWorkerRoutine invoked for FDO %p\n", devctx);
 
     /* This worker is the one scheduled for rebind */
     devctx->HotplugPending = FALSE;
@@ -5905,7 +5739,7 @@ I2cCtrl_RebindWorkerRoutine(
     if (devctx->AcpiHandle == NULL || devctx->AcpiDeviceObject == NULL) {
         status = I2cCtrl_AcpiOpen(devctx);
         if (!NT_SUCCESS(status)) {
-            KdPrint(("I2CCTRL: RebindWorker: ACPI open failed (0x%08X)\n", status));
+            I2cCtrl_Log("RebindWorker: ACPI open failed (0x%08X)\n", status);
             /* Continue; some controllers may not require ACPI methods */
         }
     }
@@ -5935,8 +5769,8 @@ I2cCtrl_RebindWorkerRoutine(
         IoInvalidateDeviceRelations(devctx->PhysicalDevice, BusRelations);
     }
 
-    KdPrint(("I2CCTRL: RebindWorker: BusRelations invalidated for FDO %p (ACPI-safe)\n",
-             devctx));
+    I2cCtrl_Log("RebindWorker: BusRelations invalidated for FDO %p (ACPI-safe)\n",
+             devctx);
 }
 
 __inline BOOLEAN
@@ -6115,7 +5949,7 @@ I2cCtrl_MaskInterrupts(
     __try {
         (VOID)devctx->Ops->MaskInterrupts(devctx, newMask);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: MaskInterrupts: exception in HAL op\n"));
+        I2cCtrl_Log("MaskInterrupts: exception in HAL op\n");
         /* On exception, force interrupts disabled */
         devctx->IntrMask = 0U;
     }
@@ -6180,7 +6014,7 @@ I2cCtrl_ApplyBusTiming(
             }
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: ApplyBusTiming: exception in HAL ops\n"));
+        I2cCtrl_Log("ApplyBusTiming: exception in HAL ops\n");
     }
 
     /* Save abstract timing for policy/state tracking */
@@ -6236,7 +6070,7 @@ I2cCtrl_QueryTimingHigh(
         __try {
             status = devctx->Ops->GetStatus(devctx, &st);
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: QueryTimingHigh: exception in GetStatus\n"));
+            I2cCtrl_Log("QueryTimingHigh: exception in GetStatus\n");
             status = STATUS_ACCESS_VIOLATION;
         }
 
@@ -6296,7 +6130,7 @@ I2cCtrl_QueryTimingLow(
         __try {
             status = devctx->Ops->GetStatus(devctx, &st);
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: QueryTimingLow: exception in GetStatus\n"));
+            I2cCtrl_Log("QueryTimingLow: exception in GetStatus\n");
             status = STATUS_ACCESS_VIOLATION;
         }
 
@@ -6497,7 +6331,7 @@ for (tries = 0; tries < 3; tries++) {
 }
 
 if (!NT_SUCCESS(status)) {
-    KdPrint(("I2CCTRL: D0: enable controller failed status=0x%08lx\n", status));
+    I2cCtrl_Log("D0: enable controller failed status=0x%08lx\n", status);
 
     /* Fail-safe: force controller to D3 hard-off */
     I2cCtrl_SetControllerPowerD3(devctx);
@@ -6532,7 +6366,7 @@ if (!NT_SUCCESS(status)) {
         status = STATUS_SUCCESS;
 
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: D0: exception during resume\n"));
+        I2cCtrl_Log("D0: exception during resume\n");
         status = STATUS_ACCESS_VIOLATION;
         /* Fail-safe: hard-off to avoid undefined hardware state */
         I2cCtrl_SetControllerPowerD3(devctx);
@@ -6578,7 +6412,7 @@ I2cCtrl_SetControllerPowerD1(
         devctx->CurrentDevicePowerState = PowerDeviceD1;
 
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: D1: exception during transition\n"));
+        I2cCtrl_Log("D1: exception during transition\n");
         /* Defensive: fall back to deeper sleep */
         I2cCtrl_SetControllerPowerD2(devctx);
     }
@@ -6622,7 +6456,7 @@ I2cCtrl_SetControllerPowerD2(
         devctx->CurrentDevicePowerState = PowerDeviceD2;
 
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: D2: exception during transition\n"));
+        I2cCtrl_Log("D2: exception during transition\n");
         /* Defensive: hard-off on exception */
         I2cCtrl_SetControllerPowerD3(devctx);
     }
@@ -6681,7 +6515,7 @@ I2cCtrl_SetControllerPowerD3(
         devctx->CurrentDevicePowerState = PowerDeviceD3;
 
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: D3: exception during transition\n"));
+        I2cCtrl_Log("D3: exception during transition\n");
         /* Already attempting hard-off; nothing further to do safely */
     }
 }
@@ -6776,7 +6610,7 @@ I2cCtrl_SystemPowerCompletion(
                 break;
             }
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: SystemPowerCompletion: exception during device power set\n"));
+            I2cCtrl_Log("SystemPowerCompletion: exception during device power set\n");
             status = STATUS_ACCESS_VIOLATION;
         }
 
@@ -6818,7 +6652,7 @@ I2cCtrl_EnableWakeSignal(
         /* Ensure interrupts are enabled if wake is armed */
         I2cCtrl_MaskInterrupts(devctx, FALSE);
 
-        KdPrint(("I2CCTRL: Wake armed on IRQ vector %lu\n", devctx->IrqVector));
+        I2cCtrl_Log("Wake armed on IRQ vector %lu\n", devctx->IrqVector);
     }
 }
 
@@ -6841,7 +6675,7 @@ I2cCtrl_DisableWakeSignal(
     devctx->WakeArmed = FALSE;
     I2cCtrl_MaskInterrupts(devctx, TRUE);
 
-    KdPrint(("I2CCTRL: Wake disarmed on IRQ vector %lu\n", devctx->IrqVector));
+    I2cCtrl_Log("Wake disarmed on IRQ vector %lu\n", devctx->IrqVector);
 }
 
 /* ---------------------------------------------------------------------------
@@ -6908,7 +6742,7 @@ I2cCtrl_SaveFifoState(
     }
 
     /* No FIFO-specific fields in FDO; just quiesce HW to ensure a clean suspend */
-    KdPrint(("I2CCTRL: SaveFifoState: quiescing hardware (no FIFO fields)\n"));
+    I2cCtrl_Log("SaveFifoState: quiescing hardware (no FIFO fields)\n");
     I2cCtrl_QuiesceHardware(devctx);
 }
 
@@ -6922,7 +6756,7 @@ I2cCtrl_RestoreFifoState(
     }
 
     /* No FIFO-specific fields to restore; rely on normal D0 re-init paths */
-    KdPrint(("I2CCTRL: RestoreFifoState: nothing to restore (no FIFO fields)\n"));
+    I2cCtrl_Log("RestoreFifoState: nothing to restore (no FIFO fields)\n");
 }
 
 VOID
@@ -6941,8 +6775,8 @@ I2cCtrl_SaveQueueState(
 
     /* Snapshot burst counters under queue lock (fields exist) */
     KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
-    KdPrint(("I2CCTRL: SaveQueueState: bursts(H=%lu N=%lu L=%lu)\n",
-             devctx->BurstHigh, devctx->BurstNormal, devctx->BurstLow));
+    I2cCtrl_Log("SaveQueueState: bursts(H=%lu N=%lu L=%lu)\n",
+             devctx->BurstHigh, devctx->BurstNormal, devctx->BurstLow);
     KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 }
 
@@ -6968,7 +6802,7 @@ I2cCtrl_RestoreQueueState(
         }
     }
 
-    KdPrint(("I2CCTRL: RestoreQueueState: scheduler nudged if pending work\n"));
+    I2cCtrl_Log("RestoreQueueState: scheduler nudged if pending work\n");
 }
 
 VOID
@@ -6984,10 +6818,10 @@ I2cCtrl_SaveArbCounters(
 
     /* Snapshot available arbitration/backoff parameters (existing fields) */
     KeAcquireSpinLock(&devctx->BusLock, &oldIrql);
-    KdPrint(("I2CCTRL: SaveArbCounters: base=%lu max=%lu jitter=%lu\n",
+    I2cCtrl_Log("SaveArbCounters: base=%lu max=%lu jitter=%lu\n",
              devctx->ArbBackoffBaseUs,
              devctx->ArbBackoffMaxUs,
-             devctx->ArbBackoffJitterUs));
+             devctx->ArbBackoffJitterUs);
     KeReleaseSpinLock(&devctx->BusLock, oldIrql);
 }
 
@@ -7001,10 +6835,10 @@ I2cCtrl_RestoreArbCounters(
     }
 
     /* Nothing to restore beyond existing parameters; log for traceability */
-    KdPrint(("I2CCTRL: RestoreArbCounters: base=%lu max=%lu jitter=%lu\n",
+    I2cCtrl_Log("RestoreArbCounters: base=%lu max=%lu jitter=%lu\n",
              devctx->ArbBackoffBaseUs,
              devctx->ArbBackoffMaxUs,
-             devctx->ArbBackoffJitterUs));
+             devctx->ArbBackoffJitterUs);
 }
 
 VOID
@@ -7021,18 +6855,18 @@ I2cHal_EnableWakeSource(
         /* Controller-agnostic: rely on HAL ops if provided */
         if (devctx->Ops != NULL && devctx->Ops->EnableWakeSource != NULL) {
             devctx->Ops->EnableWakeSource(devctx, enable);
-            KdPrint(("I2CCTRL: EnableWakeSource: HAL op invoked (enable=%lu)\n",
-                     (ULONG)enable));
+            I2cCtrl_Log("EnableWakeSource: HAL op invoked (enable=%lu)\n",
+                     (ULONG)enable);
         } else {
             /* Fallback: no HAL hook, just log */
             if (enable != FALSE) {
-                KdPrint(("I2CCTRL: EnableWakeSource: requested enable, but no HAL support\n"));
+                I2cCtrl_Log("EnableWakeSource: requested enable, but no HAL support\n");
             } else {
-                KdPrint(("I2CCTRL: EnableWakeSource: requested disable, but no HAL support\n"));
+                I2cCtrl_Log("EnableWakeSource: requested disable, but no HAL support\n");
             }
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: EnableWakeSource: exception in HAL or fallback path\n"));
+        I2cCtrl_Log("EnableWakeSource: exception in HAL or fallback path\n");
     }
 }
 
@@ -7062,12 +6896,12 @@ I2cCtrl_ArmWake(
     }
 
     if (devctx->WakeCapable == FALSE) {
-        KdPrint(("I2CCTRL: ArmWake: device not wake-capable\n"));
+        I2cCtrl_Log("ArmWake: device not wake-capable\n");
         return;
     }
 
     if (devctx->WakeArmed != FALSE) {
-        KdPrint(("I2CCTRL: ArmWake: already armed\n"));
+        I2cCtrl_Log("ArmWake: already armed\n");
         return;
     }
 
@@ -7093,7 +6927,7 @@ I2cCtrl_ArmWake(
         __try {
             devctx->Ops->EnableWakeSource(devctx, TRUE);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: ArmWake: exception enabling wake source\n"));
+            I2cCtrl_Log("ArmWake: exception enabling wake source\n");
         }
     }
 
@@ -7111,10 +6945,10 @@ I2cCtrl_ArmWake(
     devctx->WaitWakeIrp = waitWakeIrp;
     devctx->WakeArmed   = TRUE;
 
-    KdPrint(("I2CCTRL: ArmWake: WaitWake(IRP=%p) for S%lu (ACPI%S)\n",
+    I2cCtrl_Log("ArmWake: WaitWake(IRP=%p) for S%lu (ACPI%S)\n",
              waitWakeIrp,
              (ULONG)targetS,
-             (devctx->AcpiIs20Plus != FALSE) ? "2.0+" : "1.0b"));
+             (devctx->AcpiIs20Plus != FALSE) ? "2.0+" : "1.0b");
 }
 
 VOID
@@ -7130,7 +6964,7 @@ I2cCtrl_DisarmWake(
 
     if (devctx->WakeCapable == FALSE) {
         I2cCtrl_MaskInterrupts(devctx, FALSE);
-        KdPrint(("I2CCTRL: DisarmWake: device not wake-capable\n"));
+        I2cCtrl_Log("DisarmWake: device not wake-capable\n");
         return;
     }
 
@@ -7138,7 +6972,7 @@ I2cCtrl_DisarmWake(
     ww = devctx->WaitWakeIrp;
     if (ww != NULL) {
         devctx->WaitWakeIrp = NULL;
-        KdPrint(("I2CCTRL: DisarmWake: clearing WaitWake IRP reference (was %p)\n", ww));
+        I2cCtrl_Log("DisarmWake: clearing WaitWake IRP reference (was %p)\n", ww);
     }
 
     /* Mark wake as disarmed */
@@ -7149,15 +6983,15 @@ I2cCtrl_DisarmWake(
         __try {
             devctx->Ops->EnableWakeSource(devctx, FALSE);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: DisarmWake: exception disabling wake source\n"));
+            I2cCtrl_Log("DisarmWake: exception disabling wake source\n");
         }
     }
 
     /* Re-enable normal interrupts regardless of ACPI version */
     I2cCtrl_MaskInterrupts(devctx, FALSE);
 
-    KdPrint(("I2CCTRL: DisarmWake: wake disarmed, interrupts restored (ACPI%S)\n",
-             (devctx->AcpiIs20Plus != FALSE) ? "2.0+" : "1.0b"));
+    I2cCtrl_Log("DisarmWake: wake disarmed, interrupts restored (ACPI%S)\n",
+             (devctx->AcpiIs20Plus != FALSE) ? "2.0+" : "1.0b");
 }
 
 /* -----------------------------------------------------------------------
@@ -7258,7 +7092,7 @@ I2cCtrl_CompleteWakeIfArmed(
             devctx->CurrentDevicePowerState = PowerDeviceD0;
             devctx->SystemPowerState        = PowerSystemWorking;
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: CompleteWakeIfArmed: exception completing wake IRP\n"));
+            I2cCtrl_Log("CompleteWakeIfArmed: exception completing wake IRP\n");
         }
     }
 }
@@ -7457,7 +7291,7 @@ I2cCtrl_QueueKick(
     ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
 
     if (devctx == NULL) {
-        KdPrint(("I2CCTRL: QueueKick: invalid devctx\n"));
+        I2cCtrl_Log("QueueKick: invalid devctx\n");
         return;
     }
 
@@ -7466,7 +7300,7 @@ I2cCtrl_QueueKick(
 
     if (queued == FALSE) {
         /* DPC already queued or failed to insert */
-        KdPrint(("I2CCTRL: QueueKick: DPC already queued or failed\n"));
+        I2cCtrl_Log("QueueKick: DPC already queued or failed\n");
     }
 
     /* If you have a dedicated worker thread, signal its event here instead */
@@ -7501,7 +7335,7 @@ I2cCtrl_EnqueueSmbusIrp(
     ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
 
     if (devctx == NULL || Irp == NULL) {
-        KdPrint(("I2CCTRL: EnqueueSmbusIrp: invalid devctx or Irp\n"));
+        I2cCtrl_Log("EnqueueSmbusIrp: invalid devctx or Irp\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -7510,7 +7344,7 @@ I2cCtrl_EnqueueSmbusIrp(
                                                 sizeof(SMBUS_REQUEST),
                                                 'qmbS');
     if (req == NULL) {
-        KdPrint(("I2CCTRL: EnqueueSmbusIrp: allocation failed\n"));
+        I2cCtrl_Log("EnqueueSmbusIrp: allocation failed\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -7535,7 +7369,7 @@ I2cCtrl_EnqueueSmbusIrp(
             RtlCopyMemory(req->Buffer, Buffer, copyLen);
             req->Length = copyLen;
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            KdPrint(("I2CCTRL: EnqueueSmbusIrp: exception copying buffer\n"));
+            I2cCtrl_Log("EnqueueSmbusIrp: exception copying buffer\n");
             ExFreePoolWithTag(req, 'qmbS');
             return STATUS_ACCESS_VIOLATION;
         }
@@ -7651,9 +7485,7 @@ I2cCtrl_DispatchIoctl(
 
     ASSERT(KeGetCurrentIrql() <= DISPATCH_LEVEL);
 
-    I2cCtrl_Log("DispatchIoctl: enter DevExt=%p Irp=%p Ioctl=0x%08lx",
-                devctx, Irp,
-                (isl ? (ULONG)isl->Parameters.DeviceIoControl.IoControlCode : 0UL));
+    I2cCtrl_Log("DispatchIoctl: enter DevExt=%p Irp=%p Ioctl=0x%08lx",devctx, Irp, (isl ? (ULONG)isl->Parameters.DeviceIoControl.IoControlCode : 0UL));
 
     if (devctx == NULL || isl == NULL) {
         I2cCtrl_Log("DispatchIoctl: invalid context DevExt=%p Isl=%p", devctx, isl);
@@ -8495,10 +8327,10 @@ VOID InitDefault(VOID)
 {
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);  // XP-safe: init only at PASSIVE_LEVEL
 
-    KdPrint(("I2CCTRL: Initializing default safe register map\n"));
+    I2cCtrl_Log("Initializing default safe register map\n");
 
     if (&g_CurrentRegMap == NULL) {
-        KdPrint(("I2CCTRL: InitDefault: g_CurrentRegMap NULL\n"));
+        I2cCtrl_Log("InitDefault: g_CurrentRegMap NULL\n");
         return;
     }
 
@@ -8531,11 +8363,11 @@ I2cCtrl_GenericInit(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (&g_CurrentRegMap == NULL) {
-        KdPrint(("I2CCTRL: %ws: g_CurrentRegMap NULL\n", name));
+        I2cCtrl_Log("%ws: g_CurrentRegMap NULL\n", name);
         return;
     }
 
-    KdPrint(("I2CCTRL: Initializing I2C Controller %ws\n", name));
+    I2cCtrl_Log("Initializing I2C Controller %ws\n", name);
 
     g_CurrentRegMap.ControlReg = controlOffset;
     g_CurrentRegMap.StatusReg  = statusOffset;
@@ -8546,15 +8378,15 @@ I2cCtrl_GenericInit(
     g_CurrentRegMap.BsodQuirks = bsodQuirks;
 
     if (quirks != QUIRK_NONE) {
-        KdPrint(("I2CCTRL: %ws: functional quirks mask=0x%08lx\n", name, quirks));
+        I2cCtrl_Log("%ws: functional quirks mask=0x%08lx\n", name, quirks);
     } else {
-        KdPrint(("I2CCTRL: %ws: no functional quirks\n", name));
+        I2cCtrl_Log("%ws: no functional quirks\n", name);
     }
 
     if (bsodQuirks != BSOD_NONE) {
-        KdPrint(("I2CCTRL: %ws: BSOD quirks mask=0x%08lx\n", name, bsodQuirks));
+        I2cCtrl_Log("%ws: BSOD quirks mask=0x%08lx\n", name, bsodQuirks);
     } else {
-        KdPrint(("I2CCTRL: %ws: no BSOD quirks\n", name));
+        I2cCtrl_Log("%ws: no BSOD quirks\n", name);
     }
 }
 
@@ -8567,8 +8399,8 @@ I2cCtrl_InitById(PCWSTR hwid)
     size_t i;
 
     if (hwid == NULL) {
-        KdPrint(("I2CCTRL: InitById: NULL HWID provided\n"));
-        g_CurrentRegMap.BsodQuirks = BSOD_NONE;
+        I2cCtrl_Log("InitById: NULL HWID provided\n");
+		g_CurrentRegMap.BsodQuirks = BSOD_NONE;
         return;
     }
 
@@ -8588,12 +8420,12 @@ I2cCtrl_InitById(PCWSTR hwid)
             /* Apply BSOD-tweak-workarounds if present */
             g_CurrentRegMap.BsodQuirks = g_I2cControllers[i].BsodQuirks;
             if (g_I2cControllers[i].BsodQuirks != BSOD_NONE) {
-                KdPrint(("I2CCTRL: InitById: BSOD quirks applied (mask=0x%08lx) for %S\n",
+                I2cCtrl_Log("InitById: BSOD quirks applied (mask=0x%08lx) for %S\n",
                          g_I2cControllers[i].BsodQuirks,
-                         g_I2cControllers[i].PciId));
+                         g_I2cControllers[i].PciId);
             } else {
-                KdPrint(("I2CCTRL: InitById: no BSOD quirks for %S\n",
-                         g_I2cControllers[i].PciId));
+                I2cCtrl_Log("InitById: no BSOD quirks for %S\n",
+                         g_I2cControllers[i].PciId);
             }
 
             return;
@@ -8609,12 +8441,12 @@ I2cCtrl_InitById(PCWSTR hwid)
             L"PCI\\CC_0C8000"
         );
         g_CurrentRegMap.BsodQuirks = BSOD_NONE;
-        KdPrint(("I2CCTRL: InitById: generic class ID matched, no BSOD quirks\n"));
+        I2cCtrl_Log("InitById: generic class ID matched, no BSOD quirks\n");
         return;
     }
 
     /* Unknown controller */
-    KdPrint(("I2CCTRL: InitById: Unknown controller HWID %ws\n", hwid));
+    I2cCtrl_Log("InitById: Unknown controller HWID %ws\n", hwid);
     g_CurrentRegMap.BsodQuirks = BSOD_NONE;
 }
 
@@ -8642,7 +8474,7 @@ I2cCtrlIdentifyAndInitController(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (devctx == NULL || devctx->PhysicalDevice == NULL) {
-        KdPrint(("I2CCTRL: IdentifyInit: invalid devctx/PhysicalDevice\n"));
+        I2cCtrl_Log("IdentifyInit: invalid devctx/PhysicalDevice\n");
         InitDefault();
         return STATUS_INVALID_PARAMETER;
     }
@@ -8663,7 +8495,7 @@ I2cCtrlIdentifyAndInitController(
         dynLen = length;
         dynBuf = ExAllocatePoolWithTag(NonPagedPool, dynLen, TAG_I2C_MISC);
         if (dynBuf == NULL) {
-            KdPrint(("I2CCTRL: IdentifyInit: alloc %lu failed, using defaults\n", dynLen));
+            I2cCtrl_Log("IdentifyInit: alloc %lu failed, using defaults\n", dynLen);
             InitDefault();
             return STATUS_INSUFFICIENT_RESOURCES;
         }
@@ -8674,13 +8506,13 @@ I2cCtrlIdentifyAndInitController(
                                      dynBuf,
                                      &dynLen);
         if (!NT_SUCCESS(status)) {
-            KdPrint(("I2CCTRL: IdentifyInit: IoGetDeviceProperty requery failed 0x%08X\n", status));
+            I2cCtrl_Log("IdentifyInit: IoGetDeviceProperty requery failed 0x%08X\n", status);
             ExFreePoolWithTag(dynBuf, TAG_I2C_MISC);
             InitDefault();
             return STATUS_SUCCESS;
         }
     } else if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: IdentifyInit: property query failed 0x%08X\n", status));
+        I2cCtrl_Log("IdentifyInit: property query failed 0x%08X\n", status);
         InitDefault();
         return STATUS_SUCCESS;
     }
@@ -8694,7 +8526,7 @@ I2cCtrlIdentifyAndInitController(
     }
 
     if (bytes < sizeof(WCHAR) * 2) {
-        KdPrint(("I2CCTRL: IdentifyInit: MULTI_SZ too short, using defaults\n"));
+        I2cCtrl_Log("IdentifyInit: MULTI_SZ too short, using defaults\n");
         if (dynBuf) ExFreePoolWithTag(dynBuf, TAG_I2C_MISC);
         InitDefault();
         return STATUS_SUCCESS;
@@ -8732,26 +8564,26 @@ I2cCtrlIdentifyAndInitController(
                 /* Detect ACPI version from quirks */
                 if ((g_I2cControllers[i].Quirks & QUIRK_ACPI20) != 0U) {
                     devctx->AcpiIs20Plus = TRUE;
-                    KdPrint(("I2CCTRL: IdentifyInit: ACPI 2.0+ controller matched (%S)\n",
-                             g_I2cControllers[i].PciId));
+                    I2cCtrl_Log("IdentifyInit: ACPI 2.0+ controller matched (%S)\n",
+                             g_I2cControllers[i].PciId);
                 } else if ((g_I2cControllers[i].Quirks & QUIRK_ACPI10) != 0U) {
                     devctx->AcpiIs20Plus = FALSE;
-                    KdPrint(("I2CCTRL: IdentifyInit: ACPI 1.0b forced by quirk (%S)\n",
-                             g_I2cControllers[i].PciId));
+                    I2cCtrl_Log("IdentifyInit: ACPI 1.0b forced by quirk (%S)\n",
+                             g_I2cControllers[i].PciId);
                 } else {
                     devctx->AcpiIs20Plus = FALSE;
-                    KdPrint(("I2CCTRL: IdentifyInit: ACPI 1.0b fallback controller matched (%S)\n",
-                             g_I2cControllers[i].PciId));
+                    I2cCtrl_Log("IdentifyInit: ACPI 1.0b fallback controller matched (%S)\n",
+                             g_I2cControllers[i].PciId);
                 }
 
                 /* Apply BSOD-tweak-workarounds if present */
                 devctx->BsodQuirks = g_I2cControllers[i].BsodQuirks;
                 if (g_I2cControllers[i].BsodQuirks != BSOD_NONE) {
-                    KdPrint(("I2CCTRL: IdentifyInit: BSOD quirks applied (mask=0x%08lx)\n",
-                             g_I2cControllers[i].BsodQuirks));
+                    I2cCtrl_Log("IdentifyInit: BSOD quirks applied (mask=0x%08lx)\n",
+                             g_I2cControllers[i].BsodQuirks);
                 } else {
-                    KdPrint(("I2CCTRL: IdentifyInit: no BSOD quirks for %S\n",
-                             g_I2cControllers[i].PciId));
+                    I2cCtrl_Log("IdentifyInit: no BSOD quirks for %S\n",
+                             g_I2cControllers[i].PciId);
                 }
 
                 break;
@@ -8769,7 +8601,7 @@ I2cCtrlIdentifyAndInitController(
     }
 
     if (!matched) {
-        KdPrint(("I2CCTRL: IdentifyInit: no match in HWIDs, applying defaults (ACPI 1.0b fallback)\n"));
+        I2cCtrl_Log("IdentifyInit: no match in HWIDs, applying defaults (ACPI 1.0b fallback)\n");
         InitDefault();
         devctx->AcpiIs20Plus = FALSE;
         devctx->BsodQuirks   = BSOD_NONE;
@@ -9157,11 +8989,11 @@ I2cHidApplyQuirks(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (!childDx || !hidMatch || !hidMatch->HidId) {
-        I2cCtrl_Log("I2CHID: ApplyQuirks: invalid parameters\n");
+        I2cCtrl_Log("ApplyQuirks: invalid parameters\n");
         return;
     }
 
-    I2cCtrl_Log("I2CHID: Applying HID quirks for %ws\n", hidMatch->HidId);
+    I2cCtrl_Log("Applying HID quirks for %ws\n", hidMatch->HidId);
 
     //
     // All HID-over-I2C devices are touchpads unless flagged otherwise
@@ -9177,81 +9009,81 @@ I2cHidApplyQuirks(
         case HID_QUIRK_ELAN:
             childDx->HidExtraDelayUs = 200;
             childDx->HidNeedsAlignmentFix = TRUE;
-            I2cCtrl_Log("I2CHID: ELAN quirks applied\n");
+            I2cCtrl_Log("ELAN quirks applied\n");
             break;
 
         case HID_QUIRK_SYNAPTICS:
             childDx->HidSynapticsFix = TRUE;
             childDx->HidPacketHeaderSize = 4;
-            I2cCtrl_Log("I2CHID: Synaptics quirks applied\n");
+            I2cCtrl_Log("Synaptics quirks applied\n");
             break;
 
         case HID_QUIRK_ASUS:
             childDx->HidDebounceFix = TRUE;
             childDx->HidExtraDelayUs = 150;
-            I2cCtrl_Log("I2CHID: ASUS quirks applied\n");
+            I2cCtrl_Log("ASUS quirks applied\n");
             break;
 
         case HID_QUIRK_GOODIX:
             childDx->HidSlowRead = TRUE;
             childDx->HidPacketHeaderSize = 2;
-            I2cCtrl_Log("I2CHID: Goodix quirks applied\n");
+            I2cCtrl_Log("Goodix quirks applied\n");
             break;
 
         case HID_QUIRK_RAYDIUM:
             childDx->HidPacketHeaderSize = 2;
             childDx->HidRaydiumMode = TRUE;
-            I2cCtrl_Log("I2CHID: Raydium quirks applied\n");
+            I2cCtrl_Log("Raydium quirks applied\n");
             break;
 
         case HID_QUIRK_FOCALTECH:
             childDx->HidScaleCoordinates = TRUE;
-            I2cCtrl_Log("I2CHID: FocalTech quirks applied\n");
+            I2cCtrl_Log("FocalTech quirks applied\n");
             break;
 
         case HID_QUIRK_CYPRESS:
             childDx->HidFilterInterrupts = TRUE;
-            I2cCtrl_Log("I2CHID: Cypress quirks applied\n");
+            I2cCtrl_Log("Cypress quirks applied\n");
             break;
 
         case HID_QUIRK_HIMAX:
             childDx->HidHimaxMode = TRUE;
             childDx->HidPacketHeaderSize = 3;
-            I2cCtrl_Log("I2CHID: Himax quirks applied\n");
+            I2cCtrl_Log("Himax quirks applied\n");
             break;
 
         case HID_QUIRK_PIXART:
             childDx->HidPixartChecksum = TRUE;
-            I2cCtrl_Log("I2CHID: PixArt quirks applied\n");
+            I2cCtrl_Log("PixArt quirks applied\n");
             break;
 
         case HID_QUIRK_SILEAD:
             childDx->HidExtraDelayUs = 300;
             childDx->HidSileadMode = TRUE;
-            I2cCtrl_Log("I2CHID: Silead quirks applied\n");
+            I2cCtrl_Log("Silead quirks applied\n");
             break;
 
         case HID_QUIRK_ATMEL:
             childDx->HidAtmelHeaderFix = TRUE;
-            I2cCtrl_Log("I2CHID: Atmel quirks applied\n");
+            I2cCtrl_Log("Atmel quirks applied\n");
             break;
 
         case HID_QUIRK_PRIMAX:
             childDx->HidPrimaxMode = TRUE;
-            I2cCtrl_Log("I2CHID: Primax quirks applied\n");
+            I2cCtrl_Log("Primax quirks applied\n");
             break;
 
         case HID_QUIRK_CHICONY:
             childDx->HidDebounceFix = TRUE;
-            I2cCtrl_Log("I2CHID: Chicony quirks applied\n");
+            I2cCtrl_Log("Chicony quirks applied\n");
             break;
 
         default:
-            I2cCtrl_Log("I2CHID: No vendor-specific quirks\n");
+            I2cCtrl_Log("No vendor-specific quirks\n");
             break;
     }
 
-    I2cCtrl_Log("I2CHID: HID quirks applied successfully\n");
+    I2cCtrl_Log("HID quirks applied successfully\n");
 }
 
 //
@@ -9273,29 +9105,29 @@ I2cCtrl_WriteRegisterSafe(
     reg     = NULL;
 
     if (Dx == NULL) {
-        KdPrint(("I2CCTRL: WriteRegisterSafe NULL Dx\n"));
+        I2cCtrl_Log("WriteRegisterSafe NULL Dx\n");
         return;
     }
 
     if (Dx->Removed || Dx->Stopping || !Dx->Started) {
-        KdPrint(("I2CCTRL: WriteRegisterSafe inactive "
+        I2cCtrl_Log("WriteRegisterSafe inactive "
                  "(Removed=%lu Stopping=%lu Started=%lu)\n",
-                 Dx->Removed, Dx->Stopping, Dx->Started));
+                 Dx->Removed, Dx->Stopping, Dx->Started);
         Dx->HardwareFailure = TRUE;
         return;
     }
 
     if (Dx->Mmio == NULL) {
-        KdPrint(("I2CCTRL: WriteRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio));
+        I2cCtrl_Log("WriteRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
         Dx->HardwareFailure = TRUE;
         return;
     }
 
     if ((Offset + sizeof(ULONG)) > Dx->MmioLength) {
-        KdPrint(("I2CCTRL: WriteRegisterSafe OOB Off=0x%lx Len=%lu Val=0x%lx\n",
+        I2cCtrl_Log("WriteRegisterSafe OOB Off=0x%lx Len=%lu Val=0x%lx\n",
                  Offset,
                  Dx->MmioLength,
-                 Value));
+                 Value);
         Dx->HardwareFailure = TRUE;
         return;
     }
@@ -9306,10 +9138,10 @@ I2cCtrl_WriteRegisterSafe(
         WRITE_REGISTER_ULONG((PULONG)reg, Value);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         NTSTATUS code = GetExceptionCode();
-        KdPrint(("I2CCTRL: WriteRegisterSafe SEH Off=0x%lx Val=0x%lx Code=0x%08lx\n",
+        I2cCtrl_Log("WriteRegisterSafe SEH Off=0x%lx Val=0x%lx Code=0x%08lx\n",
                  Offset,
                  Value,
-                 code));
+                 code);
         Dx->HardwareFailure = TRUE;
     }
     KeReleaseSpinLock(&Dx->HwLock, oldIrql);
@@ -9331,28 +9163,28 @@ I2cCtrl_ReadRegisterSafe(
     value   = 0U;
 
     if (Dx == NULL) {
-        KdPrint(("I2CCTRL: ReadRegisterSafe NULL Dx\n"));
+        I2cCtrl_Log("ReadRegisterSafe NULL Dx\n");
         return 0U;
     }
 
     if (Dx->Removed || Dx->Stopping || !Dx->Started) {
-        KdPrint(("I2CCTRL: ReadRegisterSafe inactive "
+        I2cCtrl_Log("ReadRegisterSafe inactive "
                  "(Removed=%lu Stopping=%lu Started=%lu)\n",
-                 Dx->Removed, Dx->Stopping, Dx->Started));
+                 Dx->Removed, Dx->Stopping, Dx->Started);
         Dx->HardwareFailure = TRUE;
         return 0U;
     }
 
     if (Dx->Mmio == NULL) {
-        KdPrint(("I2CCTRL: ReadRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio));
+        I2cCtrl_Log("ReadRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
         Dx->HardwareFailure = TRUE;
         return 0U;
     }
 
     if ((Offset + sizeof(ULONG)) > Dx->MmioLength) {
-        KdPrint(("I2CCTRL: ReadRegisterSafe OOB Off=0x%lx Len=%lu\n",
+        I2cCtrl_Log("ReadRegisterSafe OOB Off=0x%lx Len=%lu\n",
                  Offset,
-                 Dx->MmioLength));
+                 Dx->MmioLength);
         Dx->HardwareFailure = TRUE;
         return 0U;
     }
@@ -9363,9 +9195,9 @@ I2cCtrl_ReadRegisterSafe(
         value = READ_REGISTER_ULONG((PULONG)reg);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         NTSTATUS code = GetExceptionCode();
-        KdPrint(("I2CCTRL: ReadRegisterSafe SEH Off=0x%lx Code=0x%08lx\n",
+        I2cCtrl_Log("ReadRegisterSafe SEH Off=0x%lx Code=0x%08lx\n",
                  Offset,
-                 code));
+                 code);
         Dx->HardwareFailure = TRUE;
         value = 0U;
     }
@@ -9496,7 +9328,7 @@ I2cCtrlSetupInterrupts(
     NTSTATUS status;
 
     if (devctx->InterruptObject) {
-        KdPrint(("I2CCTRL: Interrupt already connected\n"));
+        I2cCtrl_Log("Interrupt already connected\n");
         return STATUS_SUCCESS;
     }
 
@@ -9521,13 +9353,13 @@ I2cCtrlSetupInterrupts(
              );
 
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: IoConnectInterrupt failed (0x%08X)\n", status));
+        I2cCtrl_Log("IoConnectInterrupt failed (0x%08X)\n", status);
         devctx->InterruptObject = NULL;
         return status;
     }
 
-    KdPrint(("I2CCTRL: Interrupt connected (vector=%lu, IRQL=%u)\n",
-             (unsigned long)devctx->IrqVector, (unsigned)devctx->IrqLevel));
+    I2cCtrl_Log("Interrupt connected (vector=%lu, IRQL=%u)\n",
+             (unsigned long)devctx->IrqVector, (unsigned)devctx->IrqLevel);
 
     return STATUS_SUCCESS;
 }
@@ -9543,7 +9375,7 @@ I2cCtrlTeardownInterrupt(
     if (devctx->InterruptObject) {
         IoDisconnectInterrupt(devctx->InterruptObject);
         devctx->InterruptObject = NULL;
-        KdPrint(("I2CCTRL: Interrupt disconnected\n"));
+        I2cCtrl_Log("Interrupt disconnected\n");
     }
 }
 
@@ -9632,7 +9464,7 @@ I2cCtrlInitHidChildIds(
     RtlInitUnicodeString(&childDx->Desc.InstanceId, instBuf);
     RtlInitUnicodeString(&childDx->InstanceId,      instBuf);
 
-    childDx->Desc.IfGuid    = GUID_I2CCTRL_CHILD_IFACE;
+    childDx->Desc.IfGuid    = GUID_I2cCtrl_CHILD_IFACE;
     childDx->Desc.IfEnabled = TRUE;
 
     return STATUS_SUCCESS;
@@ -9762,15 +9594,15 @@ I2cCtrlTransfer(
         return STATUS_INVALID_PARAMETER;
     }
     if (fdoExt->Ops == NULL || fdoExt->Caps == NULL) {
-        KdPrint(("I2CCTRL: Transfer: missing Ops/Caps\n"));
+        I2cCtrl_Log("Transfer: missing Ops/Caps\n");
         return STATUS_DEVICE_NOT_READY;
     }
     if (fdoExt->Caps->TxFifoDepth == 0U) {
-        KdPrint(("I2CCTRL: Transfer: invalid TxFifoDepth\n"));
+        I2cCtrl_Log("Transfer: invalid TxFifoDepth\n");
         return STATUS_DEVICE_NOT_READY;
     }
     if (fdoExt->HardwareFailure) {
-        KdPrint(("I2CCTRL: Transfer: hardware flagged failed; aborting\n"));
+        I2cCtrl_Log("Transfer: hardware flagged failed; aborting\n");
         return STATUS_IO_DEVICE_ERROR;
     }
 
@@ -9790,7 +9622,7 @@ I2cCtrlTransfer(
         if (canSetTarget) {
             st = fdoExt->Ops->SetTarget7bit(fdoExt, fdoExt->TargetAddress & 0x7FU);
             if (!NT_SUCCESS(st)) {
-                KdPrint(("I2CCTRL: Transfer: SetTarget7bit failed 0x%08X\n", st));
+                I2cCtrl_Log("Transfer: SetTarget7bit failed 0x%08X\n", st);
                 __leave;
             }
         }
@@ -9799,7 +9631,7 @@ I2cCtrlTransfer(
             enabled = TRUE;
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) {
-        KdPrint(("I2CCTRL: Transfer: exception in enable/target\n"));
+        I2cCtrl_Log("Transfer: exception in enable/target\n");
         st = STATUS_ACCESS_VIOLATION;
     }
     if (!NT_SUCCESS(st)) {
@@ -9813,7 +9645,7 @@ I2cCtrlTransfer(
     /* Transfer data bytes */
     if (Write) {
         if (!canWrite || !haveStatus) {
-            KdPrint(("I2CCTRL: Transfer: write/status ops not available\n"));
+            I2cCtrl_Log("Transfer: write/status ops not available\n");
             st = STATUS_NOT_SUPPORTED;
             goto Cleanup;
         }
@@ -9825,7 +9657,7 @@ I2cCtrlTransfer(
                 __try {
                     st = fdoExt->Ops->GetStatus(fdoExt, &hwst);
                 } __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in GetStatus (TX)\n"));
+                    I2cCtrl_Log("Transfer: exception in GetStatus (TX)\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
                 if (!NT_SUCCESS(st)) {
@@ -9845,7 +9677,7 @@ I2cCtrlTransfer(
             __try {
                 st = fdoExt->Ops->IssueWriteByte(fdoExt, Buffer[i]);
             } __except(EXCEPTION_EXECUTE_HANDLER) {
-                KdPrint(("I2CCTRL: Transfer: exception in IssueWriteByte\n"));
+                I2cCtrl_Log("Transfer: exception in IssueWriteByte\n");
                 st = STATUS_ACCESS_VIOLATION;
             }
             if (!NT_SUCCESS(st)) {
@@ -9854,7 +9686,7 @@ I2cCtrlTransfer(
         }
     } else {
         if (!haveStatus || (!canEmitRead && !canRead && !canReadSafe)) {
-            KdPrint(("I2CCTRL: Transfer: read ops not available\n"));
+            I2cCtrl_Log("Transfer: read ops not available\n");
             st = STATUS_NOT_SUPPORTED;
             goto Cleanup;
         }
@@ -9866,7 +9698,7 @@ I2cCtrlTransfer(
                 __try {
                     st = fdoExt->Ops->GetStatus(fdoExt, &hwst);
                 } __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in GetStatus (emit)\n"));
+                    I2cCtrl_Log("Transfer: exception in GetStatus (emit)\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
                 if (!NT_SUCCESS(st)) {
@@ -9886,7 +9718,7 @@ I2cCtrlTransfer(
             if (canEmitRead) {
                 __try { (VOID)fdoExt->Ops->EmitReadRequest(fdoExt); }
                 __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in EmitReadRequest\n"));
+                    I2cCtrl_Log("Transfer: exception in EmitReadRequest\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
                 if (!NT_SUCCESS(st)) {
@@ -9900,7 +9732,7 @@ I2cCtrlTransfer(
                 __try {
                     st = fdoExt->Ops->GetStatus(fdoExt, &hwst);
                 } __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in GetStatus (RX)\n"));
+                    I2cCtrl_Log("Transfer: exception in GetStatus (RX)\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
                 if (!NT_SUCCESS(st)) {
@@ -9921,14 +9753,14 @@ I2cCtrlTransfer(
                 __try {
                     st = fdoExt->Ops->ReadRxByte(fdoExt, &Buffer[i]);
                 } __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in ReadRxByte\n"));
+                    I2cCtrl_Log("Transfer: exception in ReadRxByte\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
             } else if (canReadSafe) {
                 __try {
                     st = fdoExt->Ops->ReadRxByteSafe(fdoExt, &Buffer[i]);
                 } __except(EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: Transfer: exception in ReadRxByteSafe\n"));
+                    I2cCtrl_Log("Transfer: exception in ReadRxByteSafe\n");
                     st = STATUS_ACCESS_VIOLATION;
                 }
             } else {
@@ -10373,8 +10205,8 @@ I2cCtrl_ReadBlock(
         return STATUS_INVALID_DEVICE_STATE;
     }
     if (fdoExt == NULL || buffer == NULL || length == 0U || fdoExt->Ops == NULL) {
-        KdPrint(("I2CCTRL: ReadBlock invalid parameters fdoExt=%p buf=%p len=%lu\n",
-                 fdoExt, buffer, length));
+        I2cCtrl_Log("ReadBlock invalid parameters fdoExt=%p buf=%p len=%lu\n",
+                 fdoExt, buffer, length);
         return STATUS_INVALID_PARAMETER;
     }
     if (!fdoExt->Enabled) {
@@ -11546,7 +11378,7 @@ I2cCtrl_FlushTxFifoBounded(
     }
     status = I2cCtrl_WaitForEnableState(devctx, FALSE, 500U);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: FlushTxFifoBounded: disable did not latch\n"));
+        I2cCtrl_Log("FlushTxFifoBounded: disable did not latch\n");
         devctx->HardwareFailure = TRUE;
         return;
     }
@@ -11846,14 +11678,14 @@ I2cCtrl_AcpiCloseHandle(PVOID AcpiHandle)
         status = s_AcpiClose(AcpiHandle);
 
         if (!NT_SUCCESS(status)) {
-            DbgPrint("I2CCTRL: AcpiCloseHandle(%p) failed, status=0x%08X\n",
+            DbgPrint("AcpiCloseHandle(%p) failed, status=0x%08X\n",
                      AcpiHandle, status);
         } else {
-            DbgPrint("I2CCTRL: AcpiCloseHandle(%p) succeeded\n",
+            DbgPrint("AcpiCloseHandle(%p) succeeded\n",
                      AcpiHandle);
         }
     } else {
-        DbgPrint("I2CCTRL: AcpiCloseHandle unavailable; cannot close %p\n",
+        DbgPrint("AcpiCloseHandle unavailable; cannot close %p\n",
                  AcpiHandle);
     }
 }

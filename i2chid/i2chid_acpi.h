@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   i2chid_acpi.h - ACPI parsing helpers for HID-over-I2C (PNP0C50) on XP/2003
+   I2CHID_acpi.h - ACPI parsing helpers for HID-over-I2C (PNP0C50) on XP/2003
    ----------------------------------------------------------------------- */
 
 #ifndef _I2CHID_ACPI_H_
@@ -7,9 +7,9 @@
 
 #include <acpiioct.h>   /* <-- REQUIRED: XP ACPI structures */
 
-#include "i2chid_spinlock_fix.h"
+#include "I2CHID_spinlock_fix.h"
 #include "..\i2cctrl\i2cctrl_DPI.h"
-#include "i2chid_DPI.h"
+#include "I2CHID_DPI.h"
 
 /*
  * ACPI method evaluation IOCTL (XP/2003).
@@ -22,7 +22,7 @@
 
 /*
  * HID-over-I2C _DSM UUID declaration.
- * The actual GUID is defined once in i2chid_guids.c with DEFINE_GUID.
+ * The actual GUID is defined once in I2CHID_guids.c with DEFINE_GUID.
  */
 EXTERN_C const GUID I2C_HID_DSM_GUID;
 
@@ -36,7 +36,7 @@ EXTERN_C const GUID I2C_HID_DSM_GUID;
  * Public entry: parse ACPI for PNP0C50 and populate DPI context.
  */
 NTSTATUS
-I2cHid_AcpiParsePnp0C50(
+I2CHID_AcpiParsePnp0C50(
     IN PDEVICE_OBJECT PhysicalDeviceObject,
     IN PCM_RESOURCE_LIST RawResources,
     IN PCM_RESOURCE_LIST TranslatedResources,
@@ -52,7 +52,7 @@ typedef struct _I2C_XP_REQUEST {
 } I2C_XP_REQUEST, *PI2C_XP_REQUEST;
 
 NTSTATUS
-I2cHid_QueryHidDescriptorLength(
+I2CHID_QueryHidDescriptorLength(
     IN PDEVICE_OBJECT ControllerDevice,
     IN UCHAR          I2cAddr,
     IN ULONG          HidDescAddr,

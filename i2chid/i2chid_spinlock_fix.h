@@ -1,4 +1,4 @@
-// i2chid_spinlock_fix.h
+// I2CHID_spinlock_fix.h
 //
 // Shim header to suppress the inline KeInitializeSpinLock
 // definition from wdm.h on XP x86 builds. This ensures

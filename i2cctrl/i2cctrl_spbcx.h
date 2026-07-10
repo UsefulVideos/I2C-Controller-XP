@@ -4,8 +4,8 @@
  * Target: Windows XP x86/x64, C89 compliant
  */
 
-#ifndef _I2CCTRL_SPBCX_H_
-#define _I2CCTRL_SPBCX_H_
+#ifndef _I2cCtrl_SPBCX_H_
+#define _I2cCtrl_SPBCX_H_
 
 #include <ntddk.h>
 #include "i2cctrl_hw.h"      /* central place for register offsets/bit definitions */
@@ -32,7 +32,7 @@
 /* ---------------------------------------------------------------------------
    Sequence header (used by IoctlSequence and AcpiEx façade)
    --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_SEQUENCE_HDR {
+typedef struct _I2cCtrl_SEQUENCE_HDR {
     ULONG TransferCount;   /* number of transfers in the sequence */
     ULONG Flags;           /* sequence-level flags */
     ULONG OutLength;       /* total bytes expected back (for reads) */
@@ -65,7 +65,7 @@ typedef struct _SPBCX_COMPAT_CONTEXT {
 /* ---------------------------------------------------------------------------
    Public data structures (buffer layouts)
    --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_TARGET_CONFIG {
+typedef struct _I2cCtrl_TARGET_CONFIG {
     USHORT Address;
     USHORT Reserved0;
     ULONG  SpeedHz;
@@ -73,7 +73,7 @@ typedef struct _I2CCTRL_TARGET_CONFIG {
 } I2CCTRL_TARGET_CONFIG, *PI2CCTRL_TARGET_CONFIG;
 
 /* Probe buffer layout */
-typedef struct _I2CCTRL_PROBE {
+typedef struct _I2cCtrl_PROBE {
     USHORT  Address;
     USHORT  Reserved0;
     ULONG   TimeoutMs;
@@ -85,14 +85,10 @@ typedef struct _I2CCTRL_PROBE {
 /* Note: I2CCTRL_TRANSFER is defined in i2cctrl_ioctl.h, so we don’t re-define it here. */
 
 /* ---------------------------------------------------------------------------
-   Forward declarations for driver internals
+   Forward declarations of target binding struct
    --------------------------------------------------------------------------- */
-struct _I2CCTRL_FDO;
-typedef struct _I2CCTRL_FDO I2CCTRL_FDO, *PI2CCTRL_FDO;
-
-/* Forward declaration of target binding struct */
-struct _I2CCTRL_TARGET;
-typedef struct _I2CCTRL_TARGET I2CCTRL_TARGET;
+struct _I2cCtrl_TARGET;
+typedef struct _I2cCtrl_TARGET I2CCTRL_TARGET;
 typedef I2CCTRL_TARGET *PI2CCTRL_TARGET;
 
 /* ---------------------------------------------------------------------------
@@ -150,7 +146,7 @@ NTSTATUS I2cCtrl_StartProbe(PI2CCTRL_FDO Dx, PSPBCX_COMPAT_CONTEXT Compat);
    Shared helper prototype (needed by bus side to compile cleanly)
    --------------------------------------------------------------------------- */
 NTSTATUS
-I2cHid_SendIoctlBuffered(
+I2CHID_SendIoctlBuffered(
     PDEVICE_OBJECT TargetDeviceObject,
     ULONG          IoctlCode,
     PVOID          InOutBuffer,
@@ -165,4 +161,4 @@ I2cHid_SendIoctlBuffered(
     CTL_CODE(FILE_DEVICE_I2CCTRL, I2CCTRL_IOCTL_BASE + 4, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #endif
 
-#endif /* _I2CCTRL_SPBCX_H_ */
+#endif /* _I2cCtrl_SPBCX_H_ */

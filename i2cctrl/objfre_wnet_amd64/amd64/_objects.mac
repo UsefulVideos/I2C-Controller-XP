@@ -2,6 +2,7 @@
 
 AMD64_OBJECTS=\
  $(OBJ_PATH)\$O\i2cctrl.obj \
+ $(OBJ_PATH)\$O\i2cctrl_log.obj \
  $(OBJ_PATH)\$O\i2cctrl_zw.obj \
  $(OBJ_PATH)\$O\i2cctrl_backport.obj \
  $(OBJ_PATH)\$O\i2cctrl_bsod.obj \

@@ -7,7 +7,7 @@
 #include "i2cctrl_bsod.h"
 #include "i2cctrl_spbcx.h"
 #include "i2cctrl_ioctl.h"   /* ensure IOCTL_* constants are visible */
-
+#include "i2cctrl_log.h"
 
 
 /* ---------- Create / Close ---------- */
@@ -161,7 +161,7 @@ if (Dx->MmioBase != NULL && Dx->MmioLength != 0U) {
     /* Enable controller */
     status = I2cCtrl_EnableController(Dx, TRUE);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: IoctlSetTarget: EnableController failed, status=0x%08lx\n", status));
+        I2cCtrl_Log("IoctlSetTarget: EnableController failed, status=0x%08lx\n", status);
         return status;
     }
 
@@ -947,7 +947,7 @@ I2cCtrl_StartProbe(
    Synchronous helper to send a buffered IOCTL to the bus PDO
    --------------------------------------------------------------------------- */
 NTSTATUS
-I2cHid_SendIoctlBuffered(
+I2CHID_SendIoctlBuffered(
     PDEVICE_OBJECT TargetDeviceObject,
     ULONG          IoctlCode,
     PVOID          InOutBuffer,

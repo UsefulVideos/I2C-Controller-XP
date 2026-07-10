@@ -1,4 +1,4 @@
-/* i2chid_hid.h
+/* I2CHID_hid.h
  * Public interface for the I2C HID FDO driver.
  * C89 compliant.
  */
@@ -12,9 +12,9 @@
 #include <hidport.h>
 
 /* HID driver internal headers */
-#include "i2chid_ext.h"    /* PI2CHID_FDO */
+#include "I2CHID_EXT.h"    /* PI2CHID_FDO */
 #include "i2chid.h"        /* I2CHID_REPORT, HID descriptors, HID helpers */
-#include "i2chid_spbcx.h"  /* façade IOCTL codes and HID‑side prototypes */
+#include "I2CHID_spbcx.h"  /* façade IOCTL codes and HID‑side prototypes */
 
 /* Pool tag for allocations */
 #define I2CHID_POOL_TAG 'Hc2I'

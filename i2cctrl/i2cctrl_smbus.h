@@ -1,7 +1,7 @@
 /* i2cctrl_smbus.h - C89 compliant SMBus API */
 
-#ifndef _I2CCTRL_SMBUS_H_
-#define _I2CCTRL_SMBUS_H_
+#ifndef _I2cCtrl_SMBUS_H_
+#define _I2cCtrl_SMBUS_H_
 
 #include <ntddk.h>
 #include "i2cctrl_hw.h"
@@ -12,13 +12,13 @@ extern "C" {
 #endif
 
 /* Optional Packet Error Code (PEC) */
-typedef enum _I2CCTRL_SMBUS_PEC {
+typedef enum _I2cCtrl_SMBUS_PEC {
     SmBusPecDisabled = 0,
     SmBusPecEnabled  = 1
 } I2CCTRL_SMBUS_PEC;
 
 /* Result structure */
-typedef struct _I2CCTRL_SMBUS_RESULT {
+typedef struct _I2cCtrl_SMBUS_RESULT {
     NTSTATUS Status;
     UCHAR    Data[32];
     UCHAR    Length;
@@ -43,4 +43,4 @@ NTSTATUS I2cCtrl_SmbusAlertResponse(PI2CCTRL_FDO Dx, UCHAR *AlertingAddress);
 }
 #endif
 
-#endif /* _I2CCTRL_SMBUS_H_ */
+#endif /* _I2cCtrl_SMBUS_H_ */

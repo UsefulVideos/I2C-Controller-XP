@@ -2,8 +2,8 @@
 #include <hidport.h>        // HIDCLASS miniport interfaces (XP/2003)
 #include "..\i2cctrl\i2cctrl_ioctl.h"  // Your controller IOCTLs (adjust include path)
 #include "..\i2cctrl\i2cctrl_ext.h"    // Controller/device contracts if needed
-#include "i2chid_i2cctrl.h"
-#include "i2chid_hid.h"
+#include "I2CHID_i2cctrl.h"
+#include "I2CHID_hid.h"
 
 // -------------------------------
 // Forward declarations
@@ -57,7 +57,7 @@ I2CHID_PT_InitDescriptors(
     PAGED_CODE();
 
     if (dev == NULL) {
-        KdPrint(("I2CHID_PT_InitDescriptors: NULL device extension\n"));
+        I2CHID_Log("I2CHID_PT_InitDescriptors: NULL device extension\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -92,7 +92,7 @@ I2CHID_PT_Complete(
     )
 {
     if (Irp == NULL) {
-        KdPrint(("I2CHID_PT_Complete: NULL IRP\n"));
+        I2CHID_Log("I2CHID_PT_Complete: NULL IRP\n");
         return;
     }
 

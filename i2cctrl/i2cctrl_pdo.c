@@ -105,7 +105,7 @@ I2cCtrl_SurpriseRemoveQuiesce(
         raw2 = devctx->Ops->GetRawIntr(devctx);
 
         if (raw1 != 0U && raw2 != 0U) {
-            KdPrint(("I2CCTRL: SurpriseRemoveQuiesce: interrupt storm, marking HW failed\n"));
+            I2cCtrl_Log("SurpriseRemoveQuiesce: interrupt storm, marking HW failed\n");
             devctx->HardwareFailure = TRUE;
         }
     }
@@ -127,8 +127,7 @@ I2cCtrl_SurpriseRemoveQuiesce(
 
     status = I2cCtrl_WaitForEnableState(devctx, FALSE, 500U);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: SurpriseRemoveQuiesce: disable did not latch (status=0x%08lx)\n",
-                 status));
+        I2cCtrl_Log("SurpriseRemoveQuiesce: disable did not latch (status=0x%08lx)\n", status);
         devctx->HardwareFailure = TRUE;
     }
 
@@ -169,7 +168,7 @@ I2cCtrl_AcpiCloseChild(
     /* Clear our cached pointer */
     ChildDx->AcpiHandle = NULL;
 
-    DbgPrint("I2CCTRL: ACPI child handle closed for PDO %p\n",
+    DbgPrint("ACPI child handle closed for PDO %p\n",
              ChildDx->Pdo);
 }
 

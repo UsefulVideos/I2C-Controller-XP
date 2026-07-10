@@ -4,10 +4,11 @@
 #include <ntddk.h>
 #include <hidport.h>
 #include "..\i2cctrl\i2cctrl_ext.h"     /* brings in I2CCTRL_FDO and I2CHID_FDO */
+#include "..\i2cctrl\i2cctrl_dpi.h"     /* brings in I2CCTRL_DPI */
 #include "..\i2cctrl\i2cctrl_detect.h"  /* brings in I2CCTRL_DETECT_RESULT typedef */
 #include "..\i2cctrl\i2cctrl_etw.h"   /* TraceEvents() and WPP flags */
-#include "i2chid_i2cctrl.h"
-#include "i2chid_hid.h"
+#include "I2CHID_i2cctrl.h"
+#include "I2CHID_hid.h"
 
 /* Named device object and DOS link for pass-through */
 #define I2CHID_PT_DEVNAME   L"\\Device\\I2CHID_PT"
@@ -67,56 +68,6 @@ I2CHID_IoctlRead(
     ULONG Length
     );
 
-/* ---------------------------------------------------------------------------
-   I2CHID_PDO_EXT
-   Per‑child PDO extension for HID‑over‑I²C devices.
-   Holds cached descriptors, attributes, protocol/idle state, and target info.
-   --------------------------------------------------------------------------- */
-typedef struct _I2CHID_PDO_EXT {
-    /* Back‑pointer to parent controller FDO */
-    PI2CCTRL_FDO       ParentFdo;
-
-    /* Device object and symbolic link */
-    PDEVICE_OBJECT     Self;
-    UNICODE_STRING     SymbolicLink;
-
-    /* ACPI child info (HID/CID, UID, etc.) */
-    UNICODE_STRING     HardwareId;
-    UNICODE_STRING     InstanceId;
-
-    /* Cached HID descriptors */
-    HID_DESCRIPTOR     HidDescriptor;          /* HID device descriptor */
-    PUCHAR             ReportDescriptor;       /* raw report descriptor blob */
-    ULONG              ReportDescriptorLength;
-
-    /* Device attributes */
-    USHORT             VendorId;
-    USHORT             ProductId;
-    USHORT             Version;
-
-    /* HID protocol and idle rate */
-    UCHAR              Protocol;               /* HID_PROTOCOL_REPORT or BOOT */
-    UCHAR              IdleRate;               /* idle rate in ms, 0 = indefinite */
-
-    /* Target binding for I²C controller */
-    I2CCTRL_TARGET     Target;                 /* address, speed, flags */
-
-    /* Queued read IRPs for input reports */
-    LIST_ENTRY         ReadQueue;
-    KSPIN_LOCK         ReadQueueLock;
-
-    /* Input report buffer (last received) */
-    PUCHAR             InputBuffer;
-    ULONG              InputBufferLen;
-
-    /* Power/PnP state */
-    BOOLEAN            Started;
-    BOOLEAN            Removed;
-
-    /* Diagnostics */
-    ULONG              ErrorCount;
-    ULONG              Signature;
-} I2CHID_PDO_EXT, *PI2CHID_PDO_EXT;
 
 typedef struct _I2CHID_HID_STATIC {
     HID_DESCRIPTOR HidDesc;
@@ -187,11 +138,15 @@ I2CHID_ParseHidDescriptorV10(
     PHID_I2C_DESCRIPTOR_V10   out
     );
 
-/* Candidate address list is defined once in i2chid_detect.c */
+/* Candidate address list is defined once in I2CHID_detect.c */
 extern const UCHAR g_HidI2cCommonCandidates[];
 #define HID_I2C_COMMON_CANDIDATES_COUNT \
     (sizeof(g_HidI2cCommonCandidates) / sizeof(g_HidI2cCommonCandidates[0]))
 
-
+VOID
+I2CHID_Log(
+    PCSTR Format,
+    ...
+    );
 
 #endif /* _I2CHID_EXT_H_ */

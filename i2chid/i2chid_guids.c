@@ -1,15 +1,15 @@
 /* -----------------------------------------------------------------------
-   i2chid_guids.c — single GUID instantiation unit
+   I2CHID_guids.c — single GUID instantiation unit
    ----------------------------------------------------------------------- */
 
 #define INITGUID
 
-#include "i2chid_spinlock_fix.h"
-#include "i2chid_acpi.h"  /* declares I2C_HID_DSM_GUID */
+#include "I2CHID_spinlock_fix.h"
+#include "I2CHID_acpi.h"  /* declares I2C_HID_DSM_GUID */
 
 /*
  * Define the HID-over-I²C _DSM UUID here so it is instantiated once.
- * Other modules should only reference it via extern in i2chid_acpi.h.
+ * Other modules should only reference it via extern in I2CHID_acpi.h.
  */
 DEFINE_GUID(I2C_HID_DSM_GUID,
     0x3cdff6f7, 0x4267, 0x4555,

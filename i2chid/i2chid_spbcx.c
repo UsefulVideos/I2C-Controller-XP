@@ -1,11 +1,11 @@
-/* i2chid_spbcx.c
+/* I2CHID_spbcx.c
  * HID‑over‑I²C façade implementation.
  * C89 compliant.
  */
 
 #include <ntddk.h>
-#include "i2chid_spbcx.h"
-#include "i2chid_hid.h"
+#include "I2CHID_spbcx.h"
+#include "I2CHID_hid.h"
 #include "../i2cctrl/i2cctrl_ioctl.h"  /* shared IOCTL contract only */
 #include "../i2cctrl/i2cctrl_ext.h"    /* shared structs like I2CCTRL_FDO */
 

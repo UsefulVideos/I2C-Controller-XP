@@ -1,11 +1,11 @@
-/* i2chid_power.c
+/* I2CHID_power.c
  * Advanced power management for I2C HID driver: D0/D3 transitions and selective suspend.
  * C89 compliant.
  */
 
 #include <ntddk.h>
 #include <hidport.h>
-#include "i2chid_ext.h"
+#include "I2CHID_EXT.h"
 
 /* ---- Hardware hooks (implemented elsewhere in your driver) ---- */
 VOID I2cHw_EnableController(PI2CHID_FDO ext);

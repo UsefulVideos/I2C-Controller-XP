@@ -3,8 +3,8 @@
  * C89 compliant, XP/2003-safe
  */
 
-#ifndef _I2CCTRL_HW_H_
-#define _I2CCTRL_HW_H_
+#ifndef _I2cCtrl_HW_H_
+#define _I2cCtrl_HW_H_
 
 #include <ntddk.h>
 #include "i2cctrl_ext.h"   /* brings in SMBUS_REQUEST definition */
@@ -127,8 +127,8 @@
 #define I2C_INT_GEN_CALL       0x0800U
 
 /* Synchronous transfer IOCTL that the bus driver services */
-#ifndef IOCTL_I2CCTRL_TRANSFER
-#define IOCTL_I2CCTRL_TRANSFER \
+#ifndef IOCTL_I2cCtrl_TRANSFER
+#define IOCTL_I2cCtrl_TRANSFER \
     CTL_CODE(FILE_DEVICE_I2CCTRL, 0x999, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #endif
 
@@ -271,4 +271,4 @@ VOID     I2CctrlHw_Flush(PDEVICE_OBJECT DevObj);
 #define WHL_PW2_BIT             (1u << 2)
 #define WHL_PW_MASK             (WHL_PW1_BIT | WHL_PW2_BIT)
 
-#endif /* _I2CCTRL_HW_H_ */
+#endif /* _I2cCtrl_HW_H_ */

@@ -1,5 +1,5 @@
-#ifndef _I2CCTRL_H_
-#define _I2CCTRL_H_
+#ifndef _I2cCtrl_H_
+#define _I2cCtrl_H_
 
 #include <ntddk.h>
 #include "i2cctrl_spinlock_fix.h"
@@ -107,4 +107,4 @@ VOID I2cCtrl_ProcessSmbusRequest(
 #define IRP_MN_QUERY_LEGACY_BUS_INFORMATION 0x18
 #endif
 
-#endif /* _I2CCTRL_H_ */
+#endif /* _I2cCtrl_H_ */

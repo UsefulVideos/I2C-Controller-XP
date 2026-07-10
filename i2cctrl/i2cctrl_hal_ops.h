@@ -5,6 +5,7 @@
 
 #include <ntddk.h>           /* NTSTATUS, PCM_RESOURCE_LIST, PIRP */
 #include "i2cctrl_hal_caps.h" /* brings in I2C_HW_CAPS definition */
+#include "i2cctrl_log.h"
 
 /* ---------------------------------------------------------------------------
    Forward declarations

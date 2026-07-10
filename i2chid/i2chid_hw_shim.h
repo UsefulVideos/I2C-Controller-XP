@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   i2chid_hw_shim.h
+   I2CHID_hw_shim.h
    Interrupt-driven touchpad-like input engine for XP/2003 (C89-compliant)
    Public interface for hardware shim used by i2chid.sys
    ----------------------------------------------------------------------- */
@@ -8,16 +8,16 @@
 #define _I2CHID_HW_SHIM_H_
 
 #include <ntddk.h>
-#include "i2chid_ext.h"   /* PI2CHID_FDO */
+#include "I2CHID_EXT.h"   /* PI2CHID_FDO */
 #include "i2chid.h"       /* shared types/defs */
-#include "i2chid_hid.h"   /* HID helpers */
-#include "i2chid_contacts.h"
+#include "I2CHID_hid.h"   /* HID helpers */
+#include "I2CHID_contacts.h"
 
 #ifndef CTL_CODE
 #include <devioctl.h>
 #endif
 
-typedef struct _I2CCTRL_RW {
+typedef struct _I2cCtrl_RW {
     UCHAR  Address;     /* 7-bit I2C address */
     UCHAR  Data[1];     /* flexible array tail */
     USHORT Length;      /* payload length */

@@ -1,5 +1,5 @@
 /* =========================================================================
-   i2chid_contacts.h
+   I2CHID_contacts.h
    -------------------------------------------------------------------------
    Header for HID-over-I²C contact and report format constants.
 

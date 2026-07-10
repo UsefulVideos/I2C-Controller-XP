@@ -1,4 +1,4 @@
-/* i2chid_spbcx.h
+/* I2CHID_spbcx.h
  * HID‑over‑I²C façade: IOCTLs only.
  * C89 compliant.
  */
@@ -7,9 +7,9 @@
 #define _I2CHID_SPBCX_H_
 
 #include <ntddk.h>
-#include "i2chid_ext.h"
+#include "I2CHID_EXT.h"
 #include "i2chid.h"         /* I2C_READ_PARAMS / I2C_WRITE_PARAMS */
-/* deliberately NOT including i2chid_hid.h to avoid circular include */
+/* deliberately NOT including I2CHID_hid.h to avoid circular include */
 
 /* Bring in bus IOCTL contract types (I2CCTRL_TARGET, IOCTL codes, etc.) */
 #include "..\i2cctrl\i2cctrl_spbcx.h"   /* I2CCTRL_TARGET and helper prototypes */

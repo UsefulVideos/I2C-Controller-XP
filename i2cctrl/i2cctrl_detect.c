@@ -124,8 +124,8 @@ I2cCtrl_ReadHidDescriptor(
 
     /* Defensive parameter validation */
     if (devctx == NULL || hidpdo == NULL || outDesc == NULL) {
-        KdPrint(("I2CCTRL: ReadHidDescriptor invalid parameters devctx=%p hidpdo=%p outDesc=%p\n",
-                 devctx, hidpdo, outDesc));
+        I2cCtrl_Log("ReadHidDescriptor invalid parameters devctx=%p hidpdo=%p outDesc=%p\n",
+                 devctx, hidpdo, outDesc);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -138,10 +138,10 @@ I2cCtrl_ReadHidDescriptor(
                  sizeof(HID_DESCRIPTOR));
 
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: ReadHidDescriptor failed Slave=0x%04X Reg=0x%lx Status=0x%08lx\n",
+        I2cCtrl_Log("ReadHidDescriptor failed Slave=0x%04X Reg=0x%lx Status=0x%08lx\n",
                  hidpdo->SlaveAddress,
                  hidpdo->HidDescRegister,
-                 status));
+                 status);
     }
 
     return status;
@@ -166,8 +166,8 @@ I2cCtrl_ReadReportDescriptor(
 
     /* Defensive parameter validation */
     if (!devctx || !hidpdo || !buf || len == 0) {
-        KdPrint(("I2CCTRL: ReadReportDescriptor invalid args devctx=%p hidpdo=%p buf=%p len=%lu\n",
-                 devctx, hidpdo, buf, len));
+        I2cCtrl_Log("ReadReportDescriptor invalid args devctx=%p hidpdo=%p buf=%p len=%lu\n",
+                 devctx, hidpdo, buf, len);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -175,20 +175,20 @@ I2cCtrl_ReadReportDescriptor(
     if (hidpdo->HidDesc.bNumDescriptors < 1 ||
         hidpdo->HidDesc.DescriptorList[0].bReportType != HID_REPORT_DESCRIPTOR_TYPE)
     {
-        KdPrint(("I2CCTRL: ReadReportDescriptor invalid HID descriptor (no report desc)\n"));
+        I2cCtrl_Log("ReadReportDescriptor invalid HID descriptor (no report desc)\n");
         return STATUS_INVALID_DEVICE_STATE;
     }
 
     expectedLen = hidpdo->HidDesc.DescriptorList[0].wReportLength;
 
     if (expectedLen == 0 || expectedLen > HID_REPORT_MAX_LEN) {
-        KdPrint(("I2CCTRL: ReadReportDescriptor invalid expectedLen=%u\n", expectedLen));
+        I2cCtrl_Log("ReadReportDescriptor invalid expectedLen=%u\n", expectedLen);
         return STATUS_INVALID_DEVICE_STATE;
     }
 
     if (len < expectedLen) {
-        KdPrint(("I2CCTRL: ReadReportDescriptor buffer too small len=%lu needed=%u\n",
-                 len, expectedLen));
+        I2cCtrl_Log("ReadReportDescriptor buffer too small len=%lu needed=%u\n",
+                 len, expectedLen);
         return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -196,7 +196,7 @@ I2cCtrl_ReadReportDescriptor(
     if (devctx->Ops && devctx->Ops->IssueWriteByte) {
         status = devctx->Ops->IssueWriteByte(devctx, HID_I2C_GET_REPORT_DESCRIPTOR);
         if (!NT_SUCCESS(status)) {
-            KdPrint(("I2CCTRL: GET_REPORT_DESCRIPTOR command failed 0x%08lx\n", status));
+            I2cCtrl_Log("GET_REPORT_DESCRIPTOR command failed 0x%08lx\n", status);
             return status;
         }
     }
@@ -210,10 +210,10 @@ I2cCtrl_ReadReportDescriptor(
                  expectedLen);
 
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL: ReadReportDescriptor failed Slave=0x%02X Reg=0x%X Status=0x%08lx\n",
+        I2cCtrl_Log("ReadReportDescriptor failed Slave=0x%02X Reg=0x%X Status=0x%08lx\n",
                  hidpdo->SlaveAddress,
                  hidpdo->DataRegister,
-                 status));
+                 status);
         return status;
     }
 

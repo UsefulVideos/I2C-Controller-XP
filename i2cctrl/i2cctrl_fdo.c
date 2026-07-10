@@ -442,7 +442,7 @@ I2cCtrl_FdoDispatchPower(
 
     /* Defensive validation */
     if (devctx == NULL || isl == NULL) {
-        KdPrint(("I2CCTRL: FdoDispatchPower: invalid devctx/stack\n"));
+        I2cCtrl_Log("FdoDispatchPower: invalid devctx/stack\n");
         Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
         PoStartNextPowerIrp(Irp);
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -451,9 +451,7 @@ I2cCtrl_FdoDispatchPower(
 	
 	/* IRQL-safe logging: only at PASSIVE_LEVEL */
 if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
-    I2cCtrl_Log("FDO Power Dispatch: Minor=%lu for FDO %p\n",
-                (ULONG)isl->MinorFunction,
-                DeviceObject);
+    I2cCtrl_Log("FDO Power Dispatch: Minor=%lu for FDO %p\n",(ULONG)isl->MinorFunction,DeviceObject);
 }
 	
     /* ACPI capability gating: only use D1/D2 if ACPI >= 2.0 AND device supports them */
@@ -493,8 +491,7 @@ if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
                 break;
             }
 
-            KdPrint(("I2CCTRL: SET_POWER(System): S%lu -> target D%lu\n",
-                     (ULONG)sysState, (ULONG)newDevState));
+            I2cCtrl_Log("SET_POWER(System): S%lu -> target D%lu\n",(ULONG)sysState, (ULONG)newDevState);
 
             /* Forward system power IRP with completion that applies device transition */
             IoCopyCurrentIrpStackLocationToNext(Irp);
@@ -522,8 +519,8 @@ if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
                 newDevState = PowerDeviceD3;
             }
 
-            KdPrint(("I2CCTRL: SET_POWER(Device): D%lu -> D%lu\n",
-                     (ULONG)oldDevState, (ULONG)newDevState));
+            I2cCtrl_Log("SET_POWER(Device): D%lu -> D%lu\n",
+                     (ULONG)oldDevState, (ULONG)newDevState);
 
             /* Quiesce hardware if powering down out of D0 while busy */
             if (newDevState != oldDevState && newDevState != PowerDeviceD0) {
@@ -548,7 +545,7 @@ if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
                     devctx->SavedTimingHighNs = I2cCtrl_QueryTimingHigh(devctx);
                     devctx->SavedTimingLowNs  = I2cCtrl_QueryTimingLow(devctx);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: SET_POWER(Device): exception saving context\n"));
+                    I2cCtrl_Log("SET_POWER(Device): exception saving context\n");
                 }
             }
 
@@ -600,7 +597,7 @@ if (KeGetCurrentIrql() == PASSIVE_LEVEL) {
                         break;
                     }
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    KdPrint(("I2CCTRL: SET_POWER(Device): exception during transition\n"));
+                    I2cCtrl_Log("SET_POWER(Device): exception during transition\n");
                     status = STATUS_ACCESS_VIOLATION;
                 }
 

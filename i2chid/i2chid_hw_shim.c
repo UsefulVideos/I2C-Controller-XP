@@ -1,4 +1,4 @@
-/*  i2chid_hw_shim.c (C89 compliant)
+/*  I2CHID_hw_shim.c (C89 compliant)
     - Interrupt-driven touchpad-like input engine for XP/2003
     - Uses IoConnectInterrupt to hook ISR/DPC
     - DPC issues IOCTL_I2C_READ to controller to fetch input packets
@@ -6,10 +6,10 @@
       and completes IOCTL_HID_READ_REPORT requests
 */
 #include <ntddk.h>
-#include "i2chid_ext.h"   /* PI2CHID_FDO */
+#include "I2CHID_EXT.h"   /* PI2CHID_FDO */
 #include "i2chid.h"       /* I2CHID_REPORT, IOCTL defs (if shared) */
-#include "i2chid_hid.h"   /* ISR/DPC prototypes, input helpers */
-#include "i2chid_hw_shim.h"
+#include "I2CHID_hid.h"   /* ISR/DPC prototypes, input helpers */
+#include "I2CHID_hw_shim.h"
 
 #ifndef CTL_CODE
 #include <devioctl.h>

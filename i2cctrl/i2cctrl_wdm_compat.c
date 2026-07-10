@@ -4,26 +4,26 @@
 
 /* ---------------- Object shells ---------------- */
 
-struct _I2CCTRL_WDM_DEVICE {
+struct _I2cCtrl_WDM_DEVICE {
     PDEVICE_OBJECT Fdo;
     PDEVICE_OBJECT Pdo;
 };
 
-struct _I2CCTRL_WDM_TIMER {
+struct _I2cCtrl_WDM_TIMER {
     KTIMER Timer;
     KDPC   Dpc;
     I2CCTRL_WDM_TIMER_CB Callback;
     PVOID Context;
 };
 
-struct _I2CCTRL_WDM_WORKITEM {
+struct _I2cCtrl_WDM_WORKITEM {
     PIO_WORKITEM WorkItem;
     I2CCTRL_WDM_WORK_CB Callback;
     PVOID Context;
     PDEVICE_OBJECT DeviceObject;
 };
 
-struct _I2CCTRL_WDM_QUEUE {
+struct _I2cCtrl_WDM_QUEUE {
     LIST_ENTRY IrpList;
     PKSPIN_LOCK Lock;
     I2CCTRL_WDM_QUEUE_DISPATCH Dispatch;

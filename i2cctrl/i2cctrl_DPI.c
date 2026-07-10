@@ -5,6 +5,7 @@
 #include "i2cctrl_spinlock_fix.h"
 #include <initguid.h>   /* forces GUIDs to be defined */
 #include "i2cctrl_DPI.h"
+#include "i2cctrl_log.h"
 /*
  * Initialize the DPI block with descriptors, IDs, and I2C address.
  */
@@ -102,18 +103,18 @@ I2cCtrl_DpiRegisterInterface(
                                        NULL,
                                        SymbolicLinkName);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL_DPI: IoRegisterDeviceInterface failed (0x%08X)\n", status));
+        I2cCtrl_Log("I2cCtrl_DPI: IoRegisterDeviceInterface failed (0x%08X)\n", status);
         return status;
     }
 
     status = IoSetDeviceInterfaceState(SymbolicLinkName, TRUE);
     if (!NT_SUCCESS(status)) {
-        KdPrint(("I2CCTRL_DPI: IoSetDeviceInterfaceState failed (0x%08X)\n", status));
+        I2cCtrl_Log("I2cCtrl_DPI: IoSetDeviceInterfaceState failed (0x%08X)\n", status);
         return status;
     }
 
     /* ASCII-only log */
-    KdPrint(("I2CCTRL_DPI: HID interface registered successfully\n"));
+    I2cCtrl_Log("I2cCtrl_DPI: HID interface registered successfully\n");
 
     return status;
 }
@@ -133,5 +134,5 @@ I2cCtrl_DpiUnregisterInterface(
     IoSetDeviceInterfaceState(SymbolicLinkName, FALSE);
 
     /* ASCII-only log */
-    KdPrint(("I2CCTRL_DPI: HID interface unregistered\n"));
+    I2cCtrl_Log("I2cCtrl_DPI: HID interface unregistered\n");
 }

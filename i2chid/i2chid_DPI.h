@@ -1,11 +1,11 @@
 /* -----------------------------------------------------------------------
-   i2chid_DPI.h - HID-over-I2C Function Driver DPI helpers (final clean header)
+   I2CHID_DPI.h - HID-over-I2C Function Driver DPI helpers (final clean header)
    ----------------------------------------------------------------------- */
 
 #ifndef _I2CHID_DPI_H_
 #define _I2CHID_DPI_H_
 
-#include "i2chid_spinlock_fix.h"
+#include "I2CHID_spinlock_fix.h"
 #include "..\i2cctrl\i2cctrl_DPI.h"
 
 /*
@@ -18,7 +18,7 @@
  * Copies all relevant fields into the HID DPI structure.
  */
 NTSTATUS
-I2cHid_DpiInitializeFromBus(
+I2CHID_DpiInitializeFromBus(
     IN PI2CCTRL_DPI BusDpi,
     OUT PI2CCTRL_DPI HidDpi
     );
@@ -28,7 +28,7 @@ I2cHid_DpiInitializeFromBus(
  * Reads DWORD values from Parameters key and applies them.
  */
 NTSTATUS
-I2cHid_DpiApplyRegistryPolicy(
+I2CHID_DpiApplyRegistryPolicy(
     IN OUT PI2CCTRL_DPI HidDpi,
     IN PUNICODE_STRING RegistryPath
     );
@@ -38,7 +38,7 @@ I2cHid_DpiApplyRegistryPolicy(
  * Uses GUID_DEVINTERFACE_HID from hidclass.h.
  */
 NTSTATUS
-I2cHid_DpiRegisterInterface(
+I2CHID_DpiRegisterInterface(
     IN PDEVICE_OBJECT DeviceObject,
     OUT PUNICODE_STRING SymbolicLinkName
     );
@@ -48,7 +48,7 @@ I2cHid_DpiRegisterInterface(
  * Disables the previously registered HID interface.
  */
 VOID
-I2cHid_DpiUnregisterInterface(
+I2CHID_DpiUnregisterInterface(
     IN PUNICODE_STRING SymbolicLinkName
     );
 

@@ -1,10 +1,10 @@
 /* -----------------------------------------------------------------------
-   i2chid_DPI.c - HID-over-I2C Function Driver DPI helpers (final, safe with hidclass.h)
+   I2CHID_DPI.c - HID-over-I2C Function Driver DPI helpers (final, safe with hidclass.h)
    ----------------------------------------------------------------------- */
-
-#include "i2chid_spinlock_fix.h"
+#include "I2CHID_ext.h"
+#include "I2CHID_spinlock_fix.h"
 #include <hidclass.h>     /* brings in GUID_DEVINTERFACE_HID and other HID GUIDs */
-#include "i2chid_DPI.h"
+#include "I2CHID_DPI.h"
 
 /* Pool tag for any DPI-related allocations */
 #define I2CHID_DPI_TAG 'hDPI'
@@ -14,7 +14,7 @@
  * Copies all relevant fields into the function driver's DPI structure.
  */
 NTSTATUS
-I2cHid_DpiInitializeFromBus(
+I2CHID_DpiInitializeFromBus(
     IN PI2CCTRL_DPI BusDpi,
     OUT PI2CCTRL_DPI HidDpi
     )
@@ -61,7 +61,7 @@ I2cHid_DpiInitializeFromBus(
  * Reads DWORD values from Parameters key and applies them.
  */
 NTSTATUS
-I2cHid_DpiApplyRegistryPolicy(
+I2CHID_DpiApplyRegistryPolicy(
     IN OUT PI2CCTRL_DPI HidDpi,
     IN PUNICODE_STRING RegistryPath
     )
@@ -160,7 +160,7 @@ I2cHid_DpiApplyRegistryPolicy(
  * Uses GUID_DEVINTERFACE_HID from hidclass.h.
  */
 NTSTATUS
-I2cHid_DpiRegisterInterface(
+I2CHID_DpiRegisterInterface(
     IN PDEVICE_OBJECT DeviceObject,
     OUT PUNICODE_STRING SymbolicLinkName
     )
@@ -177,9 +177,9 @@ I2cHid_DpiRegisterInterface(
                                        SymbolicLinkName);
     if (NT_SUCCESS(status)) {
         IoSetDeviceInterfaceState(SymbolicLinkName, TRUE);
-        KdPrint(("I2CHID_DPI: HID interface registered\n"));
+        I2CHID_Log("I2CHID_DPI: HID interface registered\n");
     } else {
-        KdPrint(("I2CHID_DPI: HID interface registration failed (0x%08X)\n", status));
+        I2CHID_Log("I2CHID_DPI: HID interface registration failed (0x%08X)\n", status);
     }
     return status;
 }
@@ -188,12 +188,12 @@ I2cHid_DpiRegisterInterface(
  * Unregister HID interface.
  */
 VOID
-I2cHid_DpiUnregisterInterface(
+I2CHID_DpiUnregisterInterface(
     IN PUNICODE_STRING SymbolicLinkName
     )
 {
     if (SymbolicLinkName != NULL) {
         IoSetDeviceInterfaceState(SymbolicLinkName, FALSE);
-        KdPrint(("I2CHID_DPI: HID interface unregistered\n"));
+        I2CHID_Log("I2CHID_DPI: HID interface unregistered\n");
     }
 }

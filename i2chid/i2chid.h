@@ -11,10 +11,10 @@
 #include <hidport.h>
 
 /* Local driver headers (order chosen to satisfy typedef dependencies) */
-#include "i2chid_ext.h"      /* PI2CHID_FDO (HID-specific extension) */
-#include "i2chid_DPI.h"      /* DPI types */
-#include "i2chid_ACPI.h"     /* ACPI helpers */
-#include "i2chid_hid.h"      /* HID helpers and prototypes */
+#include "I2CHID_EXT.h"      /* PI2CHID_FDO (HID-specific extension) */
+#include "I2CHID_DPI.h"      /* DPI types */
+#include "I2CHID_ACPI.h"     /* ACPI helpers */
+#include "I2CHID_hid.h"      /* HID helpers and prototypes */
 
 /* Shared IOCTLs and bus types */
 #include "..\i2cctrl\i2cctrl_ioctl.h"  /* IOCTL_I2C_READ, IOCTL_I2C_WRITE, I2CCTRL_TRANSFER */
@@ -27,7 +27,7 @@
 #define I2CHID_MAX_FINGERS 5   /* maximum number of simultaneous contacts supported */
 
 /* ---------------------------------------------------------------------------
-   Forward declarations for pass-through helper dispatches implemented in i2chid_pt.c
+   Forward declarations for pass-through helper dispatches implemented in I2CHID_pt.c
    --------------------------------------------------------------------------- */
 NTSTATUS I2CHID_PT_DispatchInternal(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS I2CHID_PT_DispatchPass(PDEVICE_OBJECT DeviceObject, PIRP Irp);

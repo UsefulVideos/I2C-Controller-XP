@@ -1,4 +1,4 @@
-// i2chid_mouse.h
+// I2CHID_mouse.h
 // Private header for HID-over-I2C (PNP0C50) integration with mouclass.sys
 // Provides internal IOCTLs and CONNECT_DATA structure missing from ntddmou.h
 

@@ -1,6 +1,6 @@
 #include <ntddk.h>
 #include "i2cctrl_zw.h"
-#include "i2cctrl_ioctl.h"   // defines I2CCTRL_TRANSFER, IOCTL_I2CCTRL_TRANSFER
+#include "i2cctrl_ioctl.h"   // defines I2CCTRL_TRANSFER, IOCTL_I2cCtrl_TRANSFER
 #include "i2cctrl_hw.h"      // if you have hardware helpers (optional)
 #include "i2cctrl_ext.h"        // replace with the actual header that defines PT_RAW_SAMPLE
 #include "i2cctrl_hw.h"
@@ -266,7 +266,7 @@ I2CctrlHw_WaitForIdle(
  * C89 note: declare variables at the start of the function or of a braced block.
  */
 
-NTSTATUS NTAPI I2Cctrl_ControlFile(
+NTSTATUS NTAPI I2cCtrl_ControlFile(
     PDEVICE_OBJECT   DevObj,          /* device object for hardware helpers */
     HANDLE           FileHandle,
     HANDLE           Event OPTIONAL,
@@ -291,7 +291,7 @@ NTSTATUS NTAPI I2Cctrl_ControlFile(
 
     switch (IoControlCode) {
 
-    case IOCTL_I2CCTRL_TRANSFER:
+    case IOCTL_I2cCtrl_TRANSFER:
     {
         PI2CCTRL_TRANSFER packet;
         PSMBUS_REQUEST     req;       /* SMBus request with Flags */

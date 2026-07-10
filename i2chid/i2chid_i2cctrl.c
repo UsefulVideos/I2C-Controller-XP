@@ -1,10 +1,10 @@
 #include <ntddk.h>
 #include "..\i2cctrl\i2cctrl_ioctl.h"
-#include "i2chid_ext.h"
-#include "i2chid_i2cctrl.h"
+#include "I2CHID_EXT.h"
+#include "I2CHID_i2cctrl.h"
 
 // Open a handle to the I2C controller device
-NTSTATUS I2CHID_I2CCTRL_Open(PHANDLE Handle)
+NTSTATUS I2CHID_I2cCtrl_Open(PHANDLE Handle)
 {
     UNICODE_STRING ctrlName;
     OBJECT_ATTRIBUTES oa;
@@ -29,13 +29,13 @@ NTSTATUS I2CHID_I2CCTRL_Open(PHANDLE Handle)
 }
 
 // Close controller handle
-VOID I2CHID_I2CCTRL_Close(HANDLE Handle)
+VOID I2CHID_I2cCtrl_Close(HANDLE Handle)
 {
     if (Handle) ZwClose(Handle);
 }
 
 // Fetch a raw touchpad sample via IOCTL
-NTSTATUS I2CHID_I2CCTRL_GetSample(HANDLE Handle, PT_RAW_SAMPLE* Sample)
+NTSTATUS I2CHID_I2cCtrl_GetSample(HANDLE Handle, PT_RAW_SAMPLE* Sample)
 {
     IO_STATUS_BLOCK iosb;
     return ZwDeviceIoControlFile(
@@ -49,7 +49,7 @@ NTSTATUS I2CHID_I2CCTRL_GetSample(HANDLE Handle, PT_RAW_SAMPLE* Sample)
 }
 
 // Generic helper to send any IOCTL to the controller
-NTSTATUS I2CHID_I2CCTRL_Ioctl(
+NTSTATUS I2CHID_I2cCtrl_Ioctl(
     HANDLE Handle,
     ULONG IoctlCode,
     PVOID InBuf,

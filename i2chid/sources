@@ -14,16 +14,16 @@ MSC_WARNING_LEVEL=/W3 /WX
 # Source files
 SOURCES= \
     i2chid.c \
-    i2chid_guids.c \
-    i2chid_acpi.c \
-    i2chid_hid.c \
-    i2chid_power.c \
-    i2chid_hw_shim.c \
-    i2chid_spbcx.c \
-    i2chid_pt.c \
-    i2chid_i2cctrl.c \
-    i2chid_dpi.c \
-    i2chid_version.rc
+    I2CHID_guids.c \
+    I2CHID_acpi.c \
+    I2CHID_hid.c \
+    I2CHID_power.c \
+    I2CHID_hw_shim.c \
+    I2CHID_spbcx.c \
+    I2CHID_pt.c \
+    I2CHID_i2cctrl.c \
+    I2CHID_dpi.c \
+    I2CHID_version.rc
 
 # -----------------------------------------------------------------------
 # Libraries to link against and target OS version

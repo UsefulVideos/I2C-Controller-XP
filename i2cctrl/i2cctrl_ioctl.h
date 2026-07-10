@@ -1,6 +1,6 @@
 /* i2cctrl_ioctl.h */
-#ifndef _I2CCTRL_IOCTL_H_
-#define _I2CCTRL_IOCTL_H_
+#ifndef _I2cCtrl_IOCTL_H_
+#define _I2cCtrl_IOCTL_H_
 
 #include <ntddk.h>
 
@@ -71,7 +71,7 @@
 #define I2C_MSG_READ   0x01  /* if set, this message is a read */
 #define I2C_MSG_STOP   0x02  /* if set, generate STOP after this message */
 
-typedef struct _I2CCTRL_MSG {
+typedef struct _I2cCtrl_MSG {
     UCHAR  Address;   /* 7-bit I2C address (bit7 must be 0) */
     UCHAR  Flags;     /* I2C_MSG_* flags */
     USHORT Length;    /* number of bytes */
@@ -81,9 +81,9 @@ typedef struct _I2CCTRL_MSG {
 /* ---------------------------------------------------------------------------
    Canonical multi-message transfer descriptor for IOCTL_TRANSFER
    --------------------------------------------------------------------------- */
-#ifndef _I2CCTRL_TRANSFER_DEFINED
-#define _I2CCTRL_TRANSFER_DEFINED
-typedef struct _I2CCTRL_TRANSFER {
+#ifndef _I2cCtrl_TRANSFER_DEFINED
+#define _I2cCtrl_TRANSFER_DEFINED
+typedef struct _I2cCtrl_TRANSFER {
     ULONG       NumMessages;   /* number of messages in this transfer */
 	USHORT SlaveAddress;     /* 7-bit address in low bits (or your format) */
     ULONG  Direction;        /* I2C_DIRECTION_READ or I2C_DIRECTION_WRITE */
@@ -92,14 +92,14 @@ typedef struct _I2CCTRL_TRANSFER {
     ULONG  BytesReturned;    /* filled on completion for reads */
     I2CCTRL_MSG Messages[ANYSIZE_ARRAY]; /* variable-length array of messages */
 } I2CCTRL_TRANSFER, *PI2CCTRL_TRANSFER;
-#endif /* _I2CCTRL_TRANSFER_DEFINED */
+#endif /* _I2cCtrl_TRANSFER_DEFINED */
 
 /* ---------------------------------------------------------------------------
    Legacy single-transfer descriptor (used by HID façade)
    --------------------------------------------------------------------------- */
-#ifndef _I2CCTRL_XFER_DESC_DEFINED
-#define _I2CCTRL_XFER_DESC_DEFINED
-typedef struct _I2CCTRL_XFER_DESC {
+#ifndef _I2cCtrl_XFER_DESC_DEFINED
+#define _I2cCtrl_XFER_DESC_DEFINED
+typedef struct _I2cCtrl_XFER_DESC {
     ULONG   Length;      /* payload length for the operation */
     ULONG   TimeoutMs;   /* timeout for this transfer */
     ULONG   Flags;       /* transfer flags (e.g., 10-bit, PEC, no-stop) */
@@ -107,12 +107,12 @@ typedef struct _I2CCTRL_XFER_DESC {
     UCHAR   Reserved1[3];
     UCHAR   Address7Bit;
 } I2CCTRL_XFER_DESC, *PI2CCTRL_XFER_DESC;
-#endif /* _I2CCTRL_XFER_DESC_DEFINED */
+#endif /* _I2cCtrl_XFER_DESC_DEFINED */
 
 /* ---------------------------------------------------------------------------
    Common request descriptor header for SMBus and raw I2C ioctls
    --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_IO_DESC {
+typedef struct _I2cCtrl_IO_DESC {
     UCHAR  Address7Bit;  /* 7-bit slave address (bit7 must be 0) */
     UCHAR  Command;      /* SMBus command/register when applicable */
     UCHAR  PecMode;      /* 0 = off, 1 = on (SMBus PEC) */
@@ -134,4 +134,4 @@ typedef struct _I2CCTRL_IO_DESC {
 #define I2CCTRL_OPCODE_I2C_WRITE     0x09
 #define I2CCTRL_OPCODE_I2C_READ      0x0A
 
-#endif /* _I2CCTRL_IOCTL_H_ */
+#endif /* _I2cCtrl_IOCTL_H_ */

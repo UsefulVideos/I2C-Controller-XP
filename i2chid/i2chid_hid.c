@@ -1,7 +1,7 @@
 /* i2c_hid.c (C89 compliant)
  * I2C HID FDO: add/remove, PnP/Power, queueing, and HID descriptor plumbing.
  */
-#include "i2chid_hid.h"
+#include "I2CHID_hid.h"
 
 /* ---- Forward declarations ---- */
 

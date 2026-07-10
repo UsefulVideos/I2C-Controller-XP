@@ -2,7 +2,7 @@
 #include <initguid.h>   /* must be included before DEFINE_GUID */
 #include "i2cctrl_ext.h"
 
-DEFINE_GUID(GUID_I2CCTRL_CHILD_IFACE,
+DEFINE_GUID(GUID_I2cCtrl_CHILD_IFACE,
     0x9f5f8f12, 0x3a72, 0x4b3e, 0x94, 0x2a, 0x11, 0x7a, 0x3b, 0x66, 0x42, 0x21);
 
 DEFINE_GUID(GUID_BUS_TYPE_I2C,

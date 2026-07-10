@@ -16,6 +16,7 @@
 #include "i2cctrl_spinlock_fix.h"
 #include "i2cctrl_hw.h"
 #include "i2cctrl_hal_ops.h"
+#include "i2cctrl_log.h"
 
 /* Forward declaration to allow using PI2CCTRL_FDO in prototypes
    without requiring the entire FDO definition here. */

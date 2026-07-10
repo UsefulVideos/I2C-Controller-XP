@@ -17,7 +17,8 @@ TARGETLIBS= \
     $(DDK_LIB_PATH)\hal.lib
 
 SOURCES= \
-    i2cctrl.c \
+	i2cctrl.c \
+	i2cctrl_log.c \
     i2cctrl_zw.c \
     i2cctrl_backport.c \
     i2cctrl_bsod.c \
@@ -34,7 +35,7 @@ SOURCES= \
     i2cctrl_smbus.c \
     i2cctrl_spbcx.c \
     i2cctrl_acpiex.c \
-    i2cctrl_i2chid.c \
+    i2cctrl_I2CHID.c \
     i2cctrl_dpi.c \
     i2cctrl_wdm_compat.c \
     i2cctrl_hal_ops.c \

@@ -1,7 +1,7 @@
 #include <ntddk.h>
 #include "i2cctrl_ioctl.h"        // IOCTL_GET_PT_SAMPLE
 #include "i2cctrl_ext.h"          // I2CCTRL_DEVEXT
-#include "..\i2chid\i2chid_ext.h" // PT_RAW_SAMPLE definition
+#include "..\i2chid\I2CHID_EXT.h" // PT_RAW_SAMPLE definition
 #include "i2cctrl_zw.h"
 
 // Utility: complete an IRP
@@ -14,7 +14,7 @@ I2CCTRL_CompleteIrp(PIRP Irp, NTSTATUS Status, ULONG_PTR Info)
 }
 
 NTSTATUS
-I2Cctrl_Transfer(PDEVICE_OBJECT DevObj,
+I2cCtrl_Transfer(PDEVICE_OBJECT DevObj,
                  HANDLE ControllerHandle,
                  USHORT SlaveAddress,
                  ULONG  Direction,
@@ -47,14 +47,14 @@ I2Cctrl_Transfer(PDEVICE_OBJECT DevObj,
     packet.BytesReturned = 0;
 
     /* Use duplicate dispatcher instead of ZwDeviceIoControlFile */
-    status = I2Cctrl_ControlFile(
+    status = I2cCtrl_ControlFile(
 				 DevObj,                 /* PDEVICE_OBJECT */
                  ControllerHandle,       /* FileHandle */
                  NULL,                   /* Event */
                  NULL,                   /* APC routine */
                  NULL,                   /* APC context */
                  &ioStatus,              /* IO_STATUS_BLOCK */
-                 IOCTL_I2CCTRL_TRANSFER, /* IoControlCode */
+                 IOCTL_I2cCtrl_TRANSFER, /* IoControlCode */
                  &packet, sizeof(packet),/* InputBuffer + length */
                  &packet, sizeof(packet) /* OutputBuffer + length */
              );
@@ -95,7 +95,7 @@ I2CCTRL_FillSample(PI2CHID_PT_DEVEXT ext,
     RtlZeroMemory(out, sizeof(*out));
 
     /* HID-over-I²C sequence */
-    status = I2Cctrl_Transfer(
+    status = I2cCtrl_Transfer(
                  ext->FdoExt->Self,             /* PDEVICE_OBJECT DevObj */
                  ext->ControllerHandle,         /* HANDLE */
                  (USHORT)ext->I2cAddress,       /* USHORT */
@@ -105,7 +105,7 @@ I2CCTRL_FillSample(PI2CHID_PT_DEVEXT ext,
                  &bytesRead);                   /* PULONG */
 
     if (NT_SUCCESS(status)) {
-        status = I2Cctrl_Transfer(
+        status = I2cCtrl_Transfer(
                      ext->FdoExt->Self,
                      ext->ControllerHandle,
                      (USHORT)ext->I2cAddress,

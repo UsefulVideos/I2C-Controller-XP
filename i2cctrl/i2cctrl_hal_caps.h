@@ -4,6 +4,7 @@
 #define I2CCTRL_HAL_CAPS_H
 
 #include <ntddk.h>   /* for ULONG, BOOLEAN */
+#include "i2cctrl_log.h"
 
 /* ---------------------------------------------------------------------------
    Hardware-neutral capabilities
