@@ -10,12 +10,12 @@ Provider    = %ManufacturerName%
 DriverVer   = 12/08/2025,1.0.0.0
 
 [Manufacturer]
-%ManufacturerName% = Standard,NTx86,NTamd64
+%ManufacturerName% = RootDevice,NTx86,NTamd64
 
-[Standard.NTx86]
+[RootDevice.NTx86]
 %I2CCTRL_EMU.DeviceDesc% = I2CCTRL_EMU_Install, ROOT\I2CCTRL_EMU
 
-[Standard.NTamd64]
+[RootDevice.NTamd64]
 %I2CCTRL_EMU.DeviceDesc% = I2CCTRL_EMU_Install, ROOT\I2CCTRL_EMU
 
 ; -----------------------------------------------------------------------
@@ -29,7 +29,6 @@ AddReg    = Emu_AddReg
 i2cctrl_emu.sys
 
 [Emu_AddReg]
-; Registry parameters for emulator
 HKR,Parameters,"HidAddr",0x00010001,0x00000015
 HKR,Parameters,"Verbose",0x00010001,0x00000001
 
@@ -41,9 +40,9 @@ AddService = i2cctrl_emu, 0x00000002, I2CCTRL_EMU_Service_Inst
 
 [I2CCTRL_EMU_Service_Inst]
 DisplayName    = %I2CCTRL_EMU.SvcName%
-ServiceType    = 1 ; SERVICE_KERNEL_DRIVER
-StartType      = 0 ; SERVICE_DEMAND_BOOT
-ErrorControl   = 1 ; SERVICE_ERROR_NORMAL
+ServiceType    = 1
+StartType      = 0
+ErrorControl   = 1
 ServiceBinary  = %12%\i2cctrl_emu.sys
 
 ; -----------------------------------------------------------------------
@@ -57,5 +56,5 @@ Drivers_Copy = 12
 ; -----------------------------------------------------------------------
 [Strings]
 ManufacturerName      = "UsefulAGKHelper"
-I2CCTRL_EMU.DeviceDesc= "I2C Controller Emulator (ASUS X509FA 9DE9)"
+I2CCTRL_EMU.DeviceDesc= "I2C Controller Emulator"
 I2CCTRL_EMU.SvcName   = "I2CCTRL_EMU"
