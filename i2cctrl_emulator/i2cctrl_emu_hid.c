@@ -121,113 +121,143 @@ EmuFifoPushBlock(
  * Public APIs (call from i2cctrl_emu.c)
  * --------------------------------------------------------------------------- */
 
-/* Initialize HID profile state */
+/* ---------------------------------------------------------------------------
+ * Initialize HID profile state (XP-safe, C89-compliant)
+ * Prepares HID-I2C descriptor and report descriptor lengths.
+ * --------------------------------------------------------------------------- */
 VOID
 I2CCTRL_EMU_HidInitProfile(
-    PI2CCTRL_EMU_FDO_EXT ext
+    PI2CCTRL_EMU_FDO FdoExt
     )
 {
-    if (ext == NULL) {
+    if (FdoExt == NULL) {
         return;
     }
-    /* Ensure clean RX state */
-    EmuFifoReset(&ext->RxFifo);
-    ext->RawIntr = 0UL;
-    I2cCtrl_Emu_Log("Init profile VID=0x%04X PID=0x%04X Len=%u\n",
-        (unsigned)g_EmuHidDescriptor.wVendorID,
-        (unsigned)g_EmuHidDescriptor.wProductID,
-        (unsigned)g_EmuHidDescriptor.wHIDDescLength);
+
+    /* Reset RX FIFO and interrupt state */
+    EmuFifoReset(&FdoExt->RxFifo);
+    FdoExt->RawIntr = 0UL;
+
+    /* Cache HID descriptor lengths for ACPI\PNP0C50 child */
+    FdoExt->HidDescLength    = I2CCTRL_EMU_HidGetDescriptorLength(FdoExt);
+    FdoExt->ReportDescLength = I2CCTRL_EMU_HidGetReportDescriptorLength(FdoExt);
+
+    I2cCtrl_Emu_Log(
+        "Init HID profile: HIDDescLen=%u ReportDescLen=%u\n",
+        (unsigned)FdoExt->HidDescLength,
+        (unsigned)FdoExt->ReportDescLength
+    );
 }
 
-/* Prime RX FIFO according to last register accessed.
- * - For 0x01: first serve 8-byte header (desc length in first 2 bytes),
- *             then serve the full HID descriptor on subsequent reads.
- * - For report descriptor register: serve the report descriptor bytes.
- * - For input register: leave FIFO as-is (filled via IOCTL push).
- */
+/* ---------------------------------------------------------------------------
+ * Prime RX FIFO according to last register accessed.
+ * ACPI PNP0C50 synthetic HID-I2C device:
+ * - HID header register: serve 8-byte header (desc length in first 2 bytes)
+ * - Report descriptor register: serve full report descriptor
+ * - Input register: FIFO is filled via IOCTL_PUSH_REPORT
+ * --------------------------------------------------------------------------- */
 VOID
 I2CCTRL_EMU_HidPrimeForRegister(
-    PI2CCTRL_EMU_FDO_EXT ext
+    PI2CCTRL_EMU_FDO FdoExt
     )
 {
     UCHAR header[8];
     const UCHAR* src;
     ULONG len;
 
-    if (ext == NULL) {
+    if (FdoExt == NULL) {
         return;
     }
 
     /* Only act when target matches the emulated HID address */
-    if (ext->Target7bit != ext->HidAddr) {
+    if (FdoExt->Target7bit != FdoExt->HidAddr) {
         return;
     }
 
-    switch (ext->LastReg) {
-    case I2CCTRL_EMU_REG_HID_HEADER:
-        /* First 8 bytes: descriptor length at [0..1], rest zero */
-        RtlZeroMemory(header, sizeof(header));
-        header[0] = (UCHAR)(g_EmuHidDescriptor.wHIDDescLength & 0xFFU);
-        header[1] = (UCHAR)((g_EmuHidDescriptor.wHIDDescLength >> 8) & 0xFFU);
+    switch (FdoExt->LastReg) {
 
-        (VOID)EmuFifoPushBlock(&ext->RxFifo, header, (ULONG)sizeof(header));
-        ext->RawIntr |= 0x00000001UL;
-        I2cCtrl_Emu_Log("Primed HID header len=%u\n", (unsigned)g_EmuHidDescriptor.wHIDDescLength);
+    case I2CCTRL_EMU_REG_HID_HEADER:
+        RtlZeroMemory(header, sizeof(header));
+
+        /* First two bytes: HID descriptor length */
+        header[0] = (UCHAR)(FdoExt->HidDescLength & 0xFFU);
+        header[1] = (UCHAR)((FdoExt->HidDescLength >> 8) & 0xFFU);
+
+        (VOID)EmuFifoPushBlock(&FdoExt->RxFifo, header, (ULONG)sizeof(header));
+        FdoExt->RawIntr |= 0x00000001UL;
+
+        I2cCtrl_Emu_Log("Primed HID header len=%u\n",
+                        (unsigned)FdoExt->HidDescLength);
         break;
 
     case I2CCTRL_EMU_REG_REPORT_DESC:
         src = (const UCHAR*)g_EmuReportDescriptor;
         len = (ULONG)sizeof(g_EmuReportDescriptor);
-        (VOID)EmuFifoPushBlock(&ext->RxFifo, src, len);
-        ext->RawIntr |= 0x00000001UL;
+
+        (VOID)EmuFifoPushBlock(&FdoExt->RxFifo, src, len);
+        FdoExt->RawIntr |= 0x00000001UL;
+
         I2cCtrl_Emu_Log("Primed report descriptor len=%lu\n", len);
         break;
 
     default:
-        /* No automatic priming for INPUT/OUTPUT/CMD/DATA.
-           INPUT bytes are injected via IOCTL_PUSH_REPORT. */
+        /* INPUT register: data comes from IOCTL_PUSH_REPORT */
         break;
     }
 }
 
-/* Push full HID-I2C descriptor bytes into RX FIFO (for reads after header) */
+/* ---------------------------------------------------------------------------
+ * Push full HID-I2C descriptor bytes into RX FIFO (for reads after header)
+ * --------------------------------------------------------------------------- */
 VOID
 I2CCTRL_EMU_HidPrimeFullDescriptor(
-    PI2CCTRL_EMU_FDO_EXT ext
+    PI2CCTRL_EMU_FDO FdoExt
     )
 {
     const UCHAR* src;
     ULONG len;
 
-    if (ext == NULL) {
+    if (FdoExt == NULL) {
         return;
     }
-    if (ext->Target7bit != ext->HidAddr) {
+
+    if (FdoExt->Target7bit != FdoExt->HidAddr) {
         return;
     }
 
     src = (const UCHAR*)&g_EmuHidDescriptor;
     len = (ULONG)sizeof(g_EmuHidDescriptor);
 
-    (VOID)EmuFifoPushBlock(&ext->RxFifo, src, len);
-    ext->RawIntr |= 0x00000001UL;
+    (VOID)EmuFifoPushBlock(&FdoExt->RxFifo, src, len);
+    FdoExt->RawIntr |= 0x00000001UL;
+
     I2cCtrl_Emu_Log("Primed full HID descriptor len=%lu\n", len);
 }
 
-/* Utility: return descriptor length (for consistency with validators) */
+/* ---------------------------------------------------------------------------
+ * Utility: return HID-I2C descriptor length (cached in FDO extension)
+ * --------------------------------------------------------------------------- */
 USHORT
 I2CCTRL_EMU_HidGetDescriptorLength(
-    VOID
+    PI2CCTRL_EMU_FDO FdoExt
     )
 {
-    return g_EmuHidDescriptor.wHIDDescLength;
+    if (FdoExt == NULL) {
+        return 0U;
+    }
+    return FdoExt->HidDescLength;
 }
 
-/* Utility: return report descriptor size */
+/* ---------------------------------------------------------------------------
+ * Utility: return HID-I2C report descriptor length (cached in FDO extension)
+ * --------------------------------------------------------------------------- */
 USHORT
 I2CCTRL_EMU_HidGetReportDescriptorLength(
-    VOID
+    PI2CCTRL_EMU_FDO FdoExt
     )
 {
-    return (USHORT)sizeof(g_EmuReportDescriptor);
+    if (FdoExt == NULL) {
+        return 0U;
+    }
+    return FdoExt->ReportDescLength;
 }

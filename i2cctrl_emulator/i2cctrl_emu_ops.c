@@ -27,9 +27,9 @@ I2CCTRL_EMU_Enable(
     BOOLEAN on
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
-    ext->Enabled = on ? TRUE : FALSE;
-    I2cCtrl_Emu_Log("Enable=%u\n", (unsigned)ext->Enabled);
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
+    FdoExt->Enabled = on ? TRUE : FALSE;
+    I2cCtrl_Emu_Log("Enable=%u\n", (unsigned)FdoExt->Enabled);
     return STATUS_SUCCESS;
 }
 
@@ -42,9 +42,9 @@ I2CCTRL_EMU_SetTarget7bit(
     UCHAR addr
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
-    ext->Target7bit = addr & 0x7FU;
-    I2cCtrl_Emu_Log("SetTarget7bit=0x%02X\n", (unsigned)ext->Target7bit);
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
+    FdoExt->Target7bit = addr & 0x7FU;
+    I2cCtrl_Emu_Log("SetTarget7bit=0x%02X\n", (unsigned)FdoExt->Target7bit);
     return STATUS_SUCCESS;
 }
 
@@ -57,8 +57,8 @@ I2CCTRL_EMU_IssueWriteByte(
     UCHAR reg
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
-    ext->LastReg = reg;
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
+    FdoExt->LastReg = reg;
     I2cCtrl_Emu_Log("IssueWriteByte reg=0x%02X\n", (unsigned)reg);
     return STATUS_SUCCESS;
 }
@@ -71,8 +71,8 @@ I2CCTRL_EMU_IssueReadToken(
     PI2CCTRL_FDO fdo
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
-    ext->RawIntr |= 0x00000001UL;
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
+    FdoExt->RawIntr |= 0x00000001UL;
     I2cCtrl_Emu_Log("IssueReadToken\n");
     return STATUS_SUCCESS;
 }
@@ -86,11 +86,11 @@ I2CCTRL_EMU_GetStatus(
     PI2C_HW_STATUS st
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
     if (st == NULL) return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(st, sizeof(*st));
-    st->RawIntr = ext->RawIntr;
-    st->RxFifoNotEmpty = (ext->RxFifo.Head != ext->RxFifo.Tail) ? TRUE : FALSE;
+    st->RawIntr = FdoExt->RawIntr;
+    st->RxFifoNotEmpty = (FdoExt->RxFifo.Head != FdoExt->RxFifo.Tail) ? TRUE : FALSE;
     return STATUS_SUCCESS;
 }
 
@@ -103,13 +103,13 @@ I2CCTRL_EMU_ReadRxByte(
     PUCHAR out
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext;
+    PI2CCTRL_EMU_FDO FdoExt;
     UCHAR b;
 
-    ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
+    FdoExt = (PI2CCTRL_EMU_FDO)fdo;
     if (out == NULL) return STATUS_INVALID_PARAMETER;
 
-    if (EmuFifoPop(&ext->RxFifo, &b)) {
+    if (EmuFifoPop(&FdoExt->RxFifo, &b)) {
         *out = b;
         return STATUS_SUCCESS;
     }
@@ -128,7 +128,7 @@ I2CCTRL_EMU_AckInterrupts(
     ULONG rawIntr
     )
 {
-    PI2CCTRL_EMU_FDO_EXT ext = (PI2CCTRL_EMU_FDO_EXT)fdo;
-    ext->RawIntr &= ~rawIntr;
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)fdo;
+    FdoExt->RawIntr &= ~rawIntr;
     I2cCtrl_Emu_Log("AckInterrupts mask=0x%08lX\n", rawIntr);
 }

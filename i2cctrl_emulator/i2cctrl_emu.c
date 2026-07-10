@@ -65,6 +65,14 @@ static VOID I2CCTRL_EMU_ReadVerboseFlag(VOID)
     /* XP-safe shortcut: leave default. Add full query later if needed. */
 }
 
+/* XP-safe definition: GUID_BUS_TYPE_INTERNAL is missing in WDK 3790 */
+#ifndef GUID_BUS_TYPE_INTERNAL
+DEFINE_GUID(
+    GUID_BUS_TYPE_INTERNAL,
+    0x2530ea0e, 0x3f9d, 0x11d2,
+    0x93, 0x2e, 0x00, 0xc0, 0x4f, 0xa3, 0x0a, 0x24
+);
+#endif
 
 /* ---------------------------------------------------------------------------
  * AddDevice (XP-safe, C89-compliant, WDK-safe, verbose-compliant)
@@ -79,19 +87,18 @@ I2CCTRL_EMU_AddDevice(
 {
     NTSTATUS status;
     PDEVICE_OBJECT fdo;
-    PI2CCTRL_EMU_FDO_EXT ext;
+    PI2CCTRL_EMU_FDO FdoExt;
     UNICODE_STRING devName;
     UNICODE_STRING dosName;
     ULONG i;
     static const WCHAR idTouch[] = L"ACPI\\PNP0C50";
-    const PWSTR childIds[3] = { (PWSTR)idTouch, NULL, NULL };
     PDEVICE_OBJECT lower;
 
     /* Create the Functional Device Object (FDO) */
     RtlInitUnicodeString(&devName, I2CCTRL_EMU_DEVICE_NAME);
     status = IoCreateDevice(
         DriverObject,
-        sizeof(I2CCTRL_EMU_FDO_EXT),
+        sizeof(I2CCTRL_EMU_FDO),
         &devName,
         FILE_DEVICE_UNKNOWN,
         FILE_DEVICE_SECURE_OPEN,
@@ -104,21 +111,24 @@ I2CCTRL_EMU_AddDevice(
     }
 
     /* Initialize FDO extension */
-    ext = (PI2CCTRL_EMU_FDO_EXT)fdo->DeviceExtension;
-    RtlZeroMemory(ext, sizeof(I2CCTRL_EMU_FDO_EXT));
-    ext->Self               = fdo;
-    ext->Enabled            = FALSE;
-    ext->HidAddr            = I2CCTRL_EMU_DEFAULT_ADDR;
-    ext->AcpiPdo            = NULL;
-    ext->AcpiInterfaceReady = FALSE;
-    ext->InstanceId         = 0;
-    ext->ParentPdo          = PhysicalDeviceObject;
-    ext->LowerDevice        = NULL;
+    FdoExt = (PI2CCTRL_EMU_FDO)fdo->DeviceExtension;
+    RtlZeroMemory(FdoExt, sizeof(I2CCTRL_EMU_FDO));
+    FdoExt->Self               = fdo;
+    FdoExt->Enabled            = FALSE;
+    FdoExt->HidAddr            = I2CCTRL_EMU_DEFAULT_ADDR;
+    FdoExt->AcpiPdo            = NULL;
+    FdoExt->AcpiInterfaceReady = FALSE;
+    FdoExt->InstanceId         = 0;
+    FdoExt->ParentPdo          = PhysicalDeviceObject;
+    FdoExt->LowerDevice        = NULL;
+
+    FdoExt->HidDescLength    = I2CCTRL_EMU_HidGetDescriptorLength(FdoExt);
+    FdoExt->ReportDescLength = I2CCTRL_EMU_HidGetReportDescriptorLength(FdoExt);
 
     for (i = 0; i < 3; i++) {
-        ext->ChildPdos[i]     = NULL;
-        ext->ChildIds[i]      = NULL;
-        ext->ChildReported[i] = FALSE;
+        FdoExt->ChildPdos[i]     = NULL;
+        FdoExt->ChildIds[i]      = NULL;
+        FdoExt->ChildReported[i] = FALSE;
     }
 
     /* Attach to underlying stack so PnP/Power IRPs flow through us */
@@ -128,10 +138,11 @@ I2CCTRL_EMU_AddDevice(
         IoDeleteDevice(fdo);
         return STATUS_NO_SUCH_DEVICE;
     }
-    ext->LowerDevice = lower;
+    FdoExt->LowerDevice = lower;
     I2cCtrl_Emu_Log("AddDevice: Attached FDO to stack, lower=%p\n", lower);
 
-    I2CCTRL_EMU_HidInitProfile(ext);
+    /* Initialize HID profile (descriptor and report) */
+    I2CCTRL_EMU_HidInitProfile(FdoExt);
 
     /* FDO flags */
     fdo->DeviceType      = FILE_DEVICE_UNKNOWN;
@@ -141,26 +152,22 @@ I2CCTRL_EMU_AddDevice(
 
     /* Optional DOS link */
     RtlInitUnicodeString(&dosName, I2CCTRL_EMU_DOSLINK_NAME);
-    ext->DosLink = dosName;
+    FdoExt->DosLink = dosName;
     status = IoCreateSymbolicLink(&dosName, &devName);
     if (!NT_SUCCESS(status)) {
         I2cCtrl_Emu_Log("AddDevice: IoCreateSymbolicLink failed status=0x%08lX\n", status);
     }
 
-    /* ACPI-assisted init */
-    (VOID)I2CCTRL_EMU_AcpiInitialize(ext);
-    (VOID)I2CCTRL_EMU_AcpiPrimeChildren(ext, childIds, 1);
-
     /* Create single synthetic ACPI\PNP0C50 child PDO */
     {
         NTSTATUS s;
         PDEVICE_OBJECT pdo;
-        PI2CCTRL_EMU_PDO_EXT pext;
+        PI2CCTRL_EMU_PDO PdoExt;
 
         pdo = NULL;
         s = IoCreateDevice(
                 DriverObject,
-                sizeof(I2CCTRL_EMU_PDO_EXT),
+                sizeof(I2CCTRL_EMU_PDO),
                 NULL,
                 FILE_DEVICE_UNKNOWN,
                 0,
@@ -171,52 +178,43 @@ I2CCTRL_EMU_AddDevice(
             I2cCtrl_Emu_Log("AddDevice: IoCreateDevice(PDO[0]) failed 0x%08lX\n", s);
         } else {
             /* Init PDO extension (generic fields) */
-            pext = (PI2CCTRL_EMU_PDO_EXT)pdo->DeviceExtension;
-            RtlZeroMemory(pext, sizeof(*pext));
-            pext->Parent     = ext;
-            pext->Index      = 0;
-            pext->HardwareId = childIds[0];
-            pext->InstanceId = NULL;
-            pext->Reported   = FALSE;
-            pext->Flags      = 0;
+            PdoExt = (PI2CCTRL_EMU_PDO)pdo->DeviceExtension;
+            RtlZeroMemory(PdoExt, sizeof(*PdoExt));
+            PdoExt->Parent         = FdoExt;
+            PdoExt->Index          = 0;
+            PdoExt->HardwareId     = (PWSTR)idTouch;
+            PdoExt->InstanceId     = NULL;
+            PdoExt->Reported       = FALSE;
+            PdoExt->Flags          = 0;
+            PdoExt->IsAcpiPnpDevice = TRUE;
 
-            /* No real PCI bus numbering; keep zeros */
-            pext->BusNumber      = 0;
-            pext->DeviceNumber   = 0;
-            pext->FunctionNumber = 0;
-
-            /* Minimal config space, just enough for READ_CONFIG / WRITE_CONFIG */
-            RtlZeroMemory(&pext->ConfigSpace, sizeof(pext->ConfigSpace));
-            pext->ConfigSpace.VendorID      = 0x0000;
-            pext->ConfigSpace.DeviceID      = 0x0000;
-            pext->ConfigSpace.BaseClass     = 0x00;
-            pext->ConfigSpace.SubClass      = 0x00;
-            pext->ConfigSpace.InterruptLine = 0xFF;
-            pext->ConfigSpace.InterruptPin  = 0x00;
+            PdoExt->HidDescLength    = FdoExt->HidDescLength;
+            PdoExt->ReportDescLength = FdoExt->ReportDescLength;
 
             pdo->DeviceType      = fdo->DeviceType;
             pdo->Characteristics = fdo->Characteristics;
             pdo->Flags |= DO_POWER_PAGABLE;
             pdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
-            ext->ChildPdos[0]     = pdo;
-            ext->ChildIds[0]      = childIds[0];
-            ext->ChildReported[0] = FALSE;
+            FdoExt->ChildPdos[0]     = pdo;
+            FdoExt->ChildIds[0]      = (PWSTR)idTouch;
+            FdoExt->ChildReported[0] = FALSE;
+            FdoExt->AcpiPdo          = pdo;
 
-            (VOID)I2CCTRL_EMU_AcpiAttachChildProperties(ext, pdo, childIds[0], 0);
+            (VOID)I2CCTRL_EMU_AcpiAttachChildProperties(FdoExt, pdo, (PWSTR)idTouch, 0);
 
             I2cCtrl_Emu_Log("AddDevice: Created synthetic ACPI child PDO[0] ID=%ws\n",
-                            childIds[0]);
+                            idTouch);
         }
     }
 
     /* Notify PnP to query BusRelations */
-    if (ext->ParentPdo != NULL) {
+    if (FdoExt->ParentPdo != NULL) {
         I2cCtrl_Emu_Log("AddDevice: IoInvalidateDeviceRelations(BusRelations)\n");
-        IoInvalidateDeviceRelations(ext->ParentPdo, BusRelations);
+        IoInvalidateDeviceRelations(FdoExt->ParentPdo, BusRelations);
     }
 
-    I2cCtrl_Emu_Log("AddDevice OK, HidAddr=0x%02X\n", (unsigned)ext->HidAddr);
+    I2cCtrl_Emu_Log("AddDevice OK, HidAddr=0x%02X\n", (unsigned)FdoExt->HidAddr);
     return STATUS_SUCCESS;
 }
 
@@ -238,8 +236,8 @@ I2CCTRL_EMU_DispatchCreateClose(
 
     /* Identify whether this is the bus FDO or a child PDO */
     if (DeviceObject != NULL) {
-        PI2CCTRL_EMU_FDO_EXT fext = (PI2CCTRL_EMU_FDO_EXT)DeviceObject->DeviceExtension;
-        if (fext != NULL && fext->Self == DeviceObject) {
+        PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)DeviceObject->DeviceExtension;
+        if (FdoExt != NULL && FdoExt->Self == DeviceObject) {
             /* FDO path */
             if (isl->MajorFunction == IRP_MJ_CREATE) {
                 I2cCtrl_Emu_Log("FDO DispatchCreateClose: IRP_MJ_CREATE\n");
@@ -251,14 +249,14 @@ I2CCTRL_EMU_DispatchCreateClose(
             }
         } else {
             /* PDO path */
-            PI2CCTRL_EMU_PDO_EXT pext = (PI2CCTRL_EMU_PDO_EXT)DeviceObject->DeviceExtension;
+            PI2CCTRL_EMU_PDO PdoExt = (PI2CCTRL_EMU_PDO)DeviceObject->DeviceExtension;
             if (isl->MajorFunction == IRP_MJ_CREATE) {
-                I2cCtrl_Emu_Log("PDO[%lu] DispatchCreateClose: IRP_MJ_CREATE\n", pext->Index);
+                I2cCtrl_Emu_Log("PDO[%lu] DispatchCreateClose: IRP_MJ_CREATE\n", PdoExt->Index);
             } else if (isl->MajorFunction == IRP_MJ_CLOSE) {
-                I2cCtrl_Emu_Log("PDO[%lu] DispatchCreateClose: IRP_MJ_CLOSE\n", pext->Index);
+                I2cCtrl_Emu_Log("PDO[%lu] DispatchCreateClose: IRP_MJ_CLOSE\n", PdoExt->Index);
             } else {
                 I2cCtrl_Emu_Log("PDO[%lu] DispatchCreateClose: unexpected major=%u\n",
-                                pext->Index, isl->MajorFunction);
+                                PdoExt->Index, isl->MajorFunction);
             }
         }
     }
@@ -271,7 +269,7 @@ I2CCTRL_EMU_DispatchCreateClose(
 
 
 /* ---------------------------------------------------------------------------
- * Dispatch: PNP (XP-safe, C89-compliant, WDK-safe) - bus FDO and child PDOs
+ * Dispatch: PNP (XP-safe, C89-compliant, WDK-safe) - bus FDO and ACPI PDOs
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2CCTRL_EMU_DispatchPnp(
@@ -281,17 +279,16 @@ I2CCTRL_EMU_DispatchPnp(
 {
     NTSTATUS status;
     PIO_STACK_LOCATION isl;
-    PI2CCTRL_EMU_FDO_EXT fext;
-    PI2CCTRL_EMU_PDO_EXT pext;
+    PI2CCTRL_EMU_FDO FdoExt;
+    PI2CCTRL_EMU_PDO PdoExt;
     BOOLEAN isFdo;
     ULONG i;
     ULONG j;
-    ULONG k;
 
     status = STATUS_SUCCESS;
     isl    = IoGetCurrentIrpStackLocation(Irp);
-    fext   = (PI2CCTRL_EMU_FDO_EXT)DeviceObject->DeviceExtension;
-    isFdo  = (fext != NULL && fext->Self == DeviceObject);
+    FdoExt   = (PI2CCTRL_EMU_FDO)DeviceObject->DeviceExtension;
+    isFdo  = (FdoExt != NULL && FdoExt->Self == DeviceObject);
 
     if (isFdo) {
         /* ---------------- FDO path ---------------- */
@@ -299,12 +296,12 @@ I2CCTRL_EMU_DispatchPnp(
 
         case IRP_MN_START_DEVICE:
             I2cCtrl_Emu_Log("FDO PnP START\n");
-            fext->Enabled = TRUE;
+            FdoExt->Enabled = TRUE;
             break;
 
         case IRP_MN_STOP_DEVICE:
             I2cCtrl_Emu_Log("FDO PnP STOP\n");
-            fext->Enabled = FALSE;
+            FdoExt->Enabled = FALSE;
             break;
 
         case IRP_MN_QUERY_DEVICE_RELATIONS:
@@ -316,7 +313,6 @@ I2CCTRL_EMU_DispatchPnp(
             if (type == BusRelations) {
                 PDEVICE_RELATIONS rel;
                 ULONG count;
-                ULONG j;
                 ULONG idx;
                 PDEVICE_OBJECT p;
 
@@ -324,7 +320,7 @@ I2CCTRL_EMU_DispatchPnp(
 
                 count = 0;
                 for (j = 0; j < 3; j++) {
-                    if (fext->ChildPdos[j] != NULL) {
+                    if (FdoExt->ChildPdos[j] != NULL) {
                         count++;
                     }
                 }
@@ -343,11 +339,11 @@ I2CCTRL_EMU_DispatchPnp(
                     idx = 0;
 
                     for (j = 0; j < 3; j++) {
-                        p = fext->ChildPdos[j];
+                        p = FdoExt->ChildPdos[j];
                         if (p != NULL) {
                             ObfReferenceObject(p);
                             rel->Objects[idx++] = p;
-                            fext->ChildReported[j] = TRUE;
+                            FdoExt->ChildReported[j] = TRUE;
                         }
                     }
 
@@ -374,7 +370,7 @@ I2CCTRL_EMU_DispatchPnp(
                 size_t bytes;
                 PWSTR out;
 
-                text  = L"Emulated PCI Root Bus";
+                text  = L"I2C Controller Emulator Root";
                 bytes = (wcslen(text) + 1) * sizeof(WCHAR);
 
                 out = (PWSTR)ExAllocatePoolWithTag(PagedPool, bytes, 'tDcI');
@@ -425,46 +421,44 @@ I2CCTRL_EMU_DispatchPnp(
             } else {
                 RtlZeroMemory(busInfo, sizeof(PNP_BUS_INFORMATION));
 
-                /* Present this FDO as a PCI-like bus */
-                busInfo->BusTypeGuid   = GUID_BUS_TYPE_PCI;
-                busInfo->LegacyBusType = PCIBus;
+                /* Present this FDO as an internal synthetic bus */
+                busInfo->BusTypeGuid   = GUID_BUS_TYPE_INTERNAL;
+                busInfo->LegacyBusType = Internal;
                 busInfo->BusNumber     = 0;
 
                 Irp->IoStatus.Information = (ULONG_PTR)busInfo;
                 status = STATUS_SUCCESS;
 
-                I2cCtrl_Emu_Log("FDO PnP QUERY_BUS_INFORMATION -> PCI bus #0\n");
+                I2cCtrl_Emu_Log("FDO PnP QUERY_BUS_INFORMATION -> INTERNAL bus #0\n");
             }
             break;
         }
 
         case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
-            /* Just pass through for the root bus FDO */
             I2cCtrl_Emu_Log("FDO PnP FILTER_RESOURCE_REQUIREMENTS (pass through)\n");
             break;
 
         case IRP_MN_QUERY_INTERFACE:
-            /* Let lower drivers handle any interface requests */
             I2cCtrl_Emu_Log("FDO PnP QUERY_INTERFACE (pass down)\n");
             break;
 
         case IRP_MN_REMOVE_DEVICE:
             I2cCtrl_Emu_Log("FDO PnP REMOVE\n");
 
-            if (fext->DosLink.Buffer != NULL) {
-                (VOID)IoDeleteSymbolicLink(&fext->DosLink);
-                RtlZeroMemory(&fext->DosLink, sizeof(fext->DosLink));
+            if (FdoExt->DosLink.Buffer != NULL) {
+                (VOID)IoDeleteSymbolicLink(&FdoExt->DosLink);
+                RtlZeroMemory(&FdoExt->DosLink, sizeof(FdoExt->DosLink));
             }
 
             for (i = 0; i < 3; i++) {
-                fext->ChildPdos[i]     = NULL;
-                fext->ChildIds[i]      = NULL;
-                fext->ChildReported[i] = FALSE;
+                FdoExt->ChildPdos[i]     = NULL;
+                FdoExt->ChildIds[i]      = NULL;
+                FdoExt->ChildReported[i] = FALSE;
             }
 
-            if (fext->LowerDevice != NULL) {
-                IoDetachDevice(fext->LowerDevice);
-                fext->LowerDevice = NULL;
+            if (FdoExt->LowerDevice != NULL) {
+                IoDetachDevice(FdoExt->LowerDevice);
+                FdoExt->LowerDevice = NULL;
             }
 
             IoDeleteDevice(DeviceObject);
@@ -475,13 +469,12 @@ I2CCTRL_EMU_DispatchPnp(
             break;
         }
 
-        /* For the FDO, pass the IRP down the stack after our processing. */
         Irp->IoStatus.Status = status;
         IoSkipCurrentIrpStackLocation(Irp);
-        return IoCallDriver(fext->LowerDevice, Irp);
+        return IoCallDriver(FdoExt->LowerDevice, Irp);
     } else {
-        /* ---------------- PDO path ---------------- */
-        pext = (PI2CCTRL_EMU_PDO_EXT)DeviceObject->DeviceExtension;
+        /* ---------------- PDO path (ACPI\PNP0C50 child) ---------------- */
+        PdoExt = (PI2CCTRL_EMU_PDO)DeviceObject->DeviceExtension;
 
         switch (isl->MinorFunction) {
 
@@ -494,19 +487,19 @@ I2CCTRL_EMU_DispatchPnp(
                 size_t bytes;
                 PWSTR multi;
 
-                cch   = wcslen(pext->HardwareId) + 1;   /* include NUL */
-                bytes = (cch + 1) * sizeof(WCHAR);      /* MULTI_SZ needs extra NUL */
+                cch   = wcslen(PdoExt->HardwareId) + 1;
+                bytes = (cch + 1) * sizeof(WCHAR);
 
                 multi = (PWSTR)ExAllocatePoolWithTag(PagedPool, bytes, 'dIcI');
                 if (multi == NULL) {
                     status = STATUS_INSUFFICIENT_RESOURCES;
                 } else {
                     RtlZeroMemory(multi, bytes);
-                    RtlCopyMemory(multi, pext->HardwareId, cch * sizeof(WCHAR));
+                    RtlCopyMemory(multi, PdoExt->HardwareId, cch * sizeof(WCHAR));
                     Irp->IoStatus.Information = (ULONG_PTR)multi;
                     status = STATUS_SUCCESS;
                     I2cCtrl_Emu_Log("PDO[%lu] QUERY_ID -> %ws\n",
-                                    pext->Index, pext->HardwareId);
+                                    PdoExt->Index, PdoExt->HardwareId);
                 }
                 break;
             }
@@ -517,7 +510,7 @@ I2CCTRL_EMU_DispatchPnp(
                 PWSTR out;
 
                 RtlInitEmptyUnicodeString(&us, tmp, sizeof(tmp));
-                if (!NT_SUCCESS(RtlIntegerToUnicodeString(pext->Index, 10, &us))) {
+                if (!NT_SUCCESS(RtlIntegerToUnicodeString(PdoExt->Index, 10, &us))) {
                     status = STATUS_UNSUCCESSFUL;
                 } else {
                     out = (PWSTR)ExAllocatePoolWithTag(
@@ -560,17 +553,16 @@ I2CCTRL_EMU_DispatchPnp(
                     Irp->IoStatus.Information = (ULONG_PTR)rel;
                     status = STATUS_SUCCESS;
                     I2cCtrl_Emu_Log("PDO[%lu] QUERY_DEVICE_RELATIONS (Target)\n",
-                                    pext->Index);
+                                    PdoExt->Index);
                 }
             } else if (isl->Parameters.QueryDeviceRelations.Type == RemovalRelations) {
-                /* No special removal relations */
                 Irp->IoStatus.Information = 0;
                 status = STATUS_SUCCESS;
                 I2cCtrl_Emu_Log("PDO[%lu] QUERY_DEVICE_RELATIONS (Removal)\n",
-                                pext->Index);
+                                PdoExt->Index);
             } else {
                 I2cCtrl_Emu_Log("PDO[%lu] QUERY_DEVICE_RELATIONS type=%u (ignored)\n",
-                                pext->Index,
+                                PdoExt->Index,
                                 isl->Parameters.QueryDeviceRelations.Type);
                 status = STATUS_SUCCESS;
             }
@@ -583,7 +575,7 @@ I2CCTRL_EMU_DispatchPnp(
                 size_t bytes;
                 PWSTR out;
 
-                text  = L"Emulated PCI Device";
+                text  = L"Emulated ACPI PNP0C50 Device";
                 bytes = (wcslen(text) + 1) * sizeof(WCHAR);
 
                 out = (PWSTR)ExAllocatePoolWithTag(PagedPool, bytes, 'tDcI');
@@ -594,142 +586,38 @@ I2CCTRL_EMU_DispatchPnp(
                     Irp->IoStatus.Information = (ULONG_PTR)out;
                     status = STATUS_SUCCESS;
                     I2cCtrl_Emu_Log("PDO[%lu] QUERY_DEVICE_TEXT (Description)\n",
-                                    pext->Index);
+                                    PdoExt->Index);
                 }
             } else {
                 status = STATUS_SUCCESS;
             }
             break;
-
-        case IRP_MN_READ_CONFIG:
-        {
-            ULONG which;
-            ULONG offset;
-            ULONG length;
-            PUCHAR dest;
-
-            which  = isl->Parameters.ReadWriteConfig.WhichSpace;
-            offset = isl->Parameters.ReadWriteConfig.Offset;
-            length = isl->Parameters.ReadWriteConfig.Length;
-            dest   = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-
-            if (which != PCI_WHICHSPACE_CONFIG || dest == NULL) {
-                status = STATUS_INVALID_PARAMETER;
-            } else {
-                if (offset >= sizeof(pext->ConfigSpace)) {
-                    length = 0;
-                } else if (offset + length > sizeof(pext->ConfigSpace)) {
-                    length = sizeof(pext->ConfigSpace) - offset;
-                }
-
-                if (length > 0) {
-                    RtlCopyMemory(
-                        dest,
-                        ((PUCHAR)&pext->ConfigSpace) + offset,
-                        length
-                    );
-                }
-
-                Irp->IoStatus.Information = length;
-                status = STATUS_SUCCESS;
-            }
-            break;
-        }
-
-        case IRP_MN_WRITE_CONFIG:
-        {
-            ULONG which;
-            ULONG offset;
-            ULONG length;
-            PUCHAR src;
-
-            which  = isl->Parameters.ReadWriteConfig.WhichSpace;
-            offset = isl->Parameters.ReadWriteConfig.Offset;
-            length = isl->Parameters.ReadWriteConfig.Length;
-            src    = (PUCHAR)Irp->AssociatedIrp.SystemBuffer;
-
-            if (which != PCI_WHICHSPACE_CONFIG || src == NULL) {
-                status = STATUS_INVALID_PARAMETER;
-            } else {
-                if (offset >= sizeof(pext->ConfigSpace)) {
-                    length = 0;
-                } else if (offset + length > sizeof(pext->ConfigSpace)) {
-                    length = sizeof(pext->ConfigSpace) - offset;
-                }
-
-                if (length > 0) {
-                    /* For now, allow writes to the whole config space */
-                    RtlCopyMemory(
-                        ((PUCHAR)&pext->ConfigSpace) + offset,
-                        src,
-                        length
-                    );
-                }
-
-                Irp->IoStatus.Information = length;
-                status = STATUS_SUCCESS;
-            }
-            break;
-        }
 
         case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
-        {
-            PIO_RESOURCE_REQUIREMENTS_LIST req;
-            ULONG size;
-
-            size = sizeof(IO_RESOURCE_REQUIREMENTS_LIST);
-            req = (PIO_RESOURCE_REQUIREMENTS_LIST)ExAllocatePoolWithTag(
-                      PagedPool,
-                      size,
-                      'qRcI');
-            if (req == NULL) {
-                status = STATUS_INSUFFICIENT_RESOURCES;
-            } else {
-                RtlZeroMemory(req, size);
-                req->AlternativeLists = 0;
-                req->ListSize         = size;
-                Irp->IoStatus.Information = (ULONG_PTR)req;
-                status = STATUS_SUCCESS;
-                I2cCtrl_Emu_Log("PDO[%lu] QUERY_RESOURCE_REQUIREMENTS (none)\n",
-                                pext->Index);
-            }
+            /* Let the OS and i2chid.sys handle resources; do not fabricate lists */
+            I2cCtrl_Emu_Log("PDO[%lu] QUERY_RESOURCE_REQUIREMENTS (NOT_SUPPORTED)\n",
+                            PdoExt->Index);
+            Irp->IoStatus.Information = 0;
+            status = STATUS_NOT_SUPPORTED;
             break;
-        }
 
         case IRP_MN_QUERY_RESOURCES:
-        {
-            PCM_RESOURCE_LIST res;
-            ULONG size;
-
-            size = sizeof(CM_RESOURCE_LIST);
-            res = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(
-                      PagedPool,
-                      size,
-                      'rRcI');
-            if (res == NULL) {
-                status = STATUS_INSUFFICIENT_RESOURCES;
-            } else {
-                RtlZeroMemory(res, size);
-                res->Count = 0;
-                Irp->IoStatus.Information = (ULONG_PTR)res;
-                status = STATUS_SUCCESS;
-                I2cCtrl_Emu_Log("PDO[%lu] QUERY_RESOURCES (none)\n",
-                                pext->Index);
-            }
+            /* No explicit resources from the synthetic ACPI PDO */
+            I2cCtrl_Emu_Log("PDO[%lu] QUERY_RESOURCES (NOT_SUPPORTED)\n",
+                            PdoExt->Index);
+            Irp->IoStatus.Information = 0;
+            status = STATUS_NOT_SUPPORTED;
             break;
-        }
 
         case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
-            /* No filtering, just succeed */
             I2cCtrl_Emu_Log("PDO[%lu] FILTER_RESOURCE_REQUIREMENTS (none)\n",
-                            pext->Index);
+                            PdoExt->Index);
             status = STATUS_SUCCESS;
             break;
 
         case IRP_MN_QUERY_INTERFACE:
-            /* We are not exposing any special PCI interfaces yet */
             I2cCtrl_Emu_Log("PDO[%lu] QUERY_INTERFACE (NOT_SUPPORTED)\n",
-                            pext->Index);
+                            PdoExt->Index);
             status = STATUS_NOT_SUPPORTED;
             break;
 
@@ -743,7 +631,7 @@ I2CCTRL_EMU_DispatchPnp(
 
         default:
             I2cCtrl_Emu_Log("PDO[%lu] PnP minor=%u\n",
-                            pext->Index, isl->MinorFunction);
+                            PdoExt->Index, isl->MinorFunction);
             status = STATUS_SUCCESS;
             break;
         }
@@ -756,7 +644,7 @@ I2CCTRL_EMU_DispatchPnp(
 
 /* ---------------------------------------------------------------------------
  * Dispatch: POWER (XP-safe, C89-compliant, WDK-safe, verbose-compliant)
- * Handles both FDO and PDO objects
+ * Handles both FDO and ACPI PDO objects
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2CCTRL_EMU_DispatchPower(
@@ -766,11 +654,9 @@ I2CCTRL_EMU_DispatchPower(
 {
     NTSTATUS status;
     PIO_STACK_LOCATION isl;
-    PI2CCTRL_EMU_FDO_EXT fext;
-    PI2CCTRL_EMU_PDO_EXT pext;
+    PI2CCTRL_EMU_FDO FdoExt;
+    PI2CCTRL_EMU_PDO PdoExt;
     BOOLEAN isFdo;
-    ULONG i;
-    POWER_STATE ps;
 
     status = STATUS_SUCCESS;
     isl    = IoGetCurrentIrpStackLocation(Irp);
@@ -780,35 +666,19 @@ I2CCTRL_EMU_DispatchPower(
 
     I2cCtrl_Emu_Log("POWER IRP minor=%u\n", isl->MinorFunction);
 
-    fext  = (PI2CCTRL_EMU_FDO_EXT)DeviceObject->DeviceExtension;
-    isFdo = (fext != NULL && fext->Self == DeviceObject);
+    FdoExt  = (PI2CCTRL_EMU_FDO)DeviceObject->DeviceExtension;
+    isFdo = (FdoExt != NULL && FdoExt->Self == DeviceObject);
 
     if (isFdo) {
         /* ---------------- FDO path ---------------- */
         switch (isl->MinorFunction) {
+
         case IRP_MN_SET_POWER:
             I2cCtrl_Emu_Log("FDO IRP_MN_SET_POWER: type=%u sysState=%u devState=%u\n",
                             isl->Parameters.Power.Type,
                             isl->Parameters.Power.State.SystemState,
                             isl->Parameters.Power.State.DeviceState);
-
-            /* Build POWER_STATE struct */
-            ps = isl->Parameters.Power.State;
-
-            /* Propagate to child PDOs */
-            for (i = 0; i < 3; i++) {
-                if (fext->ChildPdos[i] != NULL) {
-                    PoRequestPowerIrp(
-                        fext->ChildPdos[i],
-                        IRP_MN_SET_POWER,   /* MinorFunction */
-                        ps,                 /* POWER_STATE */
-                        NULL,               /* CompletionFunction */
-                        NULL,               /* Context */
-                        NULL                /* Out IRP */
-                    );
-                    I2cCtrl_Emu_Log("FDO propagated power to child[%lu]\n", i);
-                }
-            }
+            /* No explicit propagation; i2chid.sys and the OS manage child power */
             break;
 
         case IRP_MN_QUERY_POWER:
@@ -829,34 +699,35 @@ I2CCTRL_EMU_DispatchPower(
             break;
         }
     } else {
-        /* ---------------- PDO path ---------------- */
-        pext = (PI2CCTRL_EMU_PDO_EXT)DeviceObject->DeviceExtension;
+        /* ---------------- PDO path (ACPI\PNP0C50 child) ---------------- */
+        PdoExt = (PI2CCTRL_EMU_PDO)DeviceObject->DeviceExtension;
 
         switch (isl->MinorFunction) {
+
         case IRP_MN_SET_POWER:
             I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_SET_POWER: type=%u sysState=%u devState=%u\n",
-                            pext->Index,
+                            PdoExt->Index,
                             isl->Parameters.Power.Type,
                             isl->Parameters.Power.State.SystemState,
                             isl->Parameters.Power.State.DeviceState);
             break;
 
         case IRP_MN_QUERY_POWER:
-            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_QUERY_POWER\n", pext->Index);
+            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_QUERY_POWER\n", PdoExt->Index);
             break;
 
         case IRP_MN_WAIT_WAKE:
-            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_WAIT_WAKE (not supported)\n", pext->Index);
+            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_WAIT_WAKE (not supported)\n", PdoExt->Index);
             status = STATUS_NOT_SUPPORTED;
             break;
 
         case IRP_MN_POWER_SEQUENCE:
-            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_POWER_SEQUENCE (no-op)\n", pext->Index);
+            I2cCtrl_Emu_Log("PDO[%lu] IRP_MN_POWER_SEQUENCE (no-op)\n", PdoExt->Index);
             break;
 
         default:
             I2cCtrl_Emu_Log("PDO[%lu] Unhandled POWER IRP minor=%u\n",
-                            pext->Index, isl->MinorFunction);
+                            PdoExt->Index, isl->MinorFunction);
             break;
         }
     }
@@ -869,7 +740,7 @@ I2CCTRL_EMU_DispatchPower(
 
 /* ---------------------------------------------------------------------------
  * Dispatch: IOCTL (XP-safe, C89-compliant, WDK-safe, verbose-compliant)
- * Handles both FDO and PDO objects
+ * Handles both FDO and ACPI PDO objects
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2CCTRL_EMU_DispatchIoctl(
@@ -884,16 +755,17 @@ I2CCTRL_EMU_DispatchIoctl(
     ULONG ioctlCode = isl->Parameters.DeviceIoControl.IoControlCode;
 
     /* Distinguish FDO vs PDO */
-    PI2CCTRL_EMU_FDO_EXT fext = (PI2CCTRL_EMU_FDO_EXT)DeviceObject->DeviceExtension;
-    BOOLEAN isFdo = (fext != NULL && fext->Self == DeviceObject);
+    PI2CCTRL_EMU_FDO FdoExt = (PI2CCTRL_EMU_FDO)DeviceObject->DeviceExtension;
+    BOOLEAN isFdo = (FdoExt != NULL && FdoExt->Self == DeviceObject);
 
     if (isFdo) {
         /* ---------------- FDO path ---------------- */
-        I2cCtrl_Emu_Log("FDO IOCTL dispatch: code=0x%08lX inLen=%lu\n", ioctlCode, inLen);
+        I2cCtrl_Emu_Log("FDO IOCTL dispatch: code=0x%08lX inLen=%lu\n",
+                        ioctlCode, inLen);
 
-        /* Forward to buffered IOCTL handler */
+        /* All emulator control IOCTLs are handled here */
         status = I2CCTRL_EMU_IoctlDispatchBuffered(
-                     fext,
+                     FdoExt,
                      ioctlCode,
                      inBuf,
                      inLen
@@ -902,17 +774,21 @@ I2CCTRL_EMU_DispatchIoctl(
         I2cCtrl_Emu_Log("FDO IOCTL completed: code=0x%08lX status=0x%08lX\n",
                         ioctlCode, status);
     } else {
-        /* ---------------- PDO path ---------------- */
-        PI2CCTRL_EMU_PDO_EXT pext = (PI2CCTRL_EMU_PDO_EXT)DeviceObject->DeviceExtension;
+        /* ---------------- PDO path (ACPI\PNP0C50 child) ---------------- */
+        PI2CCTRL_EMU_PDO PdoExt = (PI2CCTRL_EMU_PDO)DeviceObject->DeviceExtension;
 
         I2cCtrl_Emu_Log("PDO[%lu] IOCTL dispatch: code=0x%08lX inLen=%lu\n",
-                        pext->Index, ioctlCode, inLen);
+                        PdoExt->Index, ioctlCode, inLen);
 
-        /* For simplicity, PDOs do not handle IOCTLs in this emulator */
+        /*
+         * ACPI\PNP0C50 PDOs do not handle IOCTLs.
+         * i2chid.sys attaches as the function driver and handles HID-class IOCTLs.
+         * The PDO must reject all IOCTLs cleanly.
+         */
         status = STATUS_INVALID_DEVICE_REQUEST;
 
         I2cCtrl_Emu_Log("PDO[%lu] IOCTL completed: code=0x%08lX status=0x%08lX\n",
-                        pext->Index, ioctlCode, status);
+                        PdoExt->Index, ioctlCode, status);
     }
 
     Irp->IoStatus.Status = status;

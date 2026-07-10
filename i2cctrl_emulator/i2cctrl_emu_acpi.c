@@ -3,7 +3,7 @@
  *
  * Requirements:
  * - GUID_ACPI_INTERFACE_STANDARD available via wdmguid.h
- * - ACPI context fields are declared inside I2CCTRL_EMU_FDO_EXT (e.g., AcpiPdo, AcpiInterfaceReady)
+ * - ACPI context fields are declared inside I2CCTRL_EMU_FDO (e.g., AcpiPdo, AcpiInterfaceReady)
  * - ACPI helper prototypes declared in i2cctrl_emu_ext.h
  */
 
@@ -20,26 +20,26 @@ static PDEVICE_OBJECT EmuGetAttachedDevice(PDEVICE_OBJECT top);
  * Public: Initialize ACPI (query interface and run _INI if desired)
  * --------------------------------------------------------------------------- */
 NTSTATUS
-I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
+I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO FdoExt)
 {
     NTSTATUS status = STATUS_SUCCESS;
     PDEVICE_OBJECT attached;
 
-    if (ext == NULL || ext->Self == NULL) {
+    if (FdoExt == NULL || FdoExt->Self == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
-    ext->AcpiInterfaceReady = FALSE;
-    ext->AcpiPdo            = NULL;
+    FdoExt->AcpiInterfaceReady = FALSE;
+    FdoExt->AcpiPdo            = NULL;
 
     /* Find the ACPI PDO by walking down the stack from our FDO */
-    attached = EmuGetAttachedDevice(ext->Self);
+    attached = EmuGetAttachedDevice(FdoExt->Self);
     if (attached == NULL) {
         I2cCtrl_Emu_Log("ACPI: no attached device stack\n");
         return STATUS_SUCCESS; /* non-fatal */
     }
 
-    ext->AcpiPdo = attached;
+    FdoExt->AcpiPdo = attached;
 
     /* Try to obtain ACPI interface (GUID_ACPI_INTERFACE_STANDARD) */
     {
@@ -47,9 +47,9 @@ I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
         UCHAR buffer[sizeof(INTERFACE)]; /* generic INTERFACE storage */
         RtlZeroMemory(buffer, sizeof(buffer));
 
-        status = EmuSendQueryInterface(ext->Self, &guid, (USHORT)sizeof(INTERFACE), buffer);
+        status = EmuSendQueryInterface(FdoExt->Self, &guid, (USHORT)sizeof(INTERFACE), buffer);
         if (NT_SUCCESS(status)) {
-            ext->AcpiInterfaceReady = TRUE;
+            FdoExt->AcpiInterfaceReady = TRUE;
             I2cCtrl_Emu_Log("ACPI: Interface acquired\n");
         } else {
             I2cCtrl_Emu_Log("ACPI: Interface unavailable 0x%08lX\n", status);
@@ -58,8 +58,8 @@ I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
     }
 
     /* Optionally evaluate _INI on our ACPI PDO to initialize firmware state */
-    if (ext->AcpiPdo != NULL) {
-        (VOID)EmuEvalAcpiMethodViaIoctl(ext->AcpiPdo, L"_INI");
+    if (FdoExt->AcpiPdo != NULL) {
+        (VOID)EmuEvalAcpiMethodViaIoctl(FdoExt->AcpiPdo, L"_INI");
     }
 
     return status;
@@ -69,16 +69,16 @@ I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext)
  * Public: Prime children based on ACPI (IDs, order, optional properties)
  * --------------------------------------------------------------------------- */
 NTSTATUS
-I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO_EXT ext, const PWSTR* ids, ULONG count)
+I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO FdoExt, const PWSTR* ids, ULONG count)
 {
     UNREFERENCED_PARAMETER(ids);
     UNREFERENCED_PARAMETER(count);
 
-    if (ext == NULL) return STATUS_INVALID_PARAMETER;
+    if (FdoExt == NULL) return STATUS_INVALID_PARAMETER;
 
-    if (ext->AcpiPdo != NULL) {
+    if (FdoExt->AcpiPdo != NULL) {
         I2cCtrl_Emu_Log("ACPI: prime children (ACPI PDO present)\n");
-        (VOID)EmuEvalAcpiMethodViaIoctl(ext->AcpiPdo, L"_DSM");
+        (VOID)EmuEvalAcpiMethodViaIoctl(FdoExt->AcpiPdo, L"_DSM");
     } else {
         I2cCtrl_Emu_Log("ACPI: prime children (no ACPI PDO)\n");
     }
@@ -88,22 +88,54 @@ I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO_EXT ext, const PWSTR* ids, ULONG 
 
 /* ---------------------------------------------------------------------------
  * Public: Attach ACPI-derived properties to the child PDO
- * XP-safe: surface properties via IRP_MN_QUERY_ID handlers, logging here.
+ * XP-safe: surface properties via IRP_MN_QUERY_ID handlers
  * --------------------------------------------------------------------------- */
 NTSTATUS
-I2CCTRL_EMU_AcpiAttachChildProperties(PI2CCTRL_EMU_FDO_EXT ext,
-                                      PDEVICE_OBJECT ChildPdo,
-                                      PWSTR HardwareId,
-                                      ULONG Index)
+I2CCTRL_EMU_AcpiAttachChildProperties(
+    PI2CCTRL_EMU_FDO FdoExt,
+    PDEVICE_OBJECT ChildPdo,
+    PWSTR HardwareId,
+    ULONG Index
+    )
 {
-    UNREFERENCED_PARAMETER(ext);
-    UNREFERENCED_PARAMETER(ChildPdo);
-    UNREFERENCED_PARAMETER(HardwareId);
-    UNREFERENCED_PARAMETER(Index);
+    PI2CCTRL_EMU_PDO PdoExt;
 
-    I2cCtrl_Emu_Log("ACPI: attach properties to child[%lu]\n", Index);
+    UNREFERENCED_PARAMETER(FdoExt);
+
+    if (ChildPdo == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    PdoExt = (PI2CCTRL_EMU_PDO)ChildPdo->DeviceExtension;
+    if (PdoExt == NULL) {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Assign ACPI-style identifiers */
+    PdoExt->HardwareId = HardwareId;      /* L"ACPI\\PNP0C50" */
+    PdoExt->Index      = Index;           /* instance number */
+
+    /* ACPI-compatible ID is identical for PNP0C50 */
+    PdoExt->CompatibleId = HardwareId;
+
+    /* Mark PDO as ACPI-enumerated synthetic device */
+    PdoExt->IsAcpiPnpDevice = TRUE;
+
+    /* Cache HID-I2C descriptor lengths for i2chid.sys */
+    PdoExt->HidDescLength    = I2CCTRL_EMU_HidGetDescriptorLength(PdoExt->Parent);
+    PdoExt->ReportDescLength = I2CCTRL_EMU_HidGetReportDescriptorLength(PdoExt->Parent);
+
+    I2cCtrl_Emu_Log(
+        "ACPI: child[%lu] HIDDescLen=%u ReportDescLen=%u Id=%ws\n",
+        Index,
+        (unsigned)PdoExt->HidDescLength,
+        (unsigned)PdoExt->ReportDescLength,
+        HardwareId
+    );
+
     return STATUS_SUCCESS;
 }
+
 
 /* ===========================================================================
  * Internal helpers

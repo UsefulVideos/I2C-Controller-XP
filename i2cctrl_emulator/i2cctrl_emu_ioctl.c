@@ -63,10 +63,11 @@ EmuFifoPushBlock(
 
 /* ---------------------------------------------------------------------------
  * Public dispatch routine for IOCTLs (to be called from i2cctrl_emu.c)
+ * ACPI PNP0C50 friendly, XP-safe, C89-compliant
  * --------------------------------------------------------------------------- */
 NTSTATUS
 I2CCTRL_EMU_IoctlDispatchBuffered(
-    PI2CCTRL_EMU_FDO_EXT ext,
+    PI2CCTRL_EMU_FDO FdoExt,
     ULONG IoctlCode,
     PUCHAR inBuf,
     ULONG inLen
@@ -75,35 +76,42 @@ I2CCTRL_EMU_IoctlDispatchBuffered(
     NTSTATUS status;
     ULONG i;
 
-    status = STATUS_INVALID_DEVICE_REQUEST;
-
-    if (ext == NULL) {
+    if (FdoExt == NULL) {
         return STATUS_INVALID_PARAMETER;
     }
 
+    status = STATUS_INVALID_DEVICE_REQUEST;
+
     switch (IoctlCode) {
+
     case IOCTL_I2CCTRL_EMU_PUSH_REPORT:
         if (inBuf != NULL && inLen > 0UL) {
+
+            /* Push bytes into emulator RX FIFO */
             for (i = 0UL; i < inLen; i++) {
-                (VOID)EmuFifoPush(&ext->RxFifo, inBuf[i]);
+                (VOID)EmuFifoPush(&FdoExt->RxFifo, inBuf[i]);
             }
+
             /* Signal data available */
-            ext->RawIntr |= 0x00000001UL; /* arbitrary RX flag */
+            FdoExt->RawIntr |= 0x00000001UL;
+
             status = STATUS_SUCCESS;
             I2cCtrl_Emu_Log("PUSH_REPORT queued %lu bytes\n", inLen);
+
         } else {
             status = STATUS_INVALID_PARAMETER;
         }
         break;
 
     case IOCTL_I2CCTRL_EMU_RESET:
-        EmuFifoReset(&ext->RxFifo);
-        ext->RawIntr = 0UL;
+        EmuFifoReset(&FdoExt->RxFifo);
+        FdoExt->RawIntr = 0UL;
         status = STATUS_SUCCESS;
         I2cCtrl_Emu_Log("RESET\n");
         break;
 
     default:
+        /* No other IOCTLs are supported in ACPI PNP0C50 mode */
         status = STATUS_INVALID_DEVICE_REQUEST;
         break;
     }

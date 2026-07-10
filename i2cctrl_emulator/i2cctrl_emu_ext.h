@@ -31,8 +31,13 @@
 #define I2CCTRL_EMU_REG_COMMAND      0x05U
 #define I2CCTRL_EMU_REG_DATA         0x06U
 
+/* XP-safe extern declaration: GUID_BUS_TYPE_INTERNAL is missing in WDK 3790 */
+#ifndef GUID_BUS_TYPE_INTERNAL
+EXTERN_C const GUID GUID_BUS_TYPE_INTERNAL;
+#endif
+
 /* ---------------------------------------------------------------------------
- * HID-I2C v1.0 descriptor structure (place before I2CCTRL_EMU_FDO_EXT)
+ * HID-I2C v1.0 descriptor structure (place before I2CCTRL_EMU_FDO)
  * --------------------------------------------------------------------------- */
 #pragma pack(push, 1)
 typedef struct _HID_I2C_DESCRIPTOR_V10 {
@@ -75,7 +80,7 @@ typedef struct _I2CCTRL_EMU_FIFO {
 /* ---------------------------------------------------------------------------
  * Emulator FDO extension
  * --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_EMU_FDO_EXT {
+typedef struct _I2CCTRL_EMU_FDO {
     /* Public-facing controller extension (shared layout with i2cctrl) */
     I2CCTRL_FDO Public;
 
@@ -101,6 +106,7 @@ typedef struct _I2CCTRL_EMU_FDO_EXT {
     /* HID profile cache */
     HID_I2C_DESCRIPTOR_V10 HidDescriptor; /* cached HID-I2C v1.0 descriptor */
     USHORT ReportDescLength;              /* cached report descriptor length */
+	USHORT HidDescLength;				  /* cached HID descriptor length */
 
     /* ACPI context */
     PDEVICE_OBJECT AcpiPdo;       /* ACPI PDO below our FDO (if present) */
@@ -111,7 +117,7 @@ typedef struct _I2CCTRL_EMU_FDO_EXT {
 	PDEVICE_OBJECT ParentPdo;
 	
 	PDEVICE_OBJECT LowerDevice;   /* Attached lower device (PDO or next filter) */
-} I2CCTRL_EMU_FDO_EXT, *PI2CCTRL_EMU_FDO_EXT;
+} I2CCTRL_EMU_FDO, *PI2CCTRL_EMU_FDO;
 
 typedef struct _I2CCTRL_EMU_PCI_CONFIG {
     USHORT VendorID;    /* 0x00 */
@@ -144,67 +150,37 @@ typedef struct _I2CCTRL_EMU_PCI_CONFIG {
 
 
 /* ---------------------------------------------------------------------------
- * Emulator PDO extension
+ * Emulator PDO (ACPI PNP0C50 synthetic HID-I2C child)
  * --------------------------------------------------------------------------- */
-typedef struct _I2CCTRL_EMU_PDO_EXT {
-    /* Back-pointer to parent FDO extension */
-    PI2CCTRL_EMU_FDO_EXT Parent;
+typedef struct _I2CCTRL_EMU_PDO {
 
-    /* Child index (0..2 for 9DC5, 9DE8, 9DE9) */
+    /* Back-pointer to parent FDO */
+    PI2CCTRL_EMU_FDO Parent;
+
+    /* Child index (always 0 for single ACPI child) */
     ULONG Index;
 
-    /* Hardware ID string (e.g., L"PCI\\VEN_8086&DEV_9DC5") */
+    /* ACPI Hardware ID (L"ACPI\\PNP0C50") */
     PWSTR HardwareId;
 
-    /* Instance ID string (optional, e.g., "0000", "0001", "0002") */
+    /* Optional instance ID ("0", "1", etc.) */
     PWSTR InstanceId;
 
-    /* Reported flag: has this PDO been advertised in BusRelations */
+    /* Reported flag: has this PDO been returned in BusRelations */
     BOOLEAN Reported;
 
-    /* Bookkeeping: reference count or custom flags */
+    /* Custom flags */
     ULONG Flags;
 
-    /* -----------------------------------------------------------------------
-     * PCI bus–emulation additions (required for Option B)
-     * ----------------------------------------------------------------------- */
+    /* ACPI identity */
+    PWSTR CompatibleId;       /* same as HardwareId */
+    BOOLEAN IsAcpiPnpDevice;  /* TRUE */
 
-    /* PCI Bus / Device / Function numbers */
-    UCHAR BusNumber;        /* e.g., 0 */
-    UCHAR DeviceNumber;     /* e.g., 0x1F + Index */
-    UCHAR FunctionNumber;   /* usually 0 */
+    /* HID-I2C descriptor lengths (cached) */
+    USHORT HidDescLength;
+    USHORT ReportDescLength;
 
-    /* Full PCI configuration space (256 bytes) */
-    struct {
-        USHORT VendorID;        /* 0x00 */
-        USHORT DeviceID;        /* 0x02 */
-        USHORT Command;         /* 0x04 */
-        USHORT Status;          /* 0x06 */
-        UCHAR  RevisionID;      /* 0x08 */
-        UCHAR  ProgIf;          /* 0x09 */
-        UCHAR  SubClass;        /* 0x0A */
-        UCHAR  BaseClass;       /* 0x0B */
-        UCHAR  CacheLineSize;   /* 0x0C */
-        UCHAR  LatencyTimer;    /* 0x0D */
-        UCHAR  HeaderType;      /* 0x0E */
-        UCHAR  BIST;            /* 0x0F */
-
-        ULONG  Bar[6];          /* 0x10–0x27 */
-
-        ULONG  CardbusCIS;      /* 0x28 */
-        USHORT SubVendorID;     /* 0x2C */
-        USHORT SubSystemID;     /* 0x2E */
-        ULONG  ExpansionROM;    /* 0x30 */
-        UCHAR  CapPtr;          /* 0x34 */
-        UCHAR  Reserved1[3];
-        ULONG  Reserved2;
-        UCHAR  InterruptLine;   /* 0x3C */
-        UCHAR  InterruptPin;    /* 0x3D */
-        UCHAR  MinGrant;        /* 0x3E */
-        UCHAR  MaxLatency;      /* 0x3F */
-    } ConfigSpace;
-
-} I2CCTRL_EMU_PDO_EXT, *PI2CCTRL_EMU_PDO_EXT;
+} I2CCTRL_EMU_PDO, *PI2CCTRL_EMU_PDO;
 
 /* ---------------------------------------------------------------------------
  * Function prototypes (ops, HID, IOCTL helpers)
@@ -220,14 +196,14 @@ NTSTATUS I2CCTRL_EMU_ReadRxByte(PI2CCTRL_FDO fdo, PUCHAR out);
 VOID     I2CCTRL_EMU_AckInterrupts(PI2CCTRL_FDO fdo, ULONG rawIntr);
 
 /* HID emulation */
-VOID   I2CCTRL_EMU_HidInitProfile(PI2CCTRL_EMU_FDO_EXT ext);
-VOID   I2CCTRL_EMU_HidPrimeForRegister(PI2CCTRL_EMU_FDO_EXT ext);
-VOID   I2CCTRL_EMU_HidPrimeFullDescriptor(PI2CCTRL_EMU_FDO_EXT ext);
-USHORT I2CCTRL_EMU_HidGetDescriptorLength(VOID);
-USHORT I2CCTRL_EMU_HidGetReportDescriptorLength(VOID);
+VOID   I2CCTRL_EMU_HidInitProfile(PI2CCTRL_EMU_FDO FdoExt);
+VOID   I2CCTRL_EMU_HidPrimeForRegister(PI2CCTRL_EMU_FDO FdoExt);
+VOID   I2CCTRL_EMU_HidPrimeFullDescriptor(PI2CCTRL_EMU_FDO FdoExt);
+USHORT I2CCTRL_EMU_HidGetDescriptorLength(PI2CCTRL_EMU_FDO FdoExt);
+USHORT I2CCTRL_EMU_HidGetReportDescriptorLength(PI2CCTRL_EMU_FDO FdoExt);
 
 /* IOCTL dispatch */
-NTSTATUS I2CCTRL_EMU_IoctlDispatchBuffered(PI2CCTRL_EMU_FDO_EXT ext,
+NTSTATUS I2CCTRL_EMU_IoctlDispatchBuffered(PI2CCTRL_EMU_FDO FdoExt,
                                    ULONG IoctlCode,
                                    PUCHAR inBuf,
                                    ULONG inLen);
@@ -244,11 +220,11 @@ I2cCtrl_Emu_Log(
     );
 
 /* ACPI helper prototypes (implemented in I2CCTRL_EMU_ACPI.c) */
-NTSTATUS I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO_EXT ext);
+NTSTATUS I2CCTRL_EMU_AcpiInitialize(PI2CCTRL_EMU_FDO FdoExt);
 /* Evaluate ACPI methods and cache any descriptors needed for children */
-NTSTATUS I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO_EXT ext, const PWSTR* ids, ULONG count);
+NTSTATUS I2CCTRL_EMU_AcpiPrimeChildren(PI2CCTRL_EMU_FDO FdoExt, const PWSTR* ids, ULONG count);
 /* Set device properties / instance data (e.g., compatible IDs, location) */
-NTSTATUS I2CCTRL_EMU_AcpiAttachChildProperties(PI2CCTRL_EMU_FDO_EXT ext,
+NTSTATUS I2CCTRL_EMU_AcpiAttachChildProperties(PI2CCTRL_EMU_FDO FdoExt,
                                                PDEVICE_OBJECT ChildPdo,
                                                PWSTR HardwareId,
                                                ULONG Index);
