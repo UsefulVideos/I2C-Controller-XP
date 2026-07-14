@@ -5837,9 +5837,17 @@ I2cCtrl_EnableController(
         }
 
         /* ---------------------------------------------------------
-         * 3) No backend available -> fatal
+         * 3) No backend available
+         *    - If disabling: treat as success (nothing to do)
+         *    - If enabling: fatal
          * --------------------------------------------------------- */
-        I2cCtrl_Log("EnableController: No HAL ops available -> HARD FAILURE\n");
+        if (!enable) {
+            I2cCtrl_Log("EnableController: No HAL ops available while DISABLE -> ignoring\n");
+            devctx->Enabled = FALSE;
+            return STATUS_SUCCESS;
+        }
+
+        I2cCtrl_Log("EnableController: No HAL ops available on ENABLE -> HARD FAILURE\n");
         devctx->HardwareFailure = TRUE;
         return STATUS_NOT_SUPPORTED;
 
@@ -5850,6 +5858,7 @@ I2cCtrl_EnableController(
         return STATUS_ACCESS_VIOLATION;
     }
 }
+
 
 
 
@@ -11722,7 +11731,8 @@ I2cCtrl_Lpss2PowerOn(
         timeout = 1000;
         while (timeout--) {
             val = READ_REGISTER_ULONG((PULONG)(base + devctx->RegClkUpdate));
-            if ((val & 0x1) == 0) break;
+            if ((val & 0x1) == 0)
+                break;
             KeStallExecutionProcessor(10);
         }
 
@@ -11755,6 +11765,7 @@ I2cCtrl_Lpss2PowerOn(
     return status;
 }
 
+
 NTSTATUS
 I2cCtrl_Lpss2PowerOff(
     PI2CCTRL_FDO devctx
@@ -11764,16 +11775,17 @@ I2cCtrl_Lpss2PowerOff(
     ULONG  timeout;
     NTSTATUS status = STATUS_SUCCESS;
 
-    //
-    // 0) HARD STOP: do NOT touch hardware if the device is stopping/removed
-    //
+    /* ---------------------------------------------------------
+     * 0) HARD STOP: never touch hardware if the device is
+     *    stopping, removed, or already failed.
+     * --------------------------------------------------------- */
     if (devctx == NULL ||
         devctx->MmioBase == NULL ||
         devctx->Stopping ||
         devctx->Removed ||
         devctx->HardwareFailure)
     {
-        I2cCtrl_Log("LPSS2: PowerOff: device already stopping/removed - skipping\n");
+        I2cCtrl_Log("LPSS2: PowerOff: device stopping/removed/failed - skipping\n");
         return STATUS_DEVICE_REMOVED;
     }
 
@@ -11783,39 +11795,39 @@ I2cCtrl_Lpss2PowerOff(
 
     __try {
 
-        //
-        // 1) Mask interrupts
-        //
+        /* ---------------------------------------------------------
+         * 1) Mask interrupts
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegIntrMask), 0xFFFFFFFF);
 
-        //
-        // 2) Clear pending status
-        //
+        /* ---------------------------------------------------------
+         * 2) Clear pending status
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegStatus), 0xFFFFFFFF);
 
-        //
-        // 3) Assert reset
-        //
+        /* ---------------------------------------------------------
+         * 3) Assert reset
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegReset), 0x00000001);
 
-        //
-        // 4) Disable clock gate
-        //
+        /* ---------------------------------------------------------
+         * 4) Disable clock gate
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegClkCtl), 0x00000000);
 
-        //
-        // 5) Disable functional clock
-        //
+        /* ---------------------------------------------------------
+         * 5) Disable functional clock
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegClkDiv), 0x00000000);
 
-        //
-        // 6) Trigger CLKUPDATE
-        //
+        /* ---------------------------------------------------------
+         * 6) Trigger CLKUPDATE
+         * --------------------------------------------------------- */
         WRITE_REGISTER_ULONG((PULONG)(base + devctx->RegClkUpdate), 0x00000001);
 
-        //
-        // 7) Poll for completion
-        //
+        /* ---------------------------------------------------------
+         * 7) Poll for completion
+         * --------------------------------------------------------- */
         timeout = 1000;
         while (timeout--) {
             ULONG v = READ_REGISTER_ULONG((PULONG)(base + devctx->RegClkUpdate));
