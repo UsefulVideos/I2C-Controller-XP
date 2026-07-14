@@ -867,21 +867,22 @@ I2cCtrl_FindHidMatch(
         if (entry == NULL || *entry == L'\0')
             continue;
 
-        /* ---------------------------------------------------------
-         * Wildcard match: "*PNP0C50" -> match any suffix
-         * --------------------------------------------------------- */
         if (entry[0] == L'*') {
-            /* skip '*' and compare suffix case-insensitive */
-            if (_wcsicmp(HidId + (wcslen(HidId) - wcslen(entry) + 1),
-                         entry + 1) == 0) {
-                return &g_I2CHIDDevices[i];
+
+            size_t hidLen = wcslen(HidId);
+            size_t patLen = wcslen(entry + 1);
+
+            if (hidLen >= patLen) {
+                if (_wcsicmp(HidId + (hidLen - patLen),
+                             entry + 1) == 0)
+                {
+                    return &g_I2CHIDDevices[i];
+                }
             }
+
             continue;
         }
 
-        /* ---------------------------------------------------------
-         * Exact case-insensitive match
-         * --------------------------------------------------------- */
         if (_wcsicmp(HidId, entry) == 0) {
             return &g_I2CHIDDevices[i];
         }
@@ -1553,13 +1554,16 @@ I2cCtrl_EnumerateAcpiChildren(
 
     PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER outBuf = NULL;
     PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER staBuf = NULL;
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER cidBuf = NULL;
 
     ULONG outLen, staLen;
     ACPI_METHOD_ARGUMENT UNALIGNED* arg;
     ACPI_METHOD_ARGUMENT UNALIGNED* staArg;
+    ACPI_METHOD_ARGUMENT UNALIGNED* cidArg;
 
     UNICODE_STRING hidUni;
     ANSI_STRING hidAnsi;
+    UNICODE_STRING cidUni;
 
     ULONG adrVal = 0;
     BOOLEAN haveAdr = FALSE;
@@ -1569,10 +1573,6 @@ I2cCtrl_EnumerateAcpiChildren(
     PDEVICE_OBJECT pdo;
     PI2CCTRL_PDO childDx;
     KIRQL oldIrql;
-	/* --- CID locals (C89 requires declarations at top) --- */
-    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER cidBuf = NULL;
-    UNICODE_STRING cidUni;
-    ACPI_METHOD_ARGUMENT UNALIGNED *cidArg;
     ULONG i;
 
     if (ChildCountOut) {
@@ -1589,11 +1589,8 @@ I2cCtrl_EnumerateAcpiChildren(
     I2cCtrl_Log("Enumerate: begin for controller HWID=%ws\n",
                 fdoExt->PnpId ? fdoExt->PnpId : L"<null>");
 
-    /* ------------------------------------------------------------
-       1) Open ACPI device
-       ------------------------------------------------------------ */
     status = I2cCtrl_AcpiOpen(fdoExt);
-    if (!NT_SUCCESS(status) || !fdoExt->AcpiDeviceObject) {
+    if (!NT_SUCCESS(status) || !fdoExt->AcpiBound || fdoExt->AcpiHandle == NULL) {
         I2cCtrl_Log("Enumerate: AcpiOpen failed (0x%08lx)\n", status);
         return STATUS_SUCCESS;
     }
@@ -1601,17 +1598,18 @@ I2cCtrl_EnumerateAcpiChildren(
     opened = TRUE;
 
     /* ------------------------------------------------------------
-       2) Read _ADR (universal)
+       Read _ADR
        ------------------------------------------------------------ */
     outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 64;
     outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
-    if (!outBuf) goto Done;
+    if (!outBuf)
+        goto Done;
 
     RtlZeroMemory(outBuf, outLen);
 
     status = I2cCtrl_AcpiEvalMethod(
-                 fdoExt->AcpiDeviceObject,
                  fdoExt->AcpiHandle,
+                 NULL,
                  "_ADR",
                  outBuf,
                  outLen
@@ -1620,30 +1618,28 @@ I2cCtrl_EnumerateAcpiChildren(
     if (NT_SUCCESS(status) && outBuf->Count > 0) {
 
         if (!fdoExt->AcpiIs20Plus) {
-            /* ------------------------------
-               ACPI 1.0b: Data[] = arguments[]
-               ------------------------------ */
-            ACPI_METHOD_ARGUMENT UNALIGNED *arg;
-            arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&outBuf->Data[0];
 
-            if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
-                adrVal = (ULONG)arg->Argument;
+            ACPI_EVAL_OUTPUT_BUFFER *out10;
+            ACPI_METHOD_ARGUMENT UNALIGNED *argLocal;
+
+            out10 = (ACPI_EVAL_OUTPUT_BUFFER *)outBuf;
+            argLocal = (ACPI_METHOD_ARGUMENT UNALIGNED *)&out10->Argument[0];
+
+            if (argLocal->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
+                adrVal = (ULONG)argLocal->Argument;
                 haveAdr = TRUE;
                 I2cCtrl_Log("Enumerate: _ADR=0x%08lx (ACPI 1.0b)\n", adrVal);
             }
-
         } else {
-            /* ------------------------------
-               ACPI 2.0+: Data[] = packed bytes
-               ------------------------------ */
-            UCHAR *raw = &outBuf->Data[0];
-            ACPI_METHOD_ARGUMENT UNALIGNED *arg;
 
-            /* First packed argument begins at Data[0] */
-            arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
+            I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER *out20;
+            ACPI_METHOD_ARGUMENT UNALIGNED *argLocal;
 
-            if (arg->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
-                adrVal = (ULONG)arg->Argument;
+            out20 = outBuf;
+            argLocal = (ACPI_METHOD_ARGUMENT UNALIGNED *)&out20->Data[0];
+
+            if (argLocal->Type == ACPI_METHOD_ARGUMENT_INTEGER) {
+                adrVal = (ULONG)argLocal->Argument;
                 haveAdr = TRUE;
                 I2cCtrl_Log("Enumerate: _ADR=0x%08lx (ACPI 2.0+)\n", adrVal);
             }
@@ -1653,203 +1649,180 @@ I2cCtrl_EnumerateAcpiChildren(
     ExFreePoolWithTag(outBuf, 'Acpi');
     outBuf = NULL;
 
-/* ------------------------------------------------------------
-   3) Read _HID (universal)
-   ------------------------------------------------------------ */
-outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 512;
-outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
-if (!outBuf) goto Done;
-
-RtlZeroMemory(outBuf, outLen);
-
-status = I2cCtrl_AcpiEvalMethod(
-             fdoExt->AcpiDeviceObject,
-             fdoExt->AcpiHandle,
-             "_HID",
-             outBuf,
-             outLen
-         );
-
-if (!NT_SUCCESS(status) || outBuf->Count == 0) {
-    I2cCtrl_Log("Enumerate: _HID missing or empty\n");
-    goto Done;
-}
-
-/* ------------------------------------------------------------
-   ACPI 1.0b vs ACPI 2.0+ HID parsing
-   ------------------------------------------------------------ */
-if (!fdoExt->AcpiIs20Plus) {
-
-    /* ------------------------------
-       ACPI 1.0b: Data[] = arguments[]
-       ------------------------------ */
-    arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&outBuf->Data[0];
-
-} else {
-
-    /* ------------------------------
-       ACPI 2.0+: Data[] = packed bytes
-       ------------------------------ */
-    UCHAR *raw = &outBuf->Data[0];
-
-    /* First packed argument begins at Data[0] */
-    arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
-}
-
-/* arg now points to the first HID argument */
-
-/* ------------------------------------------------------------
-   4) Iterate HID entries (universal) + optional _CID
-   ------------------------------------------------------------ */
-for (; outBuf->Count > 0; outBuf->Count--, arg = ACPI_METHOD_NEXT_ARGUMENT(arg)) {
-
-    if (arg->Type != ACPI_METHOD_ARGUMENT_STRING ||
-        arg->DataLength == 0)
-    {
-        continue;
-    }
-
-    /* Convert HID to Unicode */
-    hidAnsi.Buffer = (PCHAR)arg->Data;
-    hidAnsi.Length = (USHORT)arg->DataLength;
-    hidAnsi.MaximumLength = (USHORT)arg->DataLength;
-
-    RtlInitUnicodeString(&hidUni, NULL);
-
-    if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&hidUni, &hidAnsi, TRUE))) {
-        continue;
-    }
-
-    I2cCtrl_Log("Enumerate: HID=\"%ws\"\n", hidUni.Buffer);
-
     /* ------------------------------------------------------------
-       4b) Read _CID (optional, ACPI compatible IDs)
+       Read _HID
        ------------------------------------------------------------ */
     outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 512;
-    cidBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
-    if (!cidBuf) {
-        RtlFreeUnicodeString(&hidUni);
+    outBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
+    if (!outBuf)
         goto Done;
-    }
 
-    RtlZeroMemory(cidBuf, outLen);
+    RtlZeroMemory(outBuf, outLen);
 
     status = I2cCtrl_AcpiEvalMethod(
-                 fdoExt->AcpiDeviceObject,
                  fdoExt->AcpiHandle,
-                 "_CID",
-                 cidBuf,
+                 NULL,
+                 "_HID",
+                 outBuf,
                  outLen
              );
 
-    if (NT_SUCCESS(status) && cidBuf->Count > 0) {
-
-        if (!fdoExt->AcpiIs20Plus) {
-            cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cidBuf->Data[0];
-        } else {
-            cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cidBuf->Data[0];
-        }
-
-        for (i = 0; i < cidBuf->Count; i++, cidArg = ACPI_METHOD_NEXT_ARGUMENT(cidArg)) {
-
-            if (cidArg->Type != ACPI_METHOD_ARGUMENT_STRING ||
-                cidArg->DataLength == 0)
-            {
-                continue;
-            }
-
-            hidAnsi.Buffer = (PCHAR)cidArg->Data;
-            hidAnsi.Length = (USHORT)cidArg->DataLength;
-            hidAnsi.MaximumLength = (USHORT)cidArg->DataLength;
-
-            RtlInitUnicodeString(&cidUni, NULL);
-
-            if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&cidUni, &hidAnsi, TRUE))) {
-                continue;
-            }
-
-            I2cCtrl_Log("Enumerate: CID=\"%ws\"\n", cidUni.Buffer);
-
-            if (childDx->CompatibleId.Buffer == NULL) {
-                childDx->CompatibleId = cidUni;
-            } else {
-                I2cCtrl_AddCidToMultiSz(childDx, cidUni.Buffer);
-                RtlFreeUnicodeString(&cidUni);
-            }
-        }
+    if (!NT_SUCCESS(status) || outBuf->Count == 0) {
+        I2cCtrl_Log("Enumerate: _HID missing or empty\n");
+        goto Done;
     }
 
-    ExFreePoolWithTag(cidBuf, 'Acpi');
-    cidBuf = NULL;
+    if (!fdoExt->AcpiIs20Plus) {
+        ACPI_EVAL_OUTPUT_BUFFER *out10;
+        out10 = (ACPI_EVAL_OUTPUT_BUFFER *)outBuf;
+        arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&out10->Argument[0];
+    } else {
+        I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER *out20;
+        out20 = outBuf;
+        arg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&out20->Data[0];
+    }
 
-/* --------------------------------------------------------
-   5) Check _STA (universal)
-   -------------------------------------------------------- */
-staLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 32;
-staBuf = ExAllocatePoolWithTag(NonPagedPool, staLen, 'Acpi');
-if (!staBuf) {
-    RtlFreeUnicodeString(&hidUni);
-    goto Done;
-}
+    /* ------------------------------------------------------------
+       Iterate HID entries
+       ------------------------------------------------------------ */
+    for (; outBuf->Count > 0; outBuf->Count--, arg = ACPI_METHOD_NEXT_ARGUMENT(arg)) {
 
-RtlZeroMemory(staBuf, staLen);
+        if (arg->Type != ACPI_METHOD_ARGUMENT_STRING ||
+            arg->DataLength == 0)
+        {
+            continue;
+        }
 
-status = I2cCtrl_AcpiEvalMethod(
-             fdoExt->AcpiDeviceObject,
-             fdoExt->AcpiHandle,
-             "_STA",
-             staBuf,
-             staLen
-         );
+        hidAnsi.Buffer = (PCHAR)arg->Data;
+        hidAnsi.Length = (USHORT)arg->DataLength;
+        hidAnsi.MaximumLength = (USHORT)arg->DataLength;
 
-if (!NT_SUCCESS(status) || staBuf->Count == 0) {
-    I2cCtrl_Log("Enumerate: _STA missing\n");
-    ExFreePoolWithTag(staBuf, 'Acpi');
-    staBuf = NULL;
-    RtlFreeUnicodeString(&hidUni);
-    continue;
-}
+        RtlInitUnicodeString(&hidUni, NULL);
 
-/* --------------------------------------------------------
-   ACPI 1.0b vs ACPI 2.0+ STA parsing
-   -------------------------------------------------------- */
-if (!fdoExt->AcpiIs20Plus) {
+        if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&hidUni, &hidAnsi, TRUE))) {
+            continue;
+        }
 
-    /* ------------------------------
-       ACPI 1.0b: Data[] = arguments[]
-       ------------------------------ */
-    staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&staBuf->Data[0];
+        I2cCtrl_Log("Enumerate: HID=\"%ws\"\n", hidUni.Buffer);
 
-} else {
+        /* ------------------------------------------------------------
+           Read _CID
+           ------------------------------------------------------------ */
+        outLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 512;
+        cidBuf = ExAllocatePoolWithTag(NonPagedPool, outLen, 'Acpi');
+        if (!cidBuf) {
+            RtlFreeUnicodeString(&hidUni);
+            goto Done;
+        }
 
-    /* ------------------------------
-       ACPI 2.0+: Data[] = packed bytes
-       ------------------------------ */
-    UCHAR *raw = &staBuf->Data[0];
+        RtlZeroMemory(cidBuf, outLen);
 
-    /* First packed argument begins at Data[0] */
-    staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)raw;
-}
+        status = I2cCtrl_AcpiEvalMethod(
+                     fdoExt->AcpiHandle,
+                     NULL,
+                     "_CID",
+                     cidBuf,
+                     outLen
+                 );
 
-/* --------------------------------------------------------
-   Validate _STA result
-   -------------------------------------------------------- */
-if (staArg->Type != ACPI_METHOD_ARGUMENT_INTEGER ||
-    ((ULONG)staArg->Argument & 0x01) == 0)
-{
-    I2cCtrl_Log("Enumerate: _STA indicates not present\n");
-    ExFreePoolWithTag(staBuf, 'Acpi');
-    staBuf = NULL;
-    RtlFreeUnicodeString(&hidUni);
-    continue;
-}
+        if (NT_SUCCESS(status) && cidBuf->Count > 0) {
 
-ExFreePoolWithTag(staBuf, 'Acpi');
-staBuf = NULL;
+            if (!fdoExt->AcpiIs20Plus) {
+                ACPI_EVAL_OUTPUT_BUFFER *cid10;
+                cid10 = (ACPI_EVAL_OUTPUT_BUFFER *)cidBuf;
+                cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cid10->Argument[0];
+            } else {
+                I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER *cid20;
+                cid20 = cidBuf;
+                cidArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&cid20->Data[0];
+            }
 
-        /* --------------------------------------------------------
-           6) Create PDO (universal)
-           -------------------------------------------------------- */
+            for (i = 0; i < cidBuf->Count; i++, cidArg = ACPI_METHOD_NEXT_ARGUMENT(cidArg)) {
+
+                if (cidArg->Type != ACPI_METHOD_ARGUMENT_STRING ||
+                    cidArg->DataLength == 0)
+                {
+                    continue;
+                }
+
+                hidAnsi.Buffer = (PCHAR)cidArg->Data;
+                hidAnsi.Length = (USHORT)cidArg->DataLength;
+                hidAnsi.MaximumLength = (USHORT)cidArg->DataLength;
+
+                RtlInitUnicodeString(&cidUni, NULL);
+
+                if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&cidUni, &hidAnsi, TRUE))) {
+                    continue;
+                }
+
+                I2cCtrl_Log("Enumerate: CID=\"%ws\"\n", cidUni.Buffer);
+
+                if (childDx->CompatibleId.Buffer == NULL) {
+                    childDx->CompatibleId = cidUni;
+                } else {
+                    I2cCtrl_AddCidToMultiSz(childDx, cidUni.Buffer);
+                    RtlFreeUnicodeString(&cidUni);
+                }
+            }
+        }
+
+        ExFreePoolWithTag(cidBuf, 'Acpi');
+        cidBuf = NULL;
+
+        /* ------------------------------------------------------------
+           Read _STA
+           ------------------------------------------------------------ */
+        staLen = sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) + 32;
+        staBuf = ExAllocatePoolWithTag(NonPagedPool, staLen, 'Acpi');
+        if (!staBuf) {
+            RtlFreeUnicodeString(&hidUni);
+            goto Done;
+        }
+
+        RtlZeroMemory(staBuf, staLen);
+
+        status = I2cCtrl_AcpiEvalMethod(
+                     fdoExt->AcpiHandle,
+                     NULL,
+                     "_STA",
+                     staBuf,
+                     staLen
+                 );
+
+        if (!NT_SUCCESS(status) || staBuf->Count == 0) {
+            I2cCtrl_Log("Enumerate: _STA missing\n");
+            ExFreePoolWithTag(staBuf, 'Acpi');
+            staBuf = NULL;
+            RtlFreeUnicodeString(&hidUni);
+            continue;
+        }
+
+        if (!fdoExt->AcpiIs20Plus) {
+            ACPI_EVAL_OUTPUT_BUFFER *sta10;
+            sta10 = (ACPI_EVAL_OUTPUT_BUFFER *)staBuf;
+            staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&sta10->Argument[0];
+        } else {
+            I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER *sta20;
+            sta20 = staBuf;
+            staArg = (ACPI_METHOD_ARGUMENT UNALIGNED *)&sta20->Data[0];
+        }
+
+        if (staArg->Type != ACPI_METHOD_ARGUMENT_INTEGER ||
+            ((ULONG)staArg->Argument & 0x01) == 0)
+        {
+            I2cCtrl_Log("Enumerate: _STA indicates not present\n");
+            ExFreePoolWithTag(staBuf, 'Acpi');
+            staBuf = NULL;
+            RtlFreeUnicodeString(&hidUni);
+            continue;
+        }
+
+        ExFreePoolWithTag(staBuf, 'Acpi');
+        staBuf = NULL;
+
+        /* ------------------------------------------------------------
+           Create PDO
+           ------------------------------------------------------------ */
         pdo = NULL;
         status = IoCreateDevice(Fdo->DriverObject,
                                 sizeof(I2CCTRL_PDO),
@@ -1878,16 +1851,10 @@ staBuf = NULL;
 
         InitializeListHead(&childDx->ListEntry);
 
-        /* --------------------------------------------------------
-           7) Assign ACPI HID exactly as provided
-           -------------------------------------------------------- */
         childDx->HardwareId.Buffer = hidUni.Buffer;
         childDx->HardwareId.Length = hidUni.Length;
         childDx->HardwareId.MaximumLength = hidUni.MaximumLength;
 
-        /* --------------------------------------------------------
-           8) Save bus address (universal)
-           -------------------------------------------------------- */
         if (haveAdr) {
             childDx->SavedBusAddress = adrVal & 0x03FF;
         } else {
@@ -1899,9 +1866,6 @@ staBuf = NULL;
                     childDx->HardwareId.Buffer,
                     childDx->SavedBusAddress);
 
-        /* --------------------------------------------------------
-           9) Insert into child list
-           -------------------------------------------------------- */
         pdo->Flags |= DO_POWER_PAGABLE;
         pdo->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -1944,49 +1908,41 @@ I2cCtrl_AcpiOpen(
     PI2CCTRL_FDO fdoExt
     )
 {
-    PDEVICE_OBJECT acpiPdo;
-
     if (KeGetCurrentIrql() != PASSIVE_LEVEL)
         return STATUS_INVALID_DEVICE_REQUEST;
+
+    PAGED_CODE();
 
     if (fdoExt == NULL)
         return STATUS_INVALID_PARAMETER;
 
-    /* NEW: reject dead FDOs */
     if (fdoExt->Removed || fdoExt->Stopping || !fdoExt->Started) {
-        I2cCtrl_Log("AcpiOpen: FDO not active (Removed=%lu Stopping=%lu Started=%lu)\n",
-                    fdoExt->Removed ? 1UL : 0UL,
-                    fdoExt->Stopping ? 1UL : 0UL,
-                    fdoExt->Started ? 1UL : 0UL);
+        I2cCtrl_Log("AcpiOpen: FDO not active\n");
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-    if (fdoExt->AcpiBound &&
-        fdoExt->AcpiDeviceObject != NULL)
-    {
+    /* Already bound */
+    if (fdoExt->AcpiBound && fdoExt->AcpiHandle != NULL)
         return STATUS_SUCCESS;
+
+    /* ACPI PDO is simply the PhysicalDevice */
+    if (fdoExt->PhysicalDevice == NULL) {
+        I2cCtrl_Log("AcpiOpen: PhysicalDevice is NULL\n");
+        return STATUS_INVALID_DEVICE_STATE;
     }
 
-    acpiPdo = I2cCtrl_FindAcpiPdoForPciDevice(fdoExt->Self);
-    if (acpiPdo == NULL) {
-        I2cCtrl_Log("AcpiOpen: no ACPI PDO found for HWID=%ws\n",
-                    fdoExt->PnpId ? fdoExt->PnpId : L"<null>");
-        return STATUS_NOT_FOUND;
-    }
+    /*
+     * XP does NOT support ACPI_INTERFACE_STANDARD.
+     * We simply store the ACPI PDO and mark the interface as bound.
+     */
+    fdoExt->AcpiHandle = fdoExt->PhysicalDevice;
+    fdoExt->AcpiBound  = TRUE;
 
-    /* NEW: FindAcpiPdoForPciDevice now ALWAYS returns a referenced PDO */
-
-    fdoExt->AcpiDeviceObject = acpiPdo;
-    fdoExt->AcpiFileObject   = NULL;
-    fdoExt->AcpiHandle       = NULL;
-    fdoExt->AcpiBound        = TRUE;
-
-    I2cCtrl_Log("AcpiOpen: bound to ACPI PDO %p (driver=%wZ)\n",
-                acpiPdo, &acpiPdo->DriverObject->DriverName);
+    I2cCtrl_Log("AcpiOpen: ACPI handle bound (PDO=%p)\n",
+                fdoExt->AcpiHandle);
 
     return STATUS_SUCCESS;
 }
-
 
 VOID
 I2cCtrl_AcpiClose(
@@ -2004,20 +1960,13 @@ I2cCtrl_AcpiClose(
     if (!fdoExt->AcpiBound)
         return;
 
-    I2cCtrl_Log("AcpiClose: unbinding ACPI for HWID=%ws\n",
-                fdoExt->PnpId ? fdoExt->PnpId : L"<null>");
+    I2cCtrl_Log("AcpiClose: unbinding ACPI handle for HWID=%ws\n",
+                (fdoExt->PnpId ? fdoExt->PnpId : L"<null>"));
 
-    /* NEW: release exactly the one reference taken in FindAcpiPdoForPciDevice */
-    if (fdoExt->AcpiDeviceObject != NULL) {
-        ObDereferenceObject(fdoExt->AcpiDeviceObject);
-        fdoExt->AcpiDeviceObject = NULL;
-    }
+    fdoExt->AcpiHandle = NULL;
+    fdoExt->AcpiBound  = FALSE;
 
-    fdoExt->AcpiFileObject = NULL;
-    fdoExt->AcpiHandle     = NULL;
-    fdoExt->AcpiBound      = FALSE;
-
-    I2cCtrl_Log("AcpiClose: ACPI unbound\n");
+    I2cCtrl_Log("AcpiClose: ACPI handle unbound\n");
 }
 
 
@@ -2052,53 +2001,51 @@ I2cCtrl_AcpiFillMethodName(
 
 NTSTATUS
 I2cCtrl_AcpiEvalMethod(
-    PDEVICE_OBJECT                     AcpiPdo,
-    PVOID                              AcpiHandle,
-    PCSTR                              MethodName,
-    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER   OutBuf,
-    ULONG                              OutBufLen
+    PDEVICE_OBJECT                    AcpiPdo,
+    PVOID                             AcpiHandle,
+    PCSTR                             MethodName,
+    PI2CCTRL_ACPI_EVAL_OUTPUT_BUFFER  OutBuf,
+    ULONG                             OutBufLen
     )
 {
-    NTSTATUS                status;
-    KEVENT                  event;
-    PIRP                    irp;
-    IO_STATUS_BLOCK         iosb;
-    ACPI_EVAL_INPUT_BUFFER  input;
-    LARGE_INTEGER           timeout;
+    ACPI_EVAL_INPUT_BUFFER input;
+    IO_STATUS_BLOCK ioStatus;
+    KEVENT event;
+    PIRP irp;
+    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER(AcpiHandle);
 
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
         I2cCtrl_Log("AcpiEvalMethod: invalid IRQL\n");
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    /* ACPI PDO must exist */
     if (AcpiPdo == NULL) {
-        I2cCtrl_Log("AcpiEvalMethod: no ACPI PDO (Method=%s)\n", MethodName);
-        return STATUS_INVALID_PARAMETER;
+        I2cCtrl_Log("AcpiEvalMethod: ACPI PDO is NULL\n");
+        return STATUS_INVALID_DEVICE_STATE;
     }
 
-    /* Other parameter checks */
     if (MethodName == NULL ||
         OutBuf == NULL ||
         OutBufLen < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER))
     {
-        I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Method=%s, OutLen=%lu)\n",
-                    MethodName, OutBufLen);
+        I2cCtrl_Log("AcpiEvalMethod: invalid parameters (Method=%s OutLen=%lu)\n",
+                    (MethodName ? MethodName : "<null>"),
+                    OutBufLen);
         return STATUS_INVALID_PARAMETER;
     }
 
     PAGED_CODE();
-
-    I2cCtrl_Log("AcpiEvalMethod: begin (PDO=%p, Handle=%p, Method=%s)\n",
-                AcpiPdo, AcpiHandle, MethodName);
 
     RtlZeroMemory(&input, sizeof(input));
 #ifdef ACPI_EVAL_INPUT_BUFFER_SIGNATURE
     input.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
 #endif
 
-    /* MethodName is 4‑char ANSI (e.g. "_ADR") */
     input.MethodNameAsUlong = *((PULONG)MethodName);
+
+    RtlZeroMemory(OutBuf, OutBufLen);
 
     KeInitializeEvent(&event, NotificationEvent, FALSE);
 
@@ -2111,7 +2058,7 @@ I2cCtrl_AcpiEvalMethod(
               OutBufLen,
               FALSE,
               &event,
-              &iosb
+              &ioStatus
           );
 
     if (irp == NULL) {
@@ -2119,36 +2066,30 @@ I2cCtrl_AcpiEvalMethod(
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    /* XP ACPI namespace handle is passed via OriginalFileObject */
-    irp->Tail.Overlay.OriginalFileObject = (PFILE_OBJECT)AcpiHandle;
-
-    I2cCtrl_Log("AcpiEvalMethod: sending IRP (Method=%s, Handle=%p)\n",
-                MethodName, AcpiHandle);
+    I2cCtrl_Log("AcpiEvalMethod: sending IOCTL (Method=%s Device=%p)\n",
+                MethodName, AcpiPdo);
 
     status = IoCallDriver(AcpiPdo, irp);
 
     if (status == STATUS_PENDING) {
-        timeout.QuadPart = -5 * 1000 * 1000 * 10; /* 5 seconds */
-        KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, &timeout);
-        status = iosb.Status;
+        KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+        status = ioStatus.Status;
     }
 
     if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("AcpiEvalMethod: ACPI call failed (Method=%s, Status=0x%08lx)\n",
+        I2cCtrl_Log("AcpiEvalMethod: ACPI IOCTL failed (Method=%s Status=0x%08lx)\n",
                     MethodName, status);
         return status;
     }
 
-    if (iosb.Information < sizeof(I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER) ||
-        iosb.Information > OutBufLen)
-    {
-        I2cCtrl_Log("AcpiEvalMethod: buffer size mismatch (Method=%s, Info=%lu, OutLen=%lu)\n",
-                    MethodName, (ULONG)iosb.Information, OutBufLen);
-        return STATUS_BUFFER_OVERFLOW;
+    if (OutBuf->Count == 0) {
+        I2cCtrl_Log("AcpiEvalMethod: ACPI returned zero arguments (Method=%s)\n",
+                    MethodName);
+        return STATUS_NO_DATA_DETECTED;
     }
 
-    I2cCtrl_Log("AcpiEvalMethod: success (Method=%s, Returned=%lu bytes)\n",
-                MethodName, (ULONG)iosb.Information);
+    I2cCtrl_Log("AcpiEvalMethod: success (Method=%s Count=%lu)\n",
+                MethodName, (ULONG)OutBuf->Count);
 
     return STATUS_SUCCESS;
 }
@@ -9464,7 +9405,7 @@ I2cCtrlInitHidChildIds(
     RtlInitUnicodeString(&childDx->Desc.InstanceId, instBuf);
     RtlInitUnicodeString(&childDx->InstanceId,      instBuf);
 
-    childDx->Desc.IfGuid    = GUID_I2cCtrl_CHILD_IFACE;
+    childDx->Desc.IfGuid    = GUID_I2CCTRL_CHILD_IFACE;
     childDx->Desc.IfEnabled = TRUE;
 
     return STATUS_SUCCESS;
@@ -12577,7 +12518,6 @@ I2cCtrl_CreateTouchpad(
     KIRQL oldIrql;
     PLIST_ENTRY entry;
     PI2CCTRL_PDO childDx;
-    const I2CHID_DEVICE_ID* hidMatch;
 
     if (Fdo == NULL || fdoExt == NULL) {
         I2cCtrl_Log("CreateTouchpad: invalid parameters\n");
@@ -12586,9 +12526,6 @@ I2cCtrl_CreateTouchpad(
 
     I2cCtrl_Log("CreateTouchpad: begin (enumerate + bind touchpad)\n");
 
-    /* ------------------------------------------------------------
-       1) Ensure children exist (enumerate or re-enumerate)
-       ------------------------------------------------------------ */
     if (IsListEmpty(&fdoExt->ChildList)) {
 
         I2cCtrl_Log("CreateTouchpad: no children -> Enumerate\n");
@@ -12617,9 +12554,6 @@ I2cCtrl_CreateTouchpad(
         }
     }
 
-    /* ------------------------------------------------------------
-       2) Walk children and find a touchpad candidate
-       ------------------------------------------------------------ */
     fdoExt->TouchpadPdo = NULL;
 
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
@@ -12637,26 +12571,16 @@ I2cCtrl_CreateTouchpad(
             continue;
         }
 
-        /* ------------------------------
-           2a) HID-based touchpads
-           ------------------------------ */
-        hidMatch = I2cCtrl_FindHidMatch(childDx->HardwareId.Buffer);
-        if (hidMatch != NULL &&
-            (hidMatch->Flags & HID_FLAG_TOUCHPAD))
-        {
+        if (I2cCtrl_IsHidTouchpad(childDx->HardwareId.Buffer, childDx)) {
+
             childDx->IsTouchpad = TRUE;
             fdoExt->TouchpadPdo = childDx;
 
-            I2cCtrl_Log("CreateTouchpad: HID touchpad \"%ws\" found (quirks=0x%08lx flags=0x%08lx)\n",
-                        childDx->HardwareId.Buffer,
-                        hidMatch->Quirks,
-                        hidMatch->Flags);
+            I2cCtrl_Log("CreateTouchpad: HID touchpad \"%ws\" found\n",
+                        childDx->HardwareId.Buffer);
             break;
         }
 
-        /* ------------------------------
-           2b) Vendor-specific ACPI IDs
-           ------------------------------ */
         if (I2cCtrl_IsVendorTouchpad(childDx->HardwareId.Buffer, childDx)) {
 
             childDx->IsTouchpad = TRUE;
@@ -12667,9 +12591,6 @@ I2cCtrl_CreateTouchpad(
             break;
         }
 
-        /* ------------------------------
-           2c) Raw I2C touchpads (non-HID)
-           ------------------------------ */
         if (I2cCtrl_IsRawI2cTouchpad(childDx)) {
 
             childDx->IsTouchpad = TRUE;
@@ -12683,18 +12604,12 @@ I2cCtrl_CreateTouchpad(
 
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    /* ------------------------------------------------------------
-       3) No touchpad found -> cleanup
-       ------------------------------------------------------------ */
     if (fdoExt->TouchpadPdo == NULL) {
         I2cCtrl_Log("CreateTouchpad: no touchpad device found -> deleting children\n");
         (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
         return STATUS_NOT_FOUND;
     }
 
-    /* ------------------------------------------------------------
-       4) Success
-       ------------------------------------------------------------ */
     I2cCtrl_Log("CreateTouchpad: TouchpadPdo=%p bound successfully\n",
                 fdoExt->TouchpadPdo);
 
@@ -12720,9 +12635,6 @@ I2cCtrl_CreateSpeaker(
 
     I2cCtrl_Log("CreateSpeaker: begin (enumerate + bind speaker)\n");
 
-    /* ------------------------------------------------------------
-       1) Ensure children exist (enumerate or re-enumerate)
-       ------------------------------------------------------------ */
     if (IsListEmpty(&fdoExt->ChildList)) {
 
         I2cCtrl_Log("CreateSpeaker: no children -> Enumerate\n");
@@ -12751,9 +12663,6 @@ I2cCtrl_CreateSpeaker(
         }
     }
 
-    /* ------------------------------------------------------------
-       2) Walk children and find a speaker candidate
-       ------------------------------------------------------------ */
     fdoExt->SpeakerPdo = NULL;
 
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
@@ -12771,9 +12680,6 @@ I2cCtrl_CreateSpeaker(
             continue;
         }
 
-        /* ------------------------------
-           2a) HID-based I2C speakers
-           ------------------------------ */
         if (I2cCtrl_IsHidSpeaker(childDx->HardwareId.Buffer, childDx)) {
 
             childDx->IsSpeaker = TRUE;
@@ -12784,9 +12690,6 @@ I2cCtrl_CreateSpeaker(
             break;
         }
 
-        /* ------------------------------
-           2b) Vendor-specific ACPI IDs
-           ------------------------------ */
         if (I2cCtrl_IsVendorSpeaker(childDx->HardwareId.Buffer, childDx)) {
 
             childDx->IsSpeaker = TRUE;
@@ -12797,9 +12700,6 @@ I2cCtrl_CreateSpeaker(
             break;
         }
 
-        /* ------------------------------
-           2c) Raw I2C speakers (non-HID)
-           ------------------------------ */
         if (I2cCtrl_IsRawI2cSpeaker(childDx)) {
 
             childDx->IsSpeaker = TRUE;
@@ -12813,18 +12713,12 @@ I2cCtrl_CreateSpeaker(
 
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    /* ------------------------------------------------------------
-       3) No speaker found -> cleanup
-       ------------------------------------------------------------ */
     if (fdoExt->SpeakerPdo == NULL) {
         I2cCtrl_Log("CreateSpeaker: no speaker device found -> deleting children\n");
         (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
         return STATUS_NOT_FOUND;
     }
 
-    /* ------------------------------------------------------------
-       4) Success
-       ------------------------------------------------------------ */
     I2cCtrl_Log("CreateSpeaker: SpeakerPdo=%p bound successfully\n",
                 fdoExt->SpeakerPdo);
 
@@ -12852,9 +12746,6 @@ I2cCtrl_CreateI2cDevice(
 
     I2cCtrl_Log("CreateI2cDevice: begin (enumerate + classify)\n");
 
-    /* ------------------------------------------------------------
-       1) Ensure children exist (enumerate or re-enumerate)
-       ------------------------------------------------------------ */
     if (IsListEmpty(&fdoExt->ChildList)) {
 
         I2cCtrl_Log("CreateI2cDevice: no children -> Enumerate\n");
@@ -12883,13 +12774,6 @@ I2cCtrl_CreateI2cDevice(
         }
     }
 
-    /* ------------------------------------------------------------
-       2) Scan children:
-          - Touchpad -> CreateTouchpad()
-          - Speaker  -> CreateSpeaker()
-          - Else     -> first generic I2C device
-       ------------------------------------------------------------ */
-
     fdoExt->OtherDevicePdo = NULL;
 
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
@@ -12907,12 +12791,8 @@ I2cCtrl_CreateI2cDevice(
             continue;
         }
 
-        /* HID match (if any) */
         hidMatch = I2cCtrl_FindHidMatch(childDx->HardwareId.Buffer);
 
-        /* ------------------------------
-           Touchpad detection
-           ------------------------------ */
         if ((hidMatch != NULL && (hidMatch->Flags & HID_FLAG_TOUCHPAD)) ||
             childDx->IsTouchpad ||
             I2cCtrl_IsVendorTouchpad(childDx->HardwareId.Buffer, childDx) ||
@@ -12925,9 +12805,6 @@ I2cCtrl_CreateI2cDevice(
             return I2cCtrl_CreateTouchpad(Fdo, fdoExt);
         }
 
-        /* ------------------------------
-           Speaker detection
-           ------------------------------ */
         if (childDx->IsSpeaker ||
             I2cCtrl_IsHidSpeaker(childDx->HardwareId.Buffer, childDx) ||
             I2cCtrl_IsVendorSpeaker(childDx->HardwareId.Buffer, childDx) ||
@@ -12940,9 +12817,6 @@ I2cCtrl_CreateI2cDevice(
             return I2cCtrl_CreateSpeaker(Fdo, fdoExt);
         }
 
-        /* ------------------------------
-           First non-touchpad, non-speaker device
-           ------------------------------ */
         fdoExt->OtherDevicePdo = childDx;
 
         I2cCtrl_Log("CreateI2cDevice: selected generic device \"%ws\"\n",
@@ -12953,18 +12827,12 @@ I2cCtrl_CreateI2cDevice(
 
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    /* ------------------------------------------------------------
-       3) No device found
-       ------------------------------------------------------------ */
     if (fdoExt->OtherDevicePdo == NULL) {
         I2cCtrl_Log("CreateI2cDevice: no suitable device found -> deleting children\n");
         (void)I2cCtrl_DeenumerateAcpiChildren(Fdo, fdoExt, &count);
         return STATUS_NOT_FOUND;
     }
 
-    /* ------------------------------------------------------------
-       4) Success
-       ------------------------------------------------------------ */
     I2cCtrl_Log("CreateI2cDevice: OtherDevicePdo=%p bound successfully\n",
                 fdoExt->OtherDevicePdo);
 
@@ -13017,7 +12885,6 @@ I2cCtrl_DeenumerateAcpiChildren(
                     child->Pdo,
                     child->HardwareId.Buffer ? child->HardwareId.Buffer : L"<null>");
 
-        /* Free ID strings */
         if (child->HardwareId.Buffer) {
             ExFreePoolWithTag(child->HardwareId.Buffer, TAG_PDO);
             child->HardwareId.Buffer = NULL;
@@ -13039,7 +12906,6 @@ I2cCtrl_DeenumerateAcpiChildren(
             child->CompatibleIdsMultiSz = NULL;
         }
 
-        /* Free HID/PT buffers */
         if (child->LastReport) {
             ExFreePoolWithTag(child->LastReport, 'RptH');
             child->LastReport = NULL;
@@ -13049,7 +12915,6 @@ I2cCtrl_DeenumerateAcpiChildren(
             child->HidReportDesc = NULL;
         }
 
-        /* Delete PDO */
         if (child->Pdo) {
             IoDeleteDevice(child->Pdo);
         }
@@ -13095,9 +12960,6 @@ I2cCtrl_ReenumerateAcpiChildren(
 
     I2cCtrl_Log("Reenumerate: begin\n");
 
-    /* ------------------------------------------------------------
-       1) Decide whether reenumeration is needed
-       ------------------------------------------------------------ */
     if (IsListEmpty(&DevCtx->ChildList)) {
         I2cCtrl_Log("Reenumerate: no children -> required\n");
         needReenum = TRUE;
@@ -13109,7 +12971,6 @@ I2cCtrl_ReenumerateAcpiChildren(
     else {
         PI2CCTRL_PDO p = DevCtx->TouchpadPdo;
 
-        /* HID descriptor invalid */
         if (p->HidDesc.bLength == 0 ||
             p->HidReportDescLen == 0 ||
             p->HidMaxInputLen == 0)
@@ -13118,7 +12979,6 @@ I2cCtrl_ReenumerateAcpiChildren(
             needReenum = TRUE;
         }
 
-        /* ACPI address changed */
         if (DevCtx->SavedBusAddress != p->SavedBusAddress) {
             I2cCtrl_Log("Reenumerate: SavedBusAddress mismatch\n");
             needReenum = TRUE;
@@ -13130,27 +12990,18 @@ I2cCtrl_ReenumerateAcpiChildren(
         return STATUS_SUCCESS;
     }
 
-    /* ------------------------------------------------------------
-       2) Delete existing children
-       ------------------------------------------------------------ */
     status = I2cCtrl_DeenumerateAcpiChildren(Fdo, DevCtx, &deleted);
     if (!NT_SUCCESS(status)) {
         I2cCtrl_Log("Reenumerate: Deenumerate FAILED (0x%08lx)\n", status);
         return status;
     }
 
-    /* ------------------------------------------------------------
-       3) Re-enumerate ACPI children
-       ------------------------------------------------------------ */
     status = I2cCtrl_EnumerateAcpiChildren(Fdo, DevCtx, &created);
     if (!NT_SUCCESS(status)) {
         I2cCtrl_Log("Reenumerate: Enumerate FAILED (0x%08lx)\n", status);
         return status;
     }
 
-    /* ------------------------------------------------------------
-       4) Restart PT state if needed
-       ------------------------------------------------------------ */
     if (DevCtx->TouchpadPdo) {
         PI2CCTRL_PDO p = DevCtx->TouchpadPdo;
 
@@ -13160,9 +13011,11 @@ I2cCtrl_ReenumerateAcpiChildren(
             ExFreePoolWithTag(p->LastReport, 'RptH');
         }
 
-        p->LastReport = ExAllocatePoolWithTag(NonPagedPool,
-                                              HID_REPORT_MAX_LEN,
-                                              'RptH');
+        p->LastReport = ExAllocatePoolWithTag(
+                            NonPagedPool,
+                            HID_REPORT_MAX_LEN,
+                            'RptH'
+                        );
 
         if (p->LastReport) {
             RtlZeroMemory(p->LastReport, HID_REPORT_MAX_LEN);
@@ -13171,9 +13024,6 @@ I2cCtrl_ReenumerateAcpiChildren(
         p->Reported = FALSE;
     }
 
-    /* ------------------------------------------------------------
-       5) Return total number of changes
-       ------------------------------------------------------------ */
     if (ChildCountOut) {
         *ChildCountOut = deleted + created;
     }
@@ -13607,74 +13457,62 @@ I2cCtrl_IsVendorTouchpad(
         return FALSE;
     }
 
-    /* If PDO was already classified as touchpad, trust that */
     if (Pdo != NULL && Pdo->IsTouchpad) {
         return TRUE;
     }
 
-    /* ELAN */
     if (wcsncmp(Hid, L"ACPI\\ELAN", 9) == 0) {
         return TRUE;
     }
 
-    /* Synaptics */
     if (wcsncmp(Hid, L"ACPI\\SYNA", 9) == 0 ||
-        wcsncmp(Hid, L"ACPI\\SYN", 8) == 0) {
+        wcsncmp(Hid, L"ACPI\\SYN", 8) == 0)
+    {
         return TRUE;
     }
 
-    /* Goodix */
     if (wcsncmp(Hid, L"ACPI\\GDIX", 9) == 0) {
         return TRUE;
     }
 
-    /* ASUS / ASUE */
     if (wcsncmp(Hid, L"ACPI\\ASUE", 9) == 0 ||
-        wcsncmp(Hid, L"ACPI\\ASUS", 9) == 0) {
+        wcsncmp(Hid, L"ACPI\\ASUS", 9) == 0)
+    {
         return TRUE;
     }
 
-    /* Raydium */
     if (wcsncmp(Hid, L"ACPI\\RAYD", 9) == 0) {
         return TRUE;
     }
 
-    /* FocalTech */
     if (wcsncmp(Hid, L"ACPI\\FTCS", 9) == 0) {
         return TRUE;
     }
 
-    /* Cypress */
     if (wcsncmp(Hid, L"ACPI\\CYAP", 9) == 0) {
         return TRUE;
     }
 
-    /* Himax */
     if (wcsncmp(Hid, L"ACPI\\HIMX", 9) == 0) {
         return TRUE;
     }
 
-    /* PixArt */
     if (wcsncmp(Hid, L"ACPI\\PIXA", 9) == 0) {
         return TRUE;
     }
 
-    /* Silead */
     if (wcsncmp(Hid, L"ACPI\\MSSL", 9) == 0) {
         return TRUE;
     }
 
-    /* Atmel */
     if (wcsncmp(Hid, L"ACPI\\ATML", 9) == 0) {
         return TRUE;
     }
 
-    /* Primax */
     if (wcsncmp(Hid, L"ACPI\\PRMX", 9) == 0) {
         return TRUE;
     }
 
-    /* Chicony */
     if (wcsncmp(Hid, L"ACPI\\CHPN", 9) == 0) {
         return TRUE;
     }
@@ -13697,22 +13535,18 @@ I2cCtrl_IsRawI2cTouchpad(
 
     hid = Pdo->HardwareId.Buffer;
 
-    /* If already classified as touchpad, it is NOT raw */
     if (Pdo->IsTouchpad) {
         return FALSE;
     }
 
-    /* If HID match exists, it is NOT raw */
     if (I2cCtrl_FindHidMatch(hid) != NULL) {
         return FALSE;
     }
 
-    /* If vendor-touchpad match exists, it is NOT raw */
     if (I2cCtrl_IsVendorTouchpad(hid, Pdo)) {
         return FALSE;
     }
 
-    /* Raw I2C touchpads often use ACPI names like TPD0, TPD1, TPL0, etc. */
     if (wcsncmp(hid, L"ACPI\\TPD", 8) == 0 ||
         wcsncmp(hid, L"ACPI\\TPL", 8) == 0 ||
         wcsncmp(hid, L"ACPI\\ETPD", 9) == 0)
@@ -13720,7 +13554,6 @@ I2cCtrl_IsRawI2cTouchpad(
         return TRUE;
     }
 
-    /* If HID descriptor is missing AND input size is large, likely raw touchpad */
     if (Pdo->HidDesc.bLength == 0 &&
         Pdo->HidMaxInputLen > 64)
     {
@@ -14141,12 +13974,10 @@ I2cCtrl_IsHidSpeaker(
         return FALSE;
     }
 
-    /* HID style audio IDs */
     if (_wcsnicmp(Hid, L"HDAUDIO\\", 8) == 0) {
         return TRUE;
     }
 
-    /* Intel Smart Sound HID style */
     if (_wcsnicmp(Hid, L"INT34", 5) == 0) {
         return TRUE;
     }
@@ -14163,17 +13994,14 @@ I2cCtrl_IsRawI2cSpeaker(
         return FALSE;
     }
 
-    /* Must not have HID */
     if (Pdo->HardwareId.Buffer != NULL) {
         return FALSE;
     }
 
-    /* Must have I2C connection descriptor */
     if (!Pdo->HasI2cConnection) {
         return FALSE;
     }
 
-    /* Must not be marked as touchpad or keyboard */
     if (Pdo->IsTouchpad || Pdo->IsKeyboard) {
         return FALSE;
     }
@@ -14181,18 +14009,6 @@ I2cCtrl_IsRawI2cSpeaker(
     return TRUE;
 }
 
-/* -----------------------------------------------------------------------
- * I2cCtrl_AddCidToMultiSz
- *
- * Append a Unicode string (CID) to an existing MULTI_SZ buffer.
- * MULTI_SZ format:
- *   str1\0str2\0...strN\0\0
- *
- * Assumes childDx->CompatibleId already contains a valid MULTI_SZ
- * or a single string. Expands buffer as needed.
- *
- * XP/2003-safe, C89-compliant.
- * ----------------------------------------------------------------------- */
 VOID
 I2cCtrl_AddCidToMultiSz(
     PI2CCTRL_PDO childDx,
@@ -14209,13 +14025,10 @@ I2cCtrl_AddCidToMultiSz(
 
     multi = &childDx->CompatibleId;
 
-    /* Existing MULTI_SZ length (bytes) */
     oldLen = (SIZE_T)multi->Length;
 
-    /* New CID length (bytes) including terminating NUL */
     newLen = (wcslen(newCid) + 1) * sizeof(WCHAR);
 
-    /* MULTI_SZ must end with an extra NUL */
     totalLen = oldLen + newLen + sizeof(WCHAR);
 
     newBuf = (PWSTR)ExAllocatePoolWithTag(NonPagedPool, totalLen, 'cidM');
@@ -14223,22 +14036,44 @@ I2cCtrl_AddCidToMultiSz(
         return;
     }
 
-    /* Copy old MULTI_SZ */
     RtlCopyMemory(newBuf, multi->Buffer, oldLen);
 
-    /* Append new CID */
     RtlCopyMemory((PUCHAR)newBuf + oldLen, newCid, newLen);
 
-    /* Final double-NUL terminator */
     *(PWSTR)((PUCHAR)newBuf + oldLen + newLen) = L'\0';
 
-    /* Free old buffer */
     if (multi->Buffer) {
         ExFreePoolWithTag(multi->Buffer, 'cidM');
     }
 
-    /* Update MULTI_SZ */
     multi->Buffer = newBuf;
     multi->Length = (USHORT)(totalLen - sizeof(WCHAR));
     multi->MaximumLength = (USHORT)totalLen;
+}
+
+
+BOOLEAN
+I2cCtrl_IsHidTouchpad(
+    PCWSTR Hid,
+    PI2CCTRL_PDO Pdo
+)
+{
+    const I2CHID_DEVICE_ID *match;
+
+    UNREFERENCED_PARAMETER(Pdo);
+
+    if (Hid == NULL) {
+        return FALSE;
+    }
+
+    match = I2cCtrl_FindHidMatch(Hid);
+    if (match == NULL) {
+        return FALSE;
+    }
+
+    if (match->Flags & HID_FLAG_TOUCHPAD) {
+        return TRUE;
+    }
+
+    return FALSE;
 }

@@ -4,10 +4,10 @@
 #include <ntddk.h>
 
 /* Opaque handles to mimic KMDF object flavor */
-typedef struct _I2cCtrl_WDM_DEVICE    I2CCTRL_WDM_DEVICE,    *PI2CCTRL_WDM_DEVICE;
-typedef struct _I2cCtrl_WDM_QUEUE     I2CCTRL_WDM_QUEUE,     *PI2CCTRL_WDM_QUEUE;
-typedef struct _I2cCtrl_WDM_TIMER     I2CCTRL_WDM_TIMER,     *PI2CCTRL_WDM_TIMER;
-typedef struct _I2cCtrl_WDM_WORKITEM  I2CCTRL_WDM_WORKITEM,  *PI2CCTRL_WDM_WORKITEM;
+typedef struct _I2CCTRL_WDM_DEVICE    I2CCTRL_WDM_DEVICE,    *PI2CCTRL_WDM_DEVICE;
+typedef struct _I2CCTRL_WDM_QUEUE     I2CCTRL_WDM_QUEUE,     *PI2CCTRL_WDM_QUEUE;
+typedef struct _I2CCTRL_WDM_TIMER     I2CCTRL_WDM_TIMER,     *PI2CCTRL_WDM_TIMER;
+typedef struct _I2CCTRL_WDM_WORKITEM  I2CCTRL_WDM_WORKITEM,  *PI2CCTRL_WDM_WORKITEM;
 
 /* ---------------- Device ---------------- */
 NTSTATUS
@@ -77,7 +77,7 @@ PDEVICE_OBJECT I2CCTRL_WdmGetDeviceObject(IN PI2CCTRL_WDM_DEVICE Device);
 
 /* Provide local definitions if building with older headers */
 #ifndef I2CCTRL_WDM_TIMER_TYPE_DEFINED
-typedef enum _I2cCtrl_WDM_TIMER_TYPE {
+typedef enum _I2CCTRL_WDM_TIMER_TYPE {
     I2CCTRL_WdmNotificationTimer   = 0,
     I2CCTRL_WdmSynchronizationTimer = 1
 } I2CCTRL_WDM_TIMER_TYPE;
@@ -88,7 +88,7 @@ typedef enum _I2cCtrl_WDM_TIMER_TYPE {
  * I2CCTRL_WdmAddressProbeFlags
  * Flags controlling how address probing is performed.
  * ----------------------------------------------------------------------- */
-typedef enum _I2cCtrl_WdmAddressProbeFlags {
+typedef enum _I2CCTRL_WdmAddressProbeFlags {
     I2CCTRL_WdmProbeReadOnly     = 0x00, /* default: read probe only */
     I2CCTRL_WdmProbeWriteBack    = 0x01, /* write back same value after read */
     I2CCTRL_WdmProbeRangeEnds    = 0x02, /* also probe last byte of the range */

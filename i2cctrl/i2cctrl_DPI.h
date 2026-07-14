@@ -2,8 +2,8 @@
    i2cctrl_DPI.h - Device Properties Interface (DPI) for HID-over-I²C (clean, no GUID redefs)
    ----------------------------------------------------------------------- */
 
-#ifndef _I2cCtrl_DPI_H_
-#define _I2cCtrl_DPI_H_
+#ifndef _I2CCTRL_DPI_H_
+#define _I2CCTRL_DPI_H_
 
 #include "i2cctrl_spinlock_fix.h"
 #include <hidport.h>   /* for HID_DESCRIPTOR */
@@ -136,4 +136,4 @@ I2cCtrl_DpiUnregisterInterface(
     PUNICODE_STRING SymbolicLinkName
     );
 
-#endif /* _I2cCtrl_DPI_H_ */
+#endif /* _I2CCTRL_DPI_H_ */

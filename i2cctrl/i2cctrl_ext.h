@@ -3,8 +3,8 @@
  * and the HID-over-I2C function driver. C89 compliant.
  */
 
-#ifndef _I2cCtrl_EXT_H_
-#define _I2cCtrl_EXT_H_
+#ifndef _I2CCTRL_EXT_H_
+#define _I2CCTRL_EXT_H_
 
 #include <ntddk.h>
 #include <hidport.h>
@@ -71,7 +71,7 @@ I2cCtrl_CancelRoutine(
  * Driver-wide globals used for multi-controller bookkeeping
  * XP/2003 BSOD-safe, C89-compliant
  * ----------------------------------------------------------------------- */
-typedef struct _I2CCtrl_GLOBAL {
+typedef struct _I2CCTRL_GLOBAL {
     LONG       NextControllerId;
     KSPIN_LOCK GlobalLock;       /* protects global controller list */
     LIST_ENTRY ControllerList;   /* list of all FDOs/controllers */
@@ -80,7 +80,7 @@ typedef struct _I2CCtrl_GLOBAL {
     NTSTATUS (*StopDevice)(struct _I2CCTRL_FDO *fdoExt);
     NTSTATUS (*RestartDevice)(struct _I2CCTRL_FDO *fdoExt);
     NTSTATUS (*DetectTouchpad)(struct _I2CCTRL_FDO *fdoExt,
-                               struct _I2cCtrl_DETECT_RESULT *result);
+                               struct _I2CCTRL_DETECT_RESULT *result);
 
     BOOLEAN   TouchpadPresent;
 } I2CCTRL_GLOBAL, *PI2CCTRL_GLOBAL;
@@ -390,7 +390,7 @@ typedef struct _I2C_WRITE_PARAMS {
    --------------------------------------------------------------------------- */
 
 /* QoS priority levels for multi-queue scheduling */
-typedef enum _I2cCtrl_QOS_PRIORITY {
+typedef enum _I2CCTRL_QOS_PRIORITY {
     I2C_QOS_HIGH   = 0,   /* urgent requests */
     I2C_QOS_NORMAL = 1,   /* default priority */
     I2C_QOS_LOW    = 2    /* background/low priority */
@@ -430,15 +430,15 @@ typedef struct _SMBUS_REQUEST {
 /* ---------------------------------------------------------------------------
    Bus speed mode enum (shared with HAL)
    --------------------------------------------------------------------------- */
-typedef enum _I2cCtrl_SPEED_MODE {
+typedef enum _I2CCTRL_SPEED_MODE {
     I2cSpeedStandard = 0,
     I2cSpeedFast     = 1,
     I2cSpeedHigh     = 2
 } I2CCTRL_SPEED_MODE;
 
 /* Forward declaration for child PDO struct */
-struct _I2cCtrl_PDO;
-typedef struct _I2cCtrl_PDO* PI2CCTRL_PDO;
+struct _I2CCTRL_PDO;
+typedef struct _I2CCTRL_PDO* PI2CCTRL_PDO;
 
 /* ---------------------------------------------------------------------------
  * FDO extension struct
@@ -648,7 +648,7 @@ typedef struct _I2CCTRL_FDO {
     BOOLEAN           StopPending;
     BOOLEAN           RestartPending;
     BOOLEAN           InterruptsEnabled;
-    struct _I2cCtrl_QUEUE* Queue;
+    struct _I2CCTRL_QUEUE* Queue;
     IO_REMOVE_LOCK    RemoveLock;
     BOOLEAN           RemoveLockDrained;
 
@@ -726,7 +726,7 @@ NTSTATUS (*ReenumerateChildrenFn)(
     ULONG HidErrorCount;  /* counts HID-specific errors */
 	BOOLEAN SurpriseRemoved;
 	
-	struct _I2cCtrl_PDO* TouchpadPdo;
+	struct _I2CCTRL_PDO* TouchpadPdo;
 	
 	PCWSTR PnpId;
 	PUCHAR LpssBar2;
@@ -754,7 +754,7 @@ NTSTATUS (*ReenumerateChildrenFn)(
     PHYSICAL_ADDRESS PolicyPwrmBase;
 	BOOLEAN ReadyForChildren;
 	PVOID PwrmBaseVa;   /* Virtual mapping of PWRMBASE */
-	struct _I2cCtrl_PDO* OtherDevicePdo;   /* NEW: non-touchpad device PDO */
+	struct _I2CCTRL_PDO* OtherDevicePdo;   /* NEW: non-touchpad device PDO */
 	BOOLEAN IsLpss2;                        /* NEW: LPSS2 capability flag */
 	    //
     // ACPI-backed controller state (used only by AcpiI2cOps)
@@ -773,7 +773,7 @@ NTSTATUS (*ReenumerateChildrenFn)(
 
 #endif /* _I2CCTRL_FDO_DEFINED */
 
-typedef struct _I2cCtrl_ACPI_METHOD_HANDLE {
+typedef struct _I2CCTRL_ACPI_METHOD_HANDLE {
     PVOID AcpiHandle;     /* namespace node */
     ULONG MethodName;     /* 4-char ACPI name as ULONG */
 } I2CCTRL_ACPI_METHOD_HANDLE, *PI2CCTRL_ACPI_METHOD_HANDLE;
@@ -803,7 +803,7 @@ I2cCtrl_UnmapMmio(
    Per-handle target binding (FileObject->FsContext)
    Each open handle can bind to a specific slave/target with its own speed/flags.
    --------------------------------------------------------------------------- */
-typedef struct _I2cCtrl_TARGET {
+typedef struct _I2CCTRL_TARGET {
     USHORT  Address;        /* 7-bit or 10-bit address (masked to 10 bits) */
     USHORT  Reserved0;      /* alignment/padding */
 
@@ -996,13 +996,13 @@ BOOLEAN             IfEnabled;
 // ---------------------------------------------------------------------------
 // PDO extension (per child device) - genericized
 // ---------------------------------------------------------------------------
-typedef enum _I2cCtrl_PDO_TYPE {
+typedef enum _I2CCTRL_PDO_TYPE {
     I2CCTRL_PDO_TYPE_GENERIC = 0,
     I2CCTRL_PDO_TYPE_HID     = 1,
     I2CCTRL_PDO_TYPE_CHILD   = 2
 } I2CCTRL_PDO_TYPE;
 
-typedef struct _I2cCtrl_PDO {
+typedef struct _I2CCTRL_PDO {
 
     //
     // --- Common header (must come first) ---
@@ -1160,7 +1160,7 @@ UNICODE_STRING DeviceDesc;
 	BOOLEAN IsSpeaker;
 } I2CCTRL_PDO, *PI2CCTRL_PDO;
 
-typedef struct _I2cCtrl_IRP_CONTEXT {
+typedef struct _I2CCTRL_IRP_CONTEXT {
 	IO_CSQ_IRP_CONTEXT CsqContext; /* must be first */
 	LIST_ENTRY        ListEntry;       /* linked into pending queue */
     PIRP              Irp;             /* owning IRP */
@@ -1183,7 +1183,7 @@ typedef struct _I2cCtrl_IRP_CONTEXT {
 } I2CCTRL_IRP_CONTEXT, *PI2CCTRL_IRP_CONTEXT;
 
 
-typedef struct _I2cCtrl_QUEUE {
+typedef struct _I2CCTRL_QUEUE {
     LIST_ENTRY    PendingIrps;
     KSPIN_LOCK    Lock;
     KEVENT        WorkEvent;
@@ -1325,7 +1325,7 @@ NTSTATUS ValidateBufferedInput(PIRP Irp, size_t required);
 /* --- SMBus helper enums and structs (METHOD_BUFFERED) --------------------- */
 
 /* Enumerated SMBus operation types */
-typedef enum _I2cCtrl_SMBUS_OP {
+typedef enum _I2CCTRL_SMBUS_OP {
     SmBusQuickCommand = 0,
     SmBusSendByte,
     SmBusReceiveByte,
@@ -1345,7 +1345,7 @@ typedef enum _I2cCtrl_SMBUS_OP {
  * WriteWord, ReadWord, BlockWrite, BlockRead, BlockProcessCall,
  * AlertResponse.
  * ----------------------------------------------------------------------- */
-typedef struct _I2cCtrl_SMBUS_CMD {
+typedef struct _I2CCTRL_SMBUS_CMD {
     UCHAR  Address7Bit;   /* 0..127 */
     UCHAR  Command;       /* SMBus command code (if applicable) */
     UCHAR  PecMode;       /* 0=off, nonzero=on */
@@ -1358,7 +1358,7 @@ typedef struct _I2cCtrl_SMBUS_CMD {
  * SMBus block operation descriptor
  * Used for BlockWrite, BlockRead, BlockProcessCall.
  * ----------------------------------------------------------------------- */
-typedef struct _I2cCtrl_SMBUS_BLOCK {
+typedef struct _I2CCTRL_SMBUS_BLOCK {
     UCHAR  Address7Bit;   /* 0..127 */
     UCHAR  Command;       /* SMBus command code */
     UCHAR  PecMode;       /* 0=off, nonzero=on */
@@ -1401,7 +1401,7 @@ I2cCtrl_EnumerateAcpiNamespace(
 // Minimal description of one ACPI device entry returned by
 // IOCTL_ACPI_GET_DEVICE_INFORMATION (hybrid traversal root walk).
 //
-typedef struct _I2cCtrl_ACPI_ENUM_ENTRY {
+typedef struct _I2CCTRL_ACPI_ENUM_ENTRY {
     ULONG          NextRequest;
     PVOID          DeviceHandle;
     PDEVICE_OBJECT DeviceObject;
@@ -1422,7 +1422,7 @@ I2cCtrl_AcpiGetDeviceInformation(
 // Private copy of the front of ACPI_DEVICE_INFORMATION as used by
 // IOCTL_ACPI_GET_DEVICE_INFORMATION. We only care about a few fields.
 //
-typedef struct _I2cCtrl_ACPI_DEVICE_INFORMATION_WIRE {
+typedef struct _I2CCTRL_ACPI_DEVICE_INFORMATION_WIRE {
     ULONG Signature;
     ULONG Length;
     ULONG NextRequest;
@@ -1516,7 +1516,7 @@ typedef enum _I2C_BACKEND_TYPE {
 
 } I2C_BACKEND_TYPE;
 
-typedef struct _I2cCtrl_DEVICE_ID {
+typedef struct _I2CCTRL_DEVICE_ID {
 
     PCWSTR PciId;              /* Hardware ID string to match */
 
@@ -1595,10 +1595,16 @@ I2cCtrl_FindHidMatch(
     PCWSTR HidId
     );
 
+BOOLEAN
+I2cCtrl_IsHidTouchpad(
+    PCWSTR Hid,
+    PI2CCTRL_PDO Pdo
+);
+
 //
 // Register map structure
 //
-typedef struct _I2cCtrl_REGMAP {
+typedef struct _I2CCTRL_REGMAP {
     ULONG ControlReg;   /* Register offset for control */
     ULONG StatusReg;    /* Register offset for status */
     ULONG DataReg;      /* Register offset for data */
@@ -1610,7 +1616,7 @@ typedef struct _I2cCtrl_REGMAP {
 
 I2CCTRL_REGMAP g_CurrentRegMap;
 
-EXTERN_C const GUID GUID_I2cCtrl_CHILD_IFACE;
+EXTERN_C const GUID GUID_I2CCTRL_CHILD_IFACE;
 
 EXTERN_C const GUID GUID_BUS_TYPE_I2C;
 
@@ -1656,7 +1662,7 @@ I2cCtrl_QueryTimingLow(
     );
 
 /* Enum for snapshot fields */
-typedef enum _I2cCtrl_SNAPSHOT_FIELD {
+typedef enum _I2CCTRL_SNAPSHOT_FIELD {
     I2cSnapshot_BusAddress = 0,
     I2cSnapshot_BusSpeedHz,
     I2cSnapshot_TimingHighNs,
@@ -1712,7 +1718,7 @@ I2cCtrl_Transfer(PDEVICE_OBJECT DevObj,
 NTSTATUS I2CctrlHw_EnableController(PDEVICE_OBJECT DevObj, PSMBUS_REQUEST Request, PI2CCTRL_QUEUE Queue);
 
 /* Optional IOCTL to set request priority (XP-safe structure) */
-typedef struct _I2cCtrl_SET_PRIORITY {
+typedef struct _I2CCTRL_SET_PRIORITY {
     I2CCTRL_QOS_PRIORITY Priority; /* 0=High, 1=Normal, 2=Low */
 } I2CCTRL_SET_PRIORITY, *PI2CCTRL_SET_PRIORITY;
 
@@ -1909,7 +1915,7 @@ VOID     I2cCtrlApplyQuirks(PI2CCTRL_FDO devctx);
 // Modern ACPI 2.0+ input buffer for complex method evaluation
 // (used by patched ACPI.sys on modern hardware)
 //
-typedef struct _I2cCtrl_ACPI_EVAL_INPUT_BUFFER_COMPLEX {
+typedef struct _I2CCTRL_ACPI_EVAL_INPUT_BUFFER_COMPLEX {
     ULONG  Signature;
     CHAR   MethodName[4];
     ULONG  Size;
@@ -1922,7 +1928,7 @@ typedef struct _I2cCtrl_ACPI_EVAL_INPUT_BUFFER_COMPLEX {
 //
 // Modern ACPI 2.0+ output buffer for method evaluation
 //
-typedef struct _I2cCtrl_ACPI_EVAL_OUTPUT_BUFFER {
+typedef struct _I2CCTRL_ACPI_EVAL_OUTPUT_BUFFER {
     ULONG  Signature;
     ULONG  Length;
     ULONG  Count;                 // number of ACPI_METHOD_ARGUMENTs
@@ -1934,7 +1940,7 @@ typedef struct _I2cCtrl_ACPI_EVAL_OUTPUT_BUFFER {
 //
 // Modern ACPI 2.0+ method argument layout
 //
-typedef struct _I2cCtrl_ACPI_METHOD_ARGUMENT {
+typedef struct _I2CCTRL_ACPI_METHOD_ARGUMENT {
     USHORT Type;
     USHORT DataLength;
     ULONG  Argument;              // inline or offset
@@ -2006,7 +2012,7 @@ I2cCtrl_CreateI2cDevice(
 #define BusQueryBusID 5
 #endif
 
-typedef struct _I2cCtrl_COMMON_HEADER {
+typedef struct _I2CCTRL_COMMON_HEADER {
     ULONG Signature;
 } I2CCTRL_COMMON_HEADER, *PI2CCTRL_COMMON_HEADER;
 
@@ -2134,4 +2140,4 @@ I2cCtrl_AddCidToMultiSz(
     PWSTR        newCid
     );
 
-#endif /* _I2cCtrl_EXT_H_ */
+#endif /* _I2CCTRL_EXT_H_ */

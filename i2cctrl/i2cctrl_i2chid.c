@@ -54,7 +54,7 @@ I2cCtrl_Transfer(PDEVICE_OBJECT DevObj,
                  NULL,                   /* APC routine */
                  NULL,                   /* APC context */
                  &ioStatus,              /* IO_STATUS_BLOCK */
-                 IOCTL_I2cCtrl_TRANSFER, /* IoControlCode */
+                 IOCTL_I2CCTRL_TRANSFER, /* IoControlCode */
                  &packet, sizeof(packet),/* InputBuffer + length */
                  &packet, sizeof(packet) /* OutputBuffer + length */
              );

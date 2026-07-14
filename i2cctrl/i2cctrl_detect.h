@@ -1,5 +1,5 @@
-#ifndef _I2cCtrl_DETECT_H_
-#define _I2cCtrl_DETECT_H_
+#ifndef _I2CCTRL_DETECT_H_
+#define _I2CCTRL_DETECT_H_
 
 #include <ntddk.h>
 #include "i2cctrl_ext.h"   /* brings in I2CCTRL_FDO / PDO types */
@@ -27,7 +27,7 @@ typedef struct _HID_I2C_DESCRIPTOR_V10 {
 /* ---------------------------------------------------------------------------
    Result of detection
    --------------------------------------------------------------------------- */
-typedef struct _I2cCtrl_DETECT_RESULT {
+typedef struct _I2CCTRL_DETECT_RESULT {
     BOOLEAN Found;
     UCHAR   Address;        /* 7-bit I²C address */
     USHORT  HidDescLength;  /* length of HID descriptor */
@@ -97,4 +97,4 @@ ParseHidDescriptorV10(
     PHID_I2C_DESCRIPTOR_V10   out
     );
 
-#endif /* _I2cCtrl_DETECT_H_ */
+#endif /* _I2CCTRL_DETECT_H_ */

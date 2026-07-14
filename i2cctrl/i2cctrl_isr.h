@@ -1,5 +1,5 @@
-#ifndef _I2cCtrl_ISR_H_
-#define _I2cCtrl_ISR_H_
+#ifndef _I2CCTRL_ISR_H_
+#define _I2CCTRL_ISR_H_
 
 #include <ntddk.h>
 #include "i2cctrl_ext.h"
@@ -61,4 +61,4 @@ I2cCtrl_HandleArbitrationLost(
     PI2C_TRANSFER_CONTEXT Xc
     );
 
-#endif /* _I2cCtrl_ISR_H_ */
+#endif /* _I2CCTRL_ISR_H_ */

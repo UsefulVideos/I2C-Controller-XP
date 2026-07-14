@@ -3,8 +3,8 @@
  * C89 compliant, XP-BSOD-safe and WinDDK-compiler-safe
  */
 
-#ifndef _I2cCtrl_DUMP_H_
-#define _I2cCtrl_DUMP_H_
+#ifndef _I2CCTRL_DUMP_H_
+#define _I2CCTRL_DUMP_H_
 
 #include <ntddk.h>
 #include "i2cctrl_hw.h"
@@ -28,7 +28,7 @@ typedef struct _I2CCTRL_FDO I2CCTRL_FDO, *PI2CCTRL_FDO;
  * Field names avoid collision with register-offset macros.
  * All pointers stored as PVOID for WinDDK compatibility.
  */
-typedef struct _I2cCtrl_DUMP_SNAPSHOT {
+typedef struct _I2CCTRL_DUMP_SNAPSHOT {
     ULONG         Version;        /* snapshot version */
     ULONG         Flags;          /* reserved for future use */
     LARGE_INTEGER SystemTime;     /* system time when captured */
@@ -87,4 +87,4 @@ I2cCtrl_HandleDumpIoctl(
 } /* extern "C" */
 #endif
 
-#endif /* _I2cCtrl_DUMP_H_ */
+#endif /* _I2CCTRL_DUMP_H_ */

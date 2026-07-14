@@ -1,6 +1,6 @@
 #include <ntddk.h>
 #include "i2cctrl_zw.h"
-#include "i2cctrl_ioctl.h"   // defines I2CCTRL_TRANSFER, IOCTL_I2cCtrl_TRANSFER
+#include "i2cctrl_ioctl.h"   // defines I2CCTRL_TRANSFER, IOCTL_I2CCTRL_TRANSFER
 #include "i2cctrl_hw.h"      // if you have hardware helpers (optional)
 #include "i2cctrl_ext.h"        // replace with the actual header that defines PT_RAW_SAMPLE
 #include "i2cctrl_hw.h"
@@ -291,7 +291,7 @@ NTSTATUS NTAPI I2cCtrl_ControlFile(
 
     switch (IoControlCode) {
 
-    case IOCTL_I2cCtrl_TRANSFER:
+    case IOCTL_I2CCTRL_TRANSFER:
     {
         PI2CCTRL_TRANSFER packet;
         PSMBUS_REQUEST     req;       /* SMBus request with Flags */

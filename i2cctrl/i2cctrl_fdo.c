@@ -26,19 +26,20 @@ I2cCtrl_QueryDeviceRelations(
     count = 0;
     i     = 0;
 
-    /* Count children */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
+
     for (le = fdoExt->ChildList.Flink;
          le != &fdoExt->ChildList;
          le = le->Flink)
     {
         PI2CCTRL_PDO child = CONTAINING_RECORD(le, I2CCTRL_PDO, ListEntry);
+
         if (child->Present && !child->Removed)
             count++;
     }
+
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
-    /* Correct allocation */
     size = sizeof(DEVICE_RELATIONS);
     if (count > 1)
         size += (count - 1) * sizeof(PDEVICE_OBJECT);
@@ -51,13 +52,14 @@ I2cCtrl_QueryDeviceRelations(
         return STATUS_SUCCESS;
     }
 
-    /* Fill */
     KeAcquireSpinLock(&fdoExt->ChildLock, &oldIrql);
+
     for (le = fdoExt->ChildList.Flink;
          le != &fdoExt->ChildList && i < count;
          le = le->Flink)
     {
         PI2CCTRL_PDO child = CONTAINING_RECORD(le, I2CCTRL_PDO, ListEntry);
+
         if (!child->Present || child->Removed)
             continue;
 
@@ -65,6 +67,7 @@ I2cCtrl_QueryDeviceRelations(
         ObReferenceObject(child->Pdo);
         i++;
     }
+
     KeReleaseSpinLock(&fdoExt->ChildLock, oldIrql);
 
     relations->Count = i;
@@ -94,12 +97,9 @@ I2cCtrl_FdoDispatch(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* All logging removed */
-
     irpSp  = IoGetCurrentIrpStackLocation(Irp);
     fdoExt = (PI2CCTRL_FDO)DeviceObject->DeviceExtension;
 
-    /* Must be our FDO */
     if (fdoExt == NULL || fdoExt->Self != DeviceObject) {
 
         Irp->IoStatus.Status      = STATUS_INVALID_DEVICE_REQUEST;
@@ -108,7 +108,6 @@ I2cCtrl_FdoDispatch(
         return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    /* If already removed, fail cleanly */
     if (fdoExt->Removed) {
 
         Irp->IoStatus.Status      = STATUS_NO_SUCH_DEVICE;
@@ -117,7 +116,6 @@ I2cCtrl_FdoDispatch(
         return STATUS_NO_SUCH_DEVICE;
     }
 
-    /* Acquire remove lock for this IRP */
     status = IoAcquireRemoveLock(&fdoExt->RemoveLock, Irp);
     if (!NT_SUCCESS(status)) {
 
@@ -319,11 +317,7 @@ I2cCtrl_FdoDispatch(
             );
             return IoCallDriver(fdoExt->LowerDevice, Irp);
         }
-
-        /* NOT REACHED */
     }
-
-    /* Non-PnP majors */
 
     IoCopyCurrentIrpStackLocationToNext(Irp);
     IoSetCompletionRoutine(

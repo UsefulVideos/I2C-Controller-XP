@@ -3,8 +3,8 @@
  * Target: Windows XP x86/x64, C89 compliant
  */
 
-#ifndef _I2cCtrl_BSOD_H_
-#define _I2cCtrl_BSOD_H_
+#ifndef _I2CCTRL_BSOD_H_
+#define _I2CCTRL_BSOD_H_
 
 #include <ntddk.h>
 #include "i2cctrl_etw.h"   /* TraceEvents() and WPP flags */
@@ -87,4 +87,4 @@ VOID     I2cCtrl_SafeDerefDevice(PDEVICE_OBJECT DeviceObject);
 NTSTATUS I2cCtrl_SafeControllerReset(PI2CCTRL_FDO Dx, ULONG Tag);
 
 
-#endif /* _I2cCtrl_BSOD_H_ */
+#endif /* _I2CCTRL_BSOD_H_ */
