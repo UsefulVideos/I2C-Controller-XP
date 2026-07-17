@@ -6110,7 +6110,7 @@ I2cCtrl_QueryTimingLow(
 
 /* ---------------------------------------------------------------------------
  * ClearErrors - HAL-generic, XP/2003-hardened, C89-compliant
- * Uses BSOD-safe register accessors (I2cCtrl_WriteRegisterSafe).
+ * Uses BSOD-safe register accessors (I2cCtrl_WriteMmioRegisterSafe).
  * --------------------------------------------------------------------------- */
 VOID
 I2cCtrl_ClearErrors(
@@ -6129,11 +6129,11 @@ I2cCtrl_ClearErrors(
     KeAcquireSpinLock(&devctx->PendingIrpLock, &oldIrql);
 
     /* 2) Clear sticky hardware error/status registers (safe MMIO) */
-    I2cCtrl_WriteRegisterSafe(devctx,
+    I2cCtrl_WriteMmioRegisterSafe(devctx,
                               I2CCTRL_REG_STATUS,
                               I2CCTRL_STATUS_CLEAR_MASK);
 
-    I2cCtrl_WriteRegisterSafe(devctx,
+    I2cCtrl_WriteMmioRegisterSafe(devctx,
                               I2CCTRL_REG_ERROR,
                               I2CCTRL_ERROR_CLEAR_MASK);
 
@@ -6173,7 +6173,7 @@ I2cCtrl_ClearErrors(
 
 /* ---------------------------------------------------------------------------
  * ClockGate - HAL-generic, XP/2003-hardened, C89-compliant
- * Uses BSOD-safe register accessors (I2cCtrl_WriteRegisterSafe).
+ * Uses BSOD-safe register accessors (I2cCtrl_WriteMmioRegisterSafe).
  * --------------------------------------------------------------------------- */
 VOID
 I2cCtrl_ClockGate(
@@ -6197,7 +6197,7 @@ I2cCtrl_ClockGate(
     if (enableGate != FALSE) {
 
         /* --- Gate functional clock --- */
-        I2cCtrl_WriteRegisterSafe(devctx,
+        I2cCtrl_WriteMmioRegisterSafe(devctx,
                                   I2CCTRL_REG_CLKCTRL,
                                   I2CCTRL_CLK_DISABLE_MASK);
 
@@ -6216,7 +6216,7 @@ I2cCtrl_ClockGate(
     else {
 
         /* --- Ungate functional clock --- */
-        I2cCtrl_WriteRegisterSafe(devctx,
+        I2cCtrl_WriteMmioRegisterSafe(devctx,
                                   I2CCTRL_REG_CLKCTRL,
                                   I2CCTRL_CLK_ENABLE_MASK);
 
@@ -8557,14 +8557,14 @@ I2cCtrl_ResetDwController(
     I2cCtrl_Log("ResetDwController: begin\n");
 
     /* Assert reset bit */
-    ctrl = I2cCtrl_ReadRegisterSafe(devctx, id->ControlOffset);
-    I2cCtrl_WriteRegisterSafe(devctx, id->ControlOffset,
+    ctrl = I2cCtrl_ReadMmioRegisterSafe(devctx, id->ControlOffset);
+    I2cCtrl_WriteMmioRegisterSafe(devctx, id->ControlOffset,
                               ctrl | CTRL_RESET_BIT);
 
     /* Poll for reset completion or idle state */
     tries = 0U;
     do {
-        stat = I2cCtrl_ReadRegisterSafe(devctx, id->StatusOffset);
+        stat = I2cCtrl_ReadMmioRegisterSafe(devctx, id->StatusOffset);
 
         if (((stat & STAT_BUSY_BIT) == 0U) ||
             ((stat & STAT_RESET_DONE_BIT) != 0U))
@@ -8578,9 +8578,9 @@ I2cCtrl_ResetDwController(
     } while (tries < 500U);
 
     /* Deassert reset bit */
-    ctrl = I2cCtrl_ReadRegisterSafe(devctx, id->ControlOffset);
+    ctrl = I2cCtrl_ReadMmioRegisterSafe(devctx, id->ControlOffset);
     if ((ctrl & CTRL_RESET_BIT) != 0U) {
-        I2cCtrl_WriteRegisterSafe(devctx, id->ControlOffset,
+        I2cCtrl_WriteMmioRegisterSafe(devctx, id->ControlOffset,
                                   ctrl & ~CTRL_RESET_BIT);
     }
 
@@ -9050,7 +9050,7 @@ I2Chid_ApplyQuirks(
 
 __forceinline
 VOID
-I2cCtrl_WriteRegisterSafe(
+I2cCtrl_WriteMmioRegisterSafe(
     PI2CCTRL_FDO Dx,
     ULONG Offset,
     ULONG Value
@@ -9063,12 +9063,12 @@ I2cCtrl_WriteRegisterSafe(
     reg     = NULL;
 
     if (Dx == NULL) {
-        I2cCtrl_Log("WriteRegisterSafe NULL Dx\n");
+        I2cCtrl_Log("WriteMmioRegisterSafe NULL Dx\n");
         return;
     }
 
     if (Dx->Removed || Dx->Stopping || !Dx->Started) {
-        I2cCtrl_Log("WriteRegisterSafe inactive "
+        I2cCtrl_Log("WriteMmioRegisterSafe inactive "
                  "(Removed=%lu Stopping=%lu Started=%lu)\n",
                  Dx->Removed, Dx->Stopping, Dx->Started);
         Dx->HardwareFailure = TRUE;
@@ -9076,13 +9076,13 @@ I2cCtrl_WriteRegisterSafe(
     }
 
     if (Dx->Mmio == NULL) {
-        I2cCtrl_Log("WriteRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
+        I2cCtrl_Log("WriteMmioRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
         Dx->HardwareFailure = TRUE;
         return;
     }
 
     if ((Offset + sizeof(ULONG)) > Dx->MmioLength) {
-        I2cCtrl_Log("WriteRegisterSafe OOB Off=0x%lx Len=%lu Val=0x%lx\n",
+        I2cCtrl_Log("WriteMmioRegisterSafe OOB Off=0x%lx Len=%lu Val=0x%lx\n",
                  Offset,
                  Dx->MmioLength,
                  Value);
@@ -9096,7 +9096,7 @@ I2cCtrl_WriteRegisterSafe(
         WRITE_REGISTER_ULONG((PULONG)reg, Value);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         NTSTATUS code = GetExceptionCode();
-        I2cCtrl_Log("WriteRegisterSafe SEH Off=0x%lx Val=0x%lx Code=0x%08lx\n",
+        I2cCtrl_Log("WriteMmioRegisterSafe SEH Off=0x%lx Val=0x%lx Code=0x%08lx\n",
                  Offset,
                  Value,
                  code);
@@ -9107,7 +9107,7 @@ I2cCtrl_WriteRegisterSafe(
 
 __forceinline
 ULONG
-I2cCtrl_ReadRegisterSafe(
+I2cCtrl_ReadMmioRegisterSafe(
     PI2CCTRL_FDO Dx,
     ULONG Offset
     )
@@ -9121,12 +9121,12 @@ I2cCtrl_ReadRegisterSafe(
     value   = 0U;
 
     if (Dx == NULL) {
-        I2cCtrl_Log("ReadRegisterSafe NULL Dx\n");
+        I2cCtrl_Log("ReadMmioRegisterSafe NULL Dx\n");
         return 0U;
     }
 
     if (Dx->Removed || Dx->Stopping || !Dx->Started) {
-        I2cCtrl_Log("ReadRegisterSafe inactive "
+        I2cCtrl_Log("ReadMmioRegisterSafe inactive "
                  "(Removed=%lu Stopping=%lu Started=%lu)\n",
                  Dx->Removed, Dx->Stopping, Dx->Started);
         Dx->HardwareFailure = TRUE;
@@ -9134,13 +9134,13 @@ I2cCtrl_ReadRegisterSafe(
     }
 
     if (Dx->Mmio == NULL) {
-        I2cCtrl_Log("ReadRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
+        I2cCtrl_Log("ReadMmioRegisterSafe unmapped MMIO Base=%p\n", Dx->Mmio);
         Dx->HardwareFailure = TRUE;
         return 0U;
     }
 
     if ((Offset + sizeof(ULONG)) > Dx->MmioLength) {
-        I2cCtrl_Log("ReadRegisterSafe OOB Off=0x%lx Len=%lu\n",
+        I2cCtrl_Log("ReadMmioRegisterSafe OOB Off=0x%lx Len=%lu\n",
                  Offset,
                  Dx->MmioLength);
         Dx->HardwareFailure = TRUE;
@@ -9153,7 +9153,7 @@ I2cCtrl_ReadRegisterSafe(
         value = READ_REGISTER_ULONG((PULONG)reg);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         NTSTATUS code = GetExceptionCode();
-        I2cCtrl_Log("ReadRegisterSafe SEH Off=0x%lx Code=0x%08lx\n",
+        I2cCtrl_Log("ReadMmioRegisterSafe SEH Off=0x%lx Code=0x%08lx\n",
                  Offset,
                  code);
         Dx->HardwareFailure = TRUE;

@@ -196,9 +196,9 @@ I2CctrlHw_EnableController(
     KeAcquireSpinLock(&Queue->Lock, &oldIrql);
 
     /* Read-modify-write control register using safe MMIO */
-    ctrl = I2cCtrl_ReadRegisterSafe(ext, I2C_REG_CONTROL);
+    ctrl = I2cCtrl_ReadMmioRegisterSafe(ext, I2C_REG_CONTROL);
     ctrl |= I2C_CTRL_ENABLE;
-    I2cCtrl_WriteRegisterSafe(ext, I2C_REG_CONTROL, ctrl);
+    I2cCtrl_WriteMmioRegisterSafe(ext, I2C_REG_CONTROL, ctrl);
 
     /* Update SMBUS_REQUEST flags */
     Request->Flags |= SMBUS_FLAG_CONTROLLER_ENABLED;
@@ -214,7 +214,7 @@ I2CctrlHw_EnableController(
 /*
  * Wait until the I2C controller reports idle or until timeout expires.
  * Returns STATUS_SUCCESS if idle, STATUS_IO_TIMEOUT otherwise.
- * BSOD-safe: uses I2cCtrl_ReadRegisterSafe for all MMIO access.
+ * BSOD-safe: uses I2cCtrl_ReadMmioRegisterSafe for all MMIO access.
  */
 NTSTATUS
 I2CctrlHw_WaitForIdle(
@@ -243,7 +243,7 @@ I2CctrlHw_WaitForIdle(
     while (elapsed < TimeoutMs) {
 
         /* Safe MMIO read */
-        statusReg = I2cCtrl_ReadRegisterSafe(ext, I2C_REG_STATUS);
+        statusReg = I2cCtrl_ReadMmioRegisterSafe(ext, I2C_REG_STATUS);
 
         if ((statusReg & I2C_STATUS_ACTIVITY) == 0U) {
             return STATUS_SUCCESS; /* idle */

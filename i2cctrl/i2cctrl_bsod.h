@@ -59,8 +59,8 @@ typedef struct _I2CCTRL_FDO I2CCTRL_FDO, *PI2CCTRL_FDO;
    All functions are XP-safe: they validate pointers, IRQL, and use SEH where needed.
    --------------------------------------------------------------------------- */
 VOID   I2cCtrl_SafeCompleteIrp(PIRP Irp, NTSTATUS Status);
-ULONG  I2cCtrl_ReadRegisterSafe(PI2CCTRL_FDO Dx, ULONG Offset);
-VOID   I2cCtrl_WriteRegisterSafe(PI2CCTRL_FDO Dx, ULONG Offset, ULONG Value);
+ULONG  I2cCtrl_ReadMmioRegisterSafe(PI2CCTRL_FDO Dx, ULONG Offset);
+VOID   I2cCtrl_WriteMmioRegisterSafe(PI2CCTRL_FDO Dx, ULONG Offset, ULONG Value);
 
 VOID   I2cCtrl_AcquireIoLock(PI2CCTRL_FDO Dx, PKIRQL OldIrql);
 VOID   I2cCtrl_ReleaseIoLock(PI2CCTRL_FDO Dx, KIRQL OldIrql);

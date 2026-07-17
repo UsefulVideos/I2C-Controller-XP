@@ -11,7 +11,7 @@ __forceinline ULONG RReg(PI2CCTRL_FDO fdoExt, ULONG Off)
         return 0;
     }
 
-    return I2cCtrl_ReadRegisterSafe(fdoExt, Off);
+    return I2cCtrl_ReadMmioRegisterSafe(fdoExt, Off);
 }
 
 __forceinline VOID WReg(PI2CCTRL_FDO fdoExt, ULONG Off, ULONG Val)
@@ -21,7 +21,7 @@ __forceinline VOID WReg(PI2CCTRL_FDO fdoExt, ULONG Off, ULONG Val)
         return;
     }
 
-    I2cCtrl_WriteRegisterSafe(fdoExt, Off, Val);
+    I2cCtrl_WriteMmioRegisterSafe(fdoExt, Off, Val);
 }
 
 

@@ -16,7 +16,7 @@ IntelReadReg(
     ULONG        offset
     )
 {
-    return I2cCtrl_ReadRegisterSafe(devctx, offset);
+    return I2cCtrl_ReadMmioRegisterSafe(devctx, offset);
 }
 
 static __inline VOID
@@ -26,7 +26,7 @@ IntelWriteReg(
     ULONG        value
     )
 {
-    I2cCtrl_WriteRegisterSafe(devctx, offset, value);
+    I2cCtrl_WriteMmioRegisterSafe(devctx, offset, value);
 }
 
 /* Capabilities */
