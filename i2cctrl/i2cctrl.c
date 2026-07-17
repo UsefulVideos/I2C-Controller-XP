@@ -8283,17 +8283,23 @@ VOID InitDefault(VOID)
 {
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);  // XP-safe: init only at PASSIVE_LEVEL
 
-    I2cCtrl_Log("Initializing default safe register map\n");
+    I2cCtrl_Log("InitDefault: initializing default safe register map\n");
 
-    if (&g_CurrentRegMap == NULL) {
-        I2cCtrl_Log("InitDefault: g_CurrentRegMap NULL\n");
-        return;
+    /* Preserve original logic: detect "NULL-equivalent" regmap.
+       A struct cannot be NULL, so check for zeroed fields instead. */
+    if (g_CurrentRegMap.ControlReg == 0 &&
+        g_CurrentRegMap.StatusReg  == 0 &&
+        g_CurrentRegMap.DataReg    == 0 &&
+        g_CurrentRegMap.ClockReg   == 0)
+    {
+        I2cCtrl_Log("InitDefault: g_CurrentRegMap appears uninitialized\n");
+        /* Continue anyway, because InitDefault's job is to initialize it */
     }
 
-    // Clear the struct before assigning defaults
+    /* Clear the struct before assigning defaults */
     RtlZeroMemory(&g_CurrentRegMap, sizeof(g_CurrentRegMap));
 
-    // Assign safe default offsets
+    /* Assign safe default offsets */
     g_CurrentRegMap.ControlReg = 0x00;
     g_CurrentRegMap.StatusReg  = 0x04;
     g_CurrentRegMap.DataReg    = 0x08;
@@ -8303,7 +8309,7 @@ VOID InitDefault(VOID)
 
 
 //
-// Generic per-chip init routine (XP-safe: guard IRQL and struct)
+// Load controller profile into global register map (XP-safe)
 //
 VOID
 I2cCtrl_LoadProfileIntoRegMap(
@@ -8318,12 +8324,18 @@ I2cCtrl_LoadProfileIntoRegMap(
 {
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
-    if (&g_CurrentRegMap == NULL) {
-        I2cCtrl_Log("%ws: g_CurrentRegMap NULL\n", name);
+    /* Preserve original logic: bail out if regmap is "invalid".
+       Since a struct cannot be NULL, check for zeroed fields instead. */
+    if (g_CurrentRegMap.ControlReg == 0 &&
+        g_CurrentRegMap.StatusReg  == 0 &&
+        g_CurrentRegMap.DataReg    == 0 &&
+        g_CurrentRegMap.ClockReg   == 0)
+    {
+        I2cCtrl_Log("%ws: g_CurrentRegMap appears uninitialized\n", name);
         return;
     }
 
-    I2cCtrl_Log("Initializing I2C Controller %ws\n", name);
+    I2cCtrl_Log("LoadProfileIntoRegMap: initializing controller %ws\n", name);
 
     g_CurrentRegMap.ControlReg = controlOffset;
     g_CurrentRegMap.StatusReg  = statusOffset;
@@ -8334,15 +8346,17 @@ I2cCtrl_LoadProfileIntoRegMap(
     g_CurrentRegMap.BsodQuirks = bsodQuirks;
 
     if (quirks != QUIRK_NONE) {
-        I2cCtrl_Log("%ws: functional quirks mask=0x%08lx\n", name, quirks);
+        I2cCtrl_Log("LoadProfileIntoRegMap: %ws functional quirks mask=0x%08lx\n",
+                    name, quirks);
     } else {
-        I2cCtrl_Log("%ws: no functional quirks\n", name);
+        I2cCtrl_Log("LoadProfileIntoRegMap: %ws no functional quirks\n", name);
     }
 
     if (bsodQuirks != BSOD_NONE) {
-        I2cCtrl_Log("%ws: BSOD quirks mask=0x%08lx\n", name, bsodQuirks);
+        I2cCtrl_Log("LoadProfileIntoRegMap: %ws BSOD quirks mask=0x%08lx\n",
+                    name, bsodQuirks);
     } else {
-        I2cCtrl_Log("%ws: no BSOD quirks\n", name);
+        I2cCtrl_Log("LoadProfileIntoRegMap: %ws no BSOD quirks\n", name);
     }
 }
 
@@ -8368,7 +8382,7 @@ I2cCtrl_IdentifyControllerProfile(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (devctx == NULL || devctx->PhysicalDevice == NULL) {
-        I2cCtrl_Log("IdentifyInit: invalid devctx/PhysicalDevice\n");
+        I2cCtrl_Log("IdentifyControllerProfile: invalid devctx/PhysicalDevice\n");
         InitDefault();
         return STATUS_INVALID_PARAMETER;
     }
@@ -8389,7 +8403,7 @@ I2cCtrl_IdentifyControllerProfile(
         dynLen = length;
         dynBuf = ExAllocatePoolWithTag(NonPagedPool, dynLen, TAG_I2C_MISC);
         if (dynBuf == NULL) {
-            I2cCtrl_Log("IdentifyInit: alloc %lu failed, using defaults\n", dynLen);
+            I2cCtrl_Log("IdentifyControllerProfile: alloc %lu failed, using defaults\n", dynLen);
             InitDefault();
             return STATUS_INSUFFICIENT_RESOURCES;
         }
@@ -8400,13 +8414,13 @@ I2cCtrl_IdentifyControllerProfile(
                                      dynBuf,
                                      &dynLen);
         if (!NT_SUCCESS(status)) {
-            I2cCtrl_Log("IdentifyInit: IoGetDeviceProperty requery failed 0x%08X\n", status);
+            I2cCtrl_Log("IdentifyControllerProfile: IoGetDeviceProperty requery failed 0x%08X\n", status);
             ExFreePoolWithTag(dynBuf, TAG_I2C_MISC);
             InitDefault();
             return STATUS_SUCCESS;
         }
     } else if (!NT_SUCCESS(status)) {
-        I2cCtrl_Log("IdentifyInit: property query failed 0x%08X\n", status);
+        I2cCtrl_Log("IdentifyControllerProfile: property query failed 0x%08X\n", status);
         InitDefault();
         return STATUS_SUCCESS;
     }
@@ -8420,7 +8434,7 @@ I2cCtrl_IdentifyControllerProfile(
     }
 
     if (bytes < sizeof(WCHAR) * 2) {
-        I2cCtrl_Log("IdentifyInit: MULTI_SZ too short, using defaults\n");
+        I2cCtrl_Log("IdentifyControllerProfile: MULTI_SZ too short, using defaults\n");
         if (dynBuf) ExFreePoolWithTag(dynBuf, TAG_I2C_MISC);
         InitDefault();
         return STATUS_SUCCESS;
@@ -8458,25 +8472,25 @@ I2cCtrl_IdentifyControllerProfile(
                 /* Detect ACPI version from quirks */
                 if ((g_I2cControllers[i].Quirks & QUIRK_ACPI20) != 0U) {
                     devctx->AcpiIs20Plus = TRUE;
-                    I2cCtrl_Log("IdentifyInit: ACPI 2.0+ controller matched (%S)\n",
+                    I2cCtrl_Log("IdentifyControllerProfile: ACPI 2.0+ controller matched (%S)\n",
                              g_I2cControllers[i].PciId);
                 } else if ((g_I2cControllers[i].Quirks & QUIRK_ACPI10) != 0U) {
                     devctx->AcpiIs20Plus = FALSE;
-                    I2cCtrl_Log("IdentifyInit: ACPI 1.0b forced by quirk (%S)\n",
+                    I2cCtrl_Log("IdentifyControllerProfile: ACPI 1.0b forced by quirk (%S)\n",
                              g_I2cControllers[i].PciId);
                 } else {
                     devctx->AcpiIs20Plus = FALSE;
-                    I2cCtrl_Log("IdentifyInit: ACPI 1.0b fallback controller matched (%S)\n",
+                    I2cCtrl_Log("IdentifyControllerProfile: ACPI 1.0b fallback controller matched (%S)\n",
                              g_I2cControllers[i].PciId);
                 }
 
                 /* Apply BSOD-tweak-workarounds if present */
                 devctx->BsodQuirks = g_I2cControllers[i].BsodQuirks;
                 if (g_I2cControllers[i].BsodQuirks != BSOD_NONE) {
-                    I2cCtrl_Log("IdentifyInit: BSOD quirks applied (mask=0x%08lx)\n",
+                    I2cCtrl_Log("IdentifyControllerProfile: BSOD quirks applied (mask=0x%08lx)\n",
                              g_I2cControllers[i].BsodQuirks);
                 } else {
-                    I2cCtrl_Log("IdentifyInit: no BSOD quirks for %S\n",
+                    I2cCtrl_Log("IdentifyControllerProfile: no BSOD quirks for %S\n",
                              g_I2cControllers[i].PciId);
                 }
 
@@ -8495,7 +8509,7 @@ I2cCtrl_IdentifyControllerProfile(
     }
 
     if (!matched) {
-        I2cCtrl_Log("IdentifyInit: no match in HWIDs, applying defaults (ACPI 1.0b fallback)\n");
+        I2cCtrl_Log("IdentifyControllerProfile: no match in HWIDs, applying defaults (ACPI 1.0b fallback)\n");
         InitDefault();
         devctx->AcpiIs20Plus = FALSE;
         devctx->BsodQuirks   = BSOD_NONE;
@@ -8828,48 +8842,98 @@ I2cCtrl_ApplyQuirks(
        USER POLICY (backend-agnostic)
        ============================================================ */
 
-    {
-        ULONG val;
+{
+    ULONG val;
 
-        val = I2cCtrl_ReadRegDword(devctx, L"WakeCapable", 0);
-        devctx->WakeCapable = (val != 0);
-
-        val = I2cCtrl_ReadRegDword(devctx, L"MultiMasterEnabled", 1);
-        devctx->MultiMasterEnabled = (val != 0);
-
-        devctx->ArbBackoffBaseUs =
-            I2cCtrl_ReadRegDword(devctx, L"ArbBackoffBaseUs", 100);
-
-        devctx->ArbBackoffMaxUs =
-            I2cCtrl_ReadRegDword(devctx, L"ArbBackoffMaxUs", 5000);
-
-        devctx->ArbBackoffJitterUs =
-            I2cCtrl_ReadRegDword(devctx, L"ArbBackoffJitterUs", 50);
-
-        val = I2cCtrl_ReadRegDword(devctx, L"Policy.BusSpeedHz", 400000);
-        devctx->PolicyBusSpeedHz = val;
-
-        devctx->PolicyMaxRetries =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.MaxRetries", 3);
-
-        devctx->PolicyTxnTimeoutMs =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.TransactionTimeoutMs", 1000);
-
-        devctx->PolicyBackoffInitialUs =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.BackoffInitialUs", 10);
-
-        devctx->PolicyBackoffMaxUs =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.BackoffMaxUs", 5000);
-
-        devctx->PolicyUsePec =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.UsePec", 0);
-
-        devctx->PolicyForce10Bit =
-            I2cCtrl_ReadRegDword(devctx, L"Policy.Force10BitAddr", 0);
-
-        val = I2cCtrl_ReadRegDword(devctx, L"ForceCrashOnError", 0);
-        devctx->ForceCrashOnError = (val != 0);
+    /* WakeCapable */
+    val = I2cCtrl_ReadRegDword(devctx, L"WakeCapable", 0);
+    if (val == 0) {
+        I2cCtrl_WriteRegDword(devctx, L"WakeCapable", 0);
     }
+    devctx->WakeCapable = (val != 0);
+
+    /* MultiMasterEnabled */
+    val = I2cCtrl_ReadRegDword(devctx, L"MultiMasterEnabled", 1);
+    if (val == 1) {
+        I2cCtrl_WriteRegDword(devctx, L"MultiMasterEnabled", 1);
+    }
+    devctx->MultiMasterEnabled = (val != 0);
+
+    /* Arbitration backoff */
+    devctx->ArbBackoffBaseUs =
+        I2cCtrl_ReadRegDword(devctx, L"ArbBackoffBaseUs", 100);
+    if (devctx->ArbBackoffBaseUs == 100) {
+        I2cCtrl_WriteRegDword(devctx, L"ArbBackoffBaseUs", 100);
+    }
+
+    devctx->ArbBackoffMaxUs =
+        I2cCtrl_ReadRegDword(devctx, L"ArbBackoffMaxUs", 5000);
+    if (devctx->ArbBackoffMaxUs == 5000) {
+        I2cCtrl_WriteRegDword(devctx, L"ArbBackoffMaxUs", 5000);
+    }
+
+    devctx->ArbBackoffJitterUs =
+        I2cCtrl_ReadRegDword(devctx, L"ArbBackoffJitterUs", 50);
+    if (devctx->ArbBackoffJitterUs == 50) {
+        I2cCtrl_WriteRegDword(devctx, L"ArbBackoffJitterUs", 50);
+    }
+
+    /* Bus speed */
+    val = I2cCtrl_ReadRegDword(devctx, L"Policy.BusSpeedHz", 400000);
+    if (val == 400000) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.BusSpeedHz", 400000);
+    }
+    devctx->PolicyBusSpeedHz = val;
+
+    /* Max retries */
+    devctx->PolicyMaxRetries =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.MaxRetries", 3);
+    if (devctx->PolicyMaxRetries == 3) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.MaxRetries", 3);
+    }
+
+    /* Transaction timeout */
+    devctx->PolicyTxnTimeoutMs =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.TransactionTimeoutMs", 1000);
+    if (devctx->PolicyTxnTimeoutMs == 1000) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.TransactionTimeoutMs", 1000);
+    }
+
+    /* Backoff initial */
+    devctx->PolicyBackoffInitialUs =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.BackoffInitialUs", 10);
+    if (devctx->PolicyBackoffInitialUs == 10) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.BackoffInitialUs", 10);
+    }
+
+    /* Backoff max */
+    devctx->PolicyBackoffMaxUs =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.BackoffMaxUs", 5000);
+    if (devctx->PolicyBackoffMaxUs == 5000) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.BackoffMaxUs", 5000);
+    }
+
+    /* PEC */
+    devctx->PolicyUsePec =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.UsePec", 0);
+    if (devctx->PolicyUsePec == 0) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.UsePec", 0);
+    }
+
+    /* Force 10-bit addressing */
+    devctx->PolicyForce10Bit =
+        I2cCtrl_ReadRegDword(devctx, L"Policy.Force10BitAddr", 0);
+    if (devctx->PolicyForce10Bit == 0) {
+        I2cCtrl_WriteRegDword(devctx, L"Policy.Force10BitAddr", 0);
+    }
+
+    /* Crash on error */
+    val = I2cCtrl_ReadRegDword(devctx, L"ForceCrashOnError", 0);
+    if (val == 0) {
+        I2cCtrl_WriteRegDword(devctx, L"ForceCrashOnError", 0);
+    }
+    devctx->ForceCrashOnError = (val != 0);
+}
 
     I2cCtrl_Log("ApplyQuirks: done\n");
 }
@@ -12405,8 +12469,11 @@ I2cCtrl_ReadRegDword(
     KEY_VALUE_PARTIAL_INFORMATION* kvpi =
         (KEY_VALUE_PARTIAL_INFORMATION*)buffer;
 
-    if (devctx == NULL || devctx->RegPath.Buffer == NULL)
+    if (devctx == NULL || devctx->RegPath.Buffer == NULL) {
+        I2cCtrl_Log("ReadRegDword: invalid devctx or RegPath, returning default %lu\n",
+                    defVal);
         return defVal;
+    }
 
     {
         WCHAR fullPathBuffer[512];
@@ -12422,6 +12489,8 @@ I2cCtrl_ReadRegDword(
         paramsPath = fullPath;
     }
 
+    I2cCtrl_Log("ReadRegDword: opening key %wZ\n", &paramsPath);
+
     InitializeObjectAttributes(
         &oa,
         &paramsPath,
@@ -12431,24 +12500,27 @@ I2cCtrl_ReadRegDword(
     );
 
     status = ZwOpenKey(&hKey, KEY_READ, &oa);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("ReadRegDword: ZwOpenKey failed 0x%08lx, returning default %lu\n",
+                    status, defVal);
         return defVal;
+    }
 
-{
-    UNICODE_STRING valueNameU;
+    {
+        UNICODE_STRING valueNameU;
+        RtlInitUnicodeString(&valueNameU, ValueName);
 
-    RtlInitUnicodeString(&valueNameU, ValueName);
+        I2cCtrl_Log("ReadRegDword: querying value %wZ\n", &valueNameU);
 
-    status = ZwQueryValueKey(
-        hKey,
-        &valueNameU,
-        KeyValuePartialInformation,
-        kvpi,
-        sizeof(buffer),
-        &len
-    );
-}
-
+        status = ZwQueryValueKey(
+            hKey,
+            &valueNameU,
+            KeyValuePartialInformation,
+            kvpi,
+            sizeof(buffer),
+            &len
+        );
+    }
 
     if (NT_SUCCESS(status) &&
         kvpi->Type == REG_DWORD &&
@@ -12456,10 +12528,102 @@ I2cCtrl_ReadRegDword(
     {
         RtlCopyMemory(&data, kvpi->Data, sizeof(ULONG));
         result = data;
+
+        I2cCtrl_Log("ReadRegDword: value %ws = %lu\n", ValueName, result);
+    }
+    else {
+        I2cCtrl_Log("ReadRegDword: value %ws missing or invalid, returning default %lu\n",
+                    ValueName, defVal);
     }
 
     ZwClose(hKey);
     return result;
+}
+
+//
+// Write a DWORD to:
+//   HKLM\System\CurrentControlSet\Services\i2cctrl\Parameters
+// using devctx->RegPath as the base.
+//
+// Returns NTSTATUS from ZwSetValueKey.
+//
+NTSTATUS
+I2cCtrl_WriteRegDword(
+    PI2CCTRL_FDO devctx,
+    PCWSTR       ValueName,
+    ULONG        NewValue
+)
+{
+    UNICODE_STRING paramsPath;
+    OBJECT_ATTRIBUTES oa;
+    HANDLE hKey = NULL;
+    NTSTATUS status;
+
+    if (devctx == NULL || devctx->RegPath.Buffer == NULL) {
+        I2cCtrl_Log("WriteRegDword: invalid devctx or RegPath, value %ws not written\n",
+                    ValueName);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    {
+        WCHAR fullPathBuffer[512];
+        UNICODE_STRING fullPath;
+
+        fullPath.Buffer = fullPathBuffer;
+        fullPath.Length = 0;
+        fullPath.MaximumLength = sizeof(fullPathBuffer);
+
+        RtlCopyUnicodeString(&fullPath, &devctx->RegPath);
+        RtlAppendUnicodeToString(&fullPath, L"\\Parameters");
+
+        paramsPath = fullPath;
+    }
+
+    I2cCtrl_Log("WriteRegDword: opening key %wZ\n", &paramsPath);
+
+    InitializeObjectAttributes(
+        &oa,
+        &paramsPath,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
+    );
+
+    status = ZwOpenKey(&hKey, KEY_SET_VALUE, &oa);
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("WriteRegDword: ZwOpenKey failed 0x%08lx, value %ws not written\n",
+                    status, ValueName);
+        return status;
+    }
+
+    {
+        UNICODE_STRING valueNameU;
+        ULONG data = NewValue;
+
+        RtlInitUnicodeString(&valueNameU, ValueName);
+
+        I2cCtrl_Log("WriteRegDword: setting %wZ = %lu\n", &valueNameU, NewValue);
+
+        status = ZwSetValueKey(
+            hKey,
+            &valueNameU,
+            0,
+            REG_DWORD,
+            &data,
+            sizeof(ULONG)
+        );
+    }
+
+    if (!NT_SUCCESS(status)) {
+        I2cCtrl_Log("WriteRegDword: ZwSetValueKey failed 0x%08lx for %ws\n",
+                    status, ValueName);
+    } else {
+        I2cCtrl_Log("WriteRegDword: value %ws successfully set to %lu\n",
+                    ValueName, NewValue);
+    }
+
+    ZwClose(hKey);
+    return status;
 }
 
 

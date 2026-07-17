@@ -1987,10 +1987,17 @@ I2cCtrl_ReadPciConfigDword(
 
 ULONG
 I2cCtrl_ReadRegDword(
-    _In_ PI2CCTRL_FDO devctx,
-    _In_ PCWSTR        ValueName,
-    _In_ ULONG         defVal
-    );
+    PI2CCTRL_FDO devctx,
+    PCWSTR       ValueName,
+    ULONG        defVal
+);
+
+NTSTATUS
+I2cCtrl_WriteRegDword(
+    PI2CCTRL_FDO devctx,
+    PCWSTR       ValueName,
+    ULONG        NewValue
+);
 
 NTSTATUS
 I2cCtrl_CreateTouchpad(
