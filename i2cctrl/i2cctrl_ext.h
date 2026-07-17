@@ -779,7 +779,7 @@ typedef struct _I2CCTRL_ACPI_METHOD_HANDLE {
 } I2CCTRL_ACPI_METHOD_HANDLE, *PI2CCTRL_ACPI_METHOD_HANDLE;
 
 NTSTATUS
-I2cCtrlIdentifyAndInitController(
+I2cCtrl_IdentifyControllerProfile(
     PI2CCTRL_FDO devctx
     );
 
@@ -1775,7 +1775,7 @@ I2cHal_EnableWakeSource(
     );
 
 VOID
-I2cCtrl_PerformReset(
+I2cCtrl_ResetDwController(
     PI2CCTRL_FDO devctx
     );
 
@@ -1836,7 +1836,7 @@ I2cCtrl_EnableWakeSignal(
     );
 
 VOID
-I2cHidApplyQuirks(
+I2Chid_ApplyQuirks(
     PI2CCTRL_PDO childDx,
     const I2CHID_DEVICE_ID* hidMatch
     );
@@ -1902,7 +1902,7 @@ I2cCtrl_AcpiGetHidDescriptorViaDsm(
     PULONG                  outLen
     );
 
-VOID     I2cCtrlApplyQuirks(PI2CCTRL_FDO devctx);
+VOID     I2cCtrl_ApplyQuirks(PI2CCTRL_FDO devctx);
 
 #ifndef IOCTL_ACPI_GET_DEVICE_INFORMATION
 #define IOCTL_ACPI_GET_DEVICE_INFORMATION \

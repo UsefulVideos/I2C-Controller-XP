@@ -3153,8 +3153,14 @@ if (transList == NULL || transList->Count == 0) {
     /* Store quirks (your FDO already has BsodQuirks, but NOT Quirks) */
     fdoExt->BsodQuirks = match->BsodQuirks;
 
-    /* Quirks are applied later by I2cCtrlApplyQuirks() using PnpId */
+    /* Quirks are applied later by I2cCtrl_ApplyQuirks() using PnpId */
 }
+
+	status = I2cCtrl_IdentifyControllerProfile(fdoExt);
+	if (!NT_SUCCESS(status)) {
+		I2cCtrl_Log("StartDevice: IdentifyAndInitController failed 0x%08lx\n", status);
+    return status;
+	}
 
     isl = IoGetCurrentIrpStackLocation(Irp);
     transList =
@@ -4072,7 +4078,7 @@ if (!haveBar2)
 I2cCtrl_InstallBackend(fdoExt);
 
 I2cCtrl_Log("StartDevice: applying unified quirks (late pass)\n");
-I2cCtrlApplyQuirks(fdoExt);
+I2cCtrl_ApplyQuirks(fdoExt);
 I2cCtrl_Log("StartDevice: unified quirks applied (late pass)\n");
 
 
@@ -8300,7 +8306,7 @@ VOID InitDefault(VOID)
 // Generic per-chip init routine (XP-safe: guard IRQL and struct)
 //
 VOID
-I2cCtrl_GenericInit(
+I2cCtrl_LoadProfileIntoRegMap(
     ULONG  controlOffset,
     ULONG  statusOffset,
     ULONG  dataOffset,
@@ -8340,70 +8346,8 @@ I2cCtrl_GenericInit(
     }
 }
 
-//
-// Dispatcher to call the generic init
-//
-VOID
-I2cCtrl_InitById(PCWSTR hwid)
-{
-    size_t i;
-
-    if (hwid == NULL) {
-        I2cCtrl_Log("InitById: NULL HWID provided\n");
-		g_CurrentRegMap.BsodQuirks = BSOD_NONE;
-        return;
-    }
-
-    for (i = 0; i < RTL_NUMBER_OF(g_I2cControllers); i++) {
-        /* Use substring match: HWIDs are MULTI_SZ entries like "PCI\\VEN_8086&DEV_9DC5&CC_0C8000" */
-        if (wcsstr(hwid, g_I2cControllers[i].PciId) != NULL) {
-            I2cCtrl_GenericInit(
-                g_I2cControllers[i].ControlOffset,
-                g_I2cControllers[i].StatusOffset,
-                g_I2cControllers[i].DataOffset,
-                g_I2cControllers[i].ClockOffset,
-                g_I2cControllers[i].Quirks,
-                g_I2cControllers[i].BsodQuirks,
-                g_I2cControllers[i].PciId
-            );
-
-            /* Apply BSOD-tweak-workarounds if present */
-            g_CurrentRegMap.BsodQuirks = g_I2cControllers[i].BsodQuirks;
-            if (g_I2cControllers[i].BsodQuirks != BSOD_NONE) {
-                I2cCtrl_Log("InitById: BSOD quirks applied (mask=0x%08lx) for %S\n",
-                         g_I2cControllers[i].BsodQuirks,
-                         g_I2cControllers[i].PciId);
-            } else {
-                I2cCtrl_Log("InitById: no BSOD quirks for %S\n",
-                         g_I2cControllers[i].PciId);
-            }
-
-            return;
-        }
-    }
-
-    /* If no match, still check for generic class ID */
-    if (wcsstr(hwid, L"PCI\\CC_0C8000") != NULL) {
-        I2cCtrl_GenericInit(
-            0x00, 0x04, 0x08, 0x0C,
-            QUIRK_NONE,
-            BSOD_NONE,
-            L"PCI\\CC_0C8000"
-        );
-        g_CurrentRegMap.BsodQuirks = BSOD_NONE;
-        I2cCtrl_Log("InitById: generic class ID matched, no BSOD quirks\n");
-        return;
-    }
-
-    /* Unknown controller */
-    I2cCtrl_Log("InitById: Unknown controller HWID %ws\n", hwid);
-    g_CurrentRegMap.BsodQuirks = BSOD_NONE;
-}
-
-
-
 NTSTATUS
-I2cCtrlIdentifyAndInitController(
+I2cCtrl_IdentifyControllerProfile(
     PI2CCTRL_FDO devctx
     )
 {
@@ -8500,7 +8444,7 @@ I2cCtrlIdentifyAndInitController(
         for (i = 0; i < ARRAYSIZE(g_I2cControllers); i++) {
             const WCHAR* hwid = g_I2cControllers[i].PciId;
             if (hwid != NULL && wcsstr(p, hwid) != NULL) {
-                I2cCtrl_GenericInit(
+                I2cCtrl_LoadProfileIntoRegMap(
                     g_I2cControllers[i].ControlOffset,
                     g_I2cControllers[i].StatusOffset,
                     g_I2cControllers[i].DataOffset,
@@ -8564,7 +8508,7 @@ I2cCtrlIdentifyAndInitController(
 // Perform a full DW-I2C controller reset (XP-safe, universal)
 //
 VOID
-I2cCtrl_PerformReset(
+I2cCtrl_ResetDwController(
     PI2CCTRL_FDO devctx
     )
 {
@@ -8580,23 +8524,23 @@ I2cCtrl_PerformReset(
     ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (devctx == NULL) {
-        I2cCtrl_Log("PerformReset: invalid devctx\n");
+        I2cCtrl_Log("ResetDwController: invalid devctx\n");
         return;
     }
 
     id = I2cCtrl_FindControllerId(devctx->PnpId);
     if (id == NULL) {
-        I2cCtrl_Log("PerformReset: no controller profile\n");
+        I2cCtrl_Log("ResetDwController: no controller profile\n");
         return;
     }
 
     if (devctx->MmioBase == NULL) {
-        I2cCtrl_Log("PerformReset: BAR0 unmapped\n");
+        I2cCtrl_Log("ResetDwController: BAR0 unmapped\n");
         devctx->HardwareFailure = TRUE;
         return;
     }
 
-    I2cCtrl_Log("PerformReset: begin\n");
+    I2cCtrl_Log("ResetDwController: begin\n");
 
     /* Assert reset bit */
     ctrl = I2cCtrl_ReadRegisterSafe(devctx, id->ControlOffset);
@@ -8628,9 +8572,9 @@ I2cCtrl_PerformReset(
 
     /* Final verification */
     if (tries >= 500U) {
-        I2cCtrl_Log("PerformReset: timeout waiting for reset completion\n");
+        I2cCtrl_Log("ResetDwController: timeout waiting for reset completion\n");
     } else {
-        I2cCtrl_Log("PerformReset: reset complete (tries=%lu, STAT=0x%08lx)\n",
+        I2cCtrl_Log("ResetDwController: reset complete (tries=%lu, STAT=0x%08lx)\n",
                     tries, stat);
     }
 }
@@ -8667,7 +8611,7 @@ I2cCtrl_FindControllerId(
 
 
 VOID
-I2cCtrlApplyQuirks(
+I2cCtrl_ApplyQuirks(
     PI2CCTRL_FDO devctx
     )
 {
@@ -8871,7 +8815,7 @@ I2cCtrlApplyQuirks(
     }
 
     if (id->BsodQuirks & BSOD_EXTRA_RESET) {
-        I2cCtrl_PerformReset(devctx);
+        I2cCtrl_ResetDwController(devctx);
         I2cCtrl_Log("BSOD: extra reset\n");
     }
 
@@ -8931,7 +8875,7 @@ I2cCtrlApplyQuirks(
 }
 
 VOID
-I2cHidApplyQuirks(
+I2Chid_ApplyQuirks(
     PI2CCTRL_PDO childDx,
     const I2CHID_DEVICE_ID* hidMatch
     )
@@ -9557,7 +9501,7 @@ I2cCtrlTransfer(
     }
 
     /* Apply quirks before transfer (safe precondition) */
-    I2cCtrlApplyQuirks(fdoExt);
+    I2cCtrl_ApplyQuirks(fdoExt);
 
     /* Precompute function pointer availability */
     haveStatus   = (fdoExt->Ops->GetStatus != NULL) ? TRUE : FALSE;
