@@ -61,4 +61,12 @@ I2cCtrl_HandleArbitrationLost(
     PI2C_TRANSFER_CONTEXT Xc
     );
 
+VOID
+I2cCtrl_IsrDpc(
+    PKDPC  Dpc,
+    PVOID  DeferredContext,
+    PVOID  SystemArg1,
+    PVOID  SystemArg2
+    );
+
 #endif /* _I2CCTRL_ISR_H_ */

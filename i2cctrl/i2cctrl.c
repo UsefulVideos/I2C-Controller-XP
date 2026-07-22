@@ -2653,13 +2653,36 @@ I2cCtrl_QueueDpcRoutine(
         KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
         if (req != NULL && req->Irp != NULL) {
-            req->Irp->IoStatus.Status = STATUS_CANCELLED;
+
+            KIRQL cancelIrql;
+
+            /* Cancel‑safe IRP completion */
+            IoAcquireCancelSpinLock(&cancelIrql);
+            IoSetCancelRoutine(req->Irp, NULL);
+            req->Irp->Cancel = FALSE;
+            IoReleaseCancelSpinLock(cancelIrql);
+
+            req->Irp->IoStatus.Status      = STATUS_CANCELLED;
             req->Irp->IoStatus.Information = 0;
+
+            /* Clear DriverContext to avoid stale pointer */
+            req->Irp->Tail.Overlay.DriverContext[0] = NULL;
+
+            /* Clear transfer context if this IRP was active */
+            KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+            if (devctx->XferCtx.Irp == req->Irp) {
+                devctx->XferCtx.Irp = NULL;
+                devctx->ActiveBusy  = FALSE;
+            }
+            KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
             IoCompleteRequest(req->Irp, IO_NO_INCREMENT);
         }
+
         if (req != NULL) {
             ExFreePool(req);
         }
+
         return;
     }
 
@@ -2759,14 +2782,17 @@ I2cCtrl_QueueDpcRoutine(
                      (UCHAR)(req->SlaveAddress & 0x7FU));
         if (!NT_SUCCESS(status)) {
 
-            irp->IoStatus.Status = status;
+            irp->IoStatus.Status      = status;
             irp->IoStatus.Information = 0;
             irp->Tail.Overlay.DriverContext[0] = NULL;
+
+            /* Cancel the per-transfer timeout to avoid stray timeout DPC */
+            KeCancelTimer(&xc->TimeoutTimer);
 
             KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
             if (devctx->XferCtx.Irp == irp) {
                 devctx->XferCtx.Irp = NULL;
-                devctx->ActiveBusy = FALSE;
+                devctx->ActiveBusy  = FALSE;
             }
             KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
@@ -2795,84 +2821,90 @@ I2cCtrl_QueueDpcRoutine(
     /* ------------------------------------------------------------
      * BLOCK WRITE (backend-driven)
      * ------------------------------------------------------------ */
-case I2CCTRL_OPCODE_BLOCK_WRITE:
-{
-    ULONG bytesDone = 0;
+    case I2CCTRL_OPCODE_BLOCK_WRITE:
+    {
+        ULONG bytesDone = 0;
 
-    if (devctx->Ops->IssueBlockWrite != NULL) {
-        status = devctx->Ops->IssueBlockWrite(
-                     devctx,
-                     req->SlaveAddress,   /* UCHAR slaveAddr */
-                     req->Command,        /* ULONG reg */
-                     req->Buffer,         /* PUCHAR buf */
-                     req->Length,         /* ULONG len */
-                     &bytesDone           /* PULONG bytesDone */
-                 );
-    } else {
-        status = STATUS_NOT_SUPPORTED;
-    }
-
-    if (!NT_SUCCESS(status)) {
-
-        irp->IoStatus.Status = status;
-        irp->IoStatus.Information = 0;
-        irp->Tail.Overlay.DriverContext[0] = NULL;
-
-        KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
-        if (devctx->XferCtx.Irp == irp) {
-            devctx->XferCtx.Irp = NULL;
-            devctx->ActiveBusy = FALSE;
+        if (devctx->Ops->IssueBlockWrite != NULL) {
+            status = devctx->Ops->IssueBlockWrite(
+                         devctx,
+                         req->SlaveAddress,   /* UCHAR slaveAddr */
+                         req->Command,        /* ULONG reg */
+                         req->Buffer,         /* PUCHAR buf */
+                         req->Length,         /* ULONG len */
+                         &bytesDone           /* PULONG bytesDone */
+                     );
+        } else {
+            status = STATUS_NOT_SUPPORTED;
         }
-        KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
-        IoCompleteRequest(irp, IO_NO_INCREMENT);
-        ExFreePool(req);
-        return;
+        if (!NT_SUCCESS(status)) {
+
+            irp->IoStatus.Status      = status;
+            irp->IoStatus.Information = 0;
+            irp->Tail.Overlay.DriverContext[0] = NULL;
+
+            /* Cancel the per-transfer timeout to avoid stray timeout DPC */
+            KeCancelTimer(&xc->TimeoutTimer);
+
+            KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+            if (devctx->XferCtx.Irp == irp) {
+                devctx->XferCtx.Irp = NULL;
+                devctx->ActiveBusy  = FALSE;
+            }
+            KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
+            IoCompleteRequest(irp, IO_NO_INCREMENT);
+            ExFreePool(req);
+            return;
+        }
+
+        return; /* backend completes IRP asynchronously */
     }
-
-    return; /* backend completes IRP asynchronously */
-}
 
     /* ------------------------------------------------------------
      * BLOCK READ (backend-driven)
      * ------------------------------------------------------------ */
-case I2CCTRL_OPCODE_BLOCK_READ:
-{
-    ULONG bytesDone = 0;
+    case I2CCTRL_OPCODE_BLOCK_READ:
+    {
+        ULONG bytesDone = 0;
 
-    if (devctx->Ops->IssueBlockRead != NULL) {
-        status = devctx->Ops->IssueBlockRead(
-                     devctx,
-                     req->SlaveAddress,   /* UCHAR slaveAddr */
-                     req->Command,        /* ULONG reg */
-                     req->Buffer,         /* PUCHAR buf */
-                     req->Length,         /* ULONG len */
-                     &bytesDone           /* PULONG bytesDone */
-                 );
-    } else {
-        status = STATUS_NOT_SUPPORTED;
-    }
-
-    if (!NT_SUCCESS(status)) {
-
-        irp->IoStatus.Status = status;
-        irp->IoStatus.Information = 0;
-        irp->Tail.Overlay.DriverContext[0] = NULL;
-
-        KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
-        if (devctx->XferCtx.Irp == irp) {
-            devctx->XferCtx.Irp = NULL;
-            devctx->ActiveBusy = FALSE;
+        if (devctx->Ops->IssueBlockRead != NULL) {
+            status = devctx->Ops->IssueBlockRead(
+                         devctx,
+                         req->SlaveAddress,   /* UCHAR slaveAddr */
+                         req->Command,        /* ULONG reg */
+                         req->Buffer,         /* PUCHAR buf */
+                         req->Length,         /* ULONG len */
+                         &bytesDone           /* PULONG bytesDone */
+                     );
+        } else {
+            status = STATUS_NOT_SUPPORTED;
         }
-        KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
-        IoCompleteRequest(irp, IO_NO_INCREMENT);
-        ExFreePool(req);
-        return;
+        if (!NT_SUCCESS(status)) {
+
+            irp->IoStatus.Status      = status;
+            irp->IoStatus.Information = 0;
+            irp->Tail.Overlay.DriverContext[0] = NULL;
+
+            /* Cancel the per-transfer timeout to avoid stray timeout DPC */
+            KeCancelTimer(&xc->TimeoutTimer);
+
+            KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
+            if (devctx->XferCtx.Irp == irp) {
+                devctx->XferCtx.Irp = NULL;
+                devctx->ActiveBusy  = FALSE;
+            }
+            KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
+
+            IoCompleteRequest(irp, IO_NO_INCREMENT);
+            ExFreePool(req);
+            return;
+        }
+
+        return; /* backend completes IRP asynchronously */
     }
-
-    return; /* backend completes IRP asynchronously */
-}
 
     /* ------------------------------------------------------------
      * GET_PT_SAMPLE (universal, backend-agnostic)
@@ -2902,7 +2934,7 @@ case I2CCTRL_OPCODE_BLOCK_READ:
                 irp->IoStatus.Information = sizeof(sample);
             } else {
                 irp->IoStatus.Information = 0;
-                irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
+                irp->IoStatus.Status      = STATUS_BUFFER_TOO_SMALL;
             }
         } else {
             irp->IoStatus.Information = 0;
@@ -2910,10 +2942,13 @@ case I2CCTRL_OPCODE_BLOCK_READ:
 
         irp->Tail.Overlay.DriverContext[0] = NULL;
 
+        /* Cancel the per-transfer timeout to avoid stray timeout DPC */
+        KeCancelTimer(&xc->TimeoutTimer);
+
         KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
         if (devctx->XferCtx.Irp == irp) {
             devctx->XferCtx.Irp = NULL;
-            devctx->ActiveBusy = FALSE;
+            devctx->ActiveBusy  = FALSE;
         }
         KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
@@ -2927,14 +2962,17 @@ case I2CCTRL_OPCODE_BLOCK_READ:
      * ------------------------------------------------------------ */
     default:
 
-        irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+        irp->IoStatus.Status      = STATUS_INVALID_DEVICE_REQUEST;
         irp->IoStatus.Information = 0;
         irp->Tail.Overlay.DriverContext[0] = NULL;
+
+        /* Cancel the per-transfer timeout to avoid stray timeout DPC */
+        KeCancelTimer(&xc->TimeoutTimer);
 
         KeAcquireSpinLock(&devctx->QueueLock, &oldIrql);
         if (devctx->XferCtx.Irp == irp) {
             devctx->XferCtx.Irp = NULL;
-            devctx->ActiveBusy = FALSE;
+            devctx->ActiveBusy  = FALSE;
         }
         KeReleaseSpinLock(&devctx->QueueLock, oldIrql);
 
@@ -2946,12 +2984,22 @@ case I2CCTRL_OPCODE_BLOCK_READ:
 
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_StartDevice - XP/2003-safe, HAL-generic, C89-compliant.
- * Performs MMIO mapping, maps LPSS BAR2 when present, applies table-driven
- * LPSS + DW-I2C quirks, installs the backend, connects interrupts,
- * enables the controller, and exposes a universal HID-over-I2C child PDO.
+ * I2cCtrl_StartDevice
+ *
+ * XP/2003‑safe, HAL‑generic, C89‑compliant controller bring‑up routine.
+ * Captures ACPI HWIDs, matches the controller profile, loads registry
+ * policy, parses translated resources, maps DW‑I2C MMIO (BAR0), derives
+ * and maps LPSS BAR2 when applicable, discovers and validates PWRMBASE,
+ * powers up LPSS/PMC wells, applies table‑driven LPSS and DW‑I2C quirks,
+ * initializes locks, DPCs and events, safely disables and snapshots the
+ * controller, connects the interrupt, programs initial interrupt masks,
+ * detects ACPI I²C methods, installs the backend, and prepares the FDO
+ * for full I²C operation.
+ *
+ * Leaves the controller fully powered, mapped, quirk‑applied, interrupt‑
+ * connected, and ready for transfers or child PDO enumeration.
  * ----------------------------------------------------------------------- */
-
+ 
 NTSTATUS
 I2cCtrl_StartDevice(
     IN PI2CCTRL_FDO fdoExt,
@@ -3254,7 +3302,7 @@ if (desc->Type == CmResourceTypeMemory) {
 
     for (off = 0; off < 0x40; off += 4) {
 
-        ULONG v = READ_REGISTER_ULONG((PULONG)(fdoExt->MmioBase + off));
+        ULONG v = I2cCtrl_ReadMmioRegisterSafe(fdoExt, off);
 
         RtlStringCchPrintfW(
             wbuf,
@@ -3276,7 +3324,6 @@ if (desc->Type == CmResourceTypeMemory) {
     }
 }
 
-/* >>> INSERT FAIL RIGHT HERE <<< */
 
 /* Hard fail if BAR0 looks completely powered-off (all zeros) */
 {
@@ -3284,7 +3331,7 @@ if (desc->Type == CmResourceTypeMemory) {
     ULONG nonZero = 0;
 
     for (off = 0; off < 0x40; off += 4) {
-        ULONG v = READ_REGISTER_ULONG((PULONG)(fdoExt->MmioBase + off));
+        ULONG v = I2cCtrl_ReadMmioRegisterSafe(fdoExt, off);
         if (v != 0) {
             nonZero++;
         }
@@ -3346,26 +3393,33 @@ if (desc->Type == CmResourceTypeMemory) {
 
                 I2cCtrl_Log("LPSS/PMC: polling PW_STS for PW1/PW2 ON\n");
 
-                for (i = 0; i < 10000; i++)
-                {
-                    sts = READ_REGISTER_ULONG(
-                        (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET)
-                    );
+for (i = 0; i < 10000; i++)
+{
+    __try {
+        sts = READ_REGISTER_ULONG(
+            (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_PW_STS_OFFSET)
+        );
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        NTSTATUS code = GetExceptionCode();
+        I2cCtrl_Log("LPSS/PMC: PW_STS read fault (Code=0x%08lx)\n", code);
+        fdoExt->HardwareFailure = TRUE;
+        break;
+    }
 
-                    if ((sts & WHL_PW_MASK) == WHL_PW_MASK)
-                    {
-                        I2cCtrl_Log("LPSS/PMC: PW_STS ON (0x%08lx)\n", sts);
-                        break;
-                    }
+    if ((sts & WHL_PW_MASK) == WHL_PW_MASK)
+    {
+        I2cCtrl_Log("LPSS/PMC: PW_STS ON (0x%08lx)\n", sts);
+        break;
+    }
 
-                    if ((i % 1000) == 0)
-                    {
-                        I2cCtrl_Log("LPSS/PMC: PW_STS poll iter=%lu value=0x%08lx\n",
-                                    i, sts);
-                    }
+    if ((i % 1000) == 0)
+    {
+        I2cCtrl_Log("LPSS/PMC: PW_STS poll iter=%lu value=0x%08lx\n",
+                    i, sts);
+    }
 
-                    KeStallExecutionProcessor(1);
-                }
+    KeStallExecutionProcessor(1);
+}
 
                 if (i == 10000)
                 {
@@ -3378,11 +3432,18 @@ if (desc->Type == CmResourceTypeMemory) {
                 ULONG pwr;
                 ULONG state;
 
-                pwr = READ_REGISTER_ULONG(
-                    (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_LPSS_PWR_OFFSET)
-                );
+__try {
+    pwr = READ_REGISTER_ULONG(
+        (PULONG)((PUCHAR)fdoExt->PwrmBaseVa + WHL_LPSS_PWR_OFFSET)
+    );
+} __except (EXCEPTION_EXECUTE_HANDLER) {
+    NTSTATUS code = GetExceptionCode();
+    I2cCtrl_Log("LPSS/PMC: LPSS_PWR read fault (Code=0x%08lx)\n", code);
+    fdoExt->HardwareFailure = TRUE;
+    pwr = 0;
+}
 
-                state = (pwr & 0x3);
+state = (pwr & 0x3);
 
                 if (state == 0x0)
                 {
@@ -3416,15 +3477,21 @@ if (desc->Type == CmResourceTypeMemory) {
 
 if (fdoExt->LpssBar2 != NULL)
 {
-    // 3. Enable LPSS clocks
-    WRITE_REGISTER_ULONG(
-        (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL),
-        0x7);
+    __try {
+        /* 3. Enable LPSS clocks */
+        WRITE_REGISTER_ULONG(
+            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_CLK_CTL),
+            0x7);
 
-    // 4. Deassert LPSS reset
-    WRITE_REGISTER_ULONG(
-        (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL),
-        0x0);
+        /* 4. Deassert LPSS reset */
+        WRITE_REGISTER_ULONG(
+            (PULONG)((PUCHAR)fdoExt->LpssBar2 + WHL_LPSS_RST_CTL),
+            0x0);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        NTSTATUS code = GetExceptionCode();
+        I2cCtrl_Log("StartDevice: LPSS BAR2 write fault (Code=0x%08lx)\n", code);
+        fdoExt->HardwareFailure = TRUE;
+    }
 }
 
 
@@ -3463,21 +3530,18 @@ if (!fdoExt->InitDone) {
     I2CCTRL_INIT_LOCK(&fdoExt->CancelLock);
     I2CCTRL_INIT_LOCK(&fdoExt->IoLock);
 
-    KeInitializeDpc(&fdoExt->IsrDpc,     I2cCtrl_DpcRoutine,        fdoExt);
-    KeInitializeDpc(&fdoExt->QueueDpc,   I2cCtrl_QueueDpcRoutine,   fdoExt);
-    KeInitializeDpc(&fdoExt->TimeoutDpc, I2cCtrl_TimeoutDpcRoutine, fdoExt);
-
     KeInitializeEvent(&fdoExt->TransferEvent, NotificationEvent, FALSE);
     KeInitializeEvent(&fdoExt->StopEvent,     NotificationEvent, FALSE);
 
     fdoExt->InitDone       = TRUE;
-    fdoExt->DpcInitialized = TRUE;
+    fdoExt->DpcInitialized = FALSE;
 
 } else {
 
     KeInitializeDpc(&fdoExt->IsrDpc,     I2cCtrl_DpcRoutine,        fdoExt);
     KeInitializeDpc(&fdoExt->QueueDpc,   I2cCtrl_QueueDpcRoutine,   fdoExt);
     KeInitializeDpc(&fdoExt->TimeoutDpc, I2cCtrl_TimeoutDpcRoutine, fdoExt);
+
     fdoExt->DpcInitialized = TRUE;
 }
 
@@ -3766,15 +3830,49 @@ if (fdoExt->AcpiHandle && fdoExt->AcpiDeviceObject) {
         /* 4. Map PWRMBASE VA */
         if (fdoExt->PwrmBaseVa == NULL)
         {
+            ULONG len = 0;
+            PCM_RESOURCE_LIST reslist;
+            PCM_FULL_RESOURCE_DESCRIPTOR frd;
+            PCM_PARTIAL_RESOURCE_LIST prl;
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR prd;
+            ULONG i;
+
+            reslist = fdoExt->TranslatedResources;
+            if (reslist != NULL) {
+
+                frd = &reslist->List[0];
+                prl = &frd->PartialResourceList;
+
+                for (i = 0; i < prl->Count; i++) {
+                    prd = &prl->PartialDescriptors[i];
+
+                    if (prd->Type == CmResourceTypeMemory &&
+                        prd->u.Memory.Start.QuadPart == fdoExt->PwrmBase.QuadPart)
+                    {
+                        len = prd->u.Memory.Length;
+                        break;
+                    }
+                }
+            }
+
+            if (len == 0) {
+                /* Fallback for broken ACPI tables */
+                len = 0x10000;
+                I2cCtrl_Log("StartDevice: PWRMBASE length not found, using fallback 0x10000\n");
+            }
+
+            fdoExt->PwrmLength = len;
+
             fdoExt->PwrmBaseVa = MmMapIoSpace(
                 fdoExt->PwrmBase,
-                0x10000,
+                fdoExt->PwrmLength,
                 MmNonCached
             );
 
             if (fdoExt->PwrmBaseVa != NULL) {
-                I2cCtrl_Log("StartDevice: PWRMBASE VA mapped at %p\n",
-                            fdoExt->PwrmBaseVa);
+                I2cCtrl_Log("StartDevice: PWRMBASE VA mapped at %p (len=0x%lx)\n",
+                            fdoExt->PwrmBaseVa,
+                            fdoExt->PwrmLength);
             } else {
                 I2cCtrl_Log("StartDevice: FAILED to map PWRMBASE VA\n");
             }
@@ -4269,7 +4367,7 @@ if (!NT_SUCCESS(status)) {
 
     if (fdoExt->PwrmBaseVa) {
         I2cCtrl_Log("StartDevice: unmapping PWRMBASE VA %p\n", fdoExt->PwrmBaseVa);
-        MmUnmapIoSpace(fdoExt->PwrmBaseVa, 0x10000);
+        MmUnmapIoSpace(fdoExt->PwrmBaseVa, fdoExt->PwrmLength);
         fdoExt->PwrmBaseVa = NULL;
     }
 
@@ -4310,10 +4408,20 @@ return STATUS_SUCCESS;
 }
 
 /* -----------------------------------------------------------------------
- * I2cCtrl_StopDevice - XP/2003-safe, HAL-generic, C89-compliant teardown.
- * Quiesces the controller, disconnects interrupts, drains queues, unmaps
- * MMIO (BAR0) and LPSS BAR2, and resets runtime flags.
+ * I2cCtrl_StopDevice
+ *
+ * XP/2003‑safe teardown routine. Quiesces the controller, masks and
+ * acknowledges interrupts, cancels timers, flushes DPCs, disconnects the
+ * ISR, fences and completes any active transfer IRP, drains all pending
+ * IRP queues (IOCTL, non‑CSQ, SMBUS_REQUEST), frees leftover request
+ * wrappers, unmaps PWRMBASE, LPSS BAR2 and MMIO BAR0, clears active
+ * request state, resets transfer context and runtime flags.
+ *
+ * All IRP completions are cancel‑safe and all MMIO unmaps use the
+ * correct mapped lengths. The routine leaves the FDO in a fully
+ * quiesced, inert state suitable for STOP or REMOVE.
  * ----------------------------------------------------------------------- */
+ 
 NTSTATUS
 I2cCtrl_StopDevice(
     IN PI2CCTRL_FDO fdoExt
@@ -4380,6 +4488,7 @@ I2cCtrl_StopDevice(
     KeRemoveQueueDpc(&fdoExt->IsrDpc);
     KeRemoveQueueDpc(&fdoExt->QueueDpc);
     KeRemoveQueueDpc(&fdoExt->TimeoutDpc);
+	KeFlushQueuedDpcs();
 
     /* 6) Disconnect interrupt (if any) */
     if (fdoExt->InterruptObject != NULL) {
@@ -4400,9 +4509,18 @@ I2cCtrl_StopDevice(
     KeReleaseSpinLock(&fdoExt->QueueLock, oldIrql);
 
     if (irp != NULL) {
+        KIRQL cancelIrql;
+
+        IoAcquireCancelSpinLock(&cancelIrql);
         IoSetCancelRoutine(irp, NULL);
+        irp->Cancel = FALSE;
+        IoReleaseCancelSpinLock(cancelIrql);
+
         irp->IoStatus.Status      = STATUS_CANCELLED;
         irp->IoStatus.Information = 0U;
+
+        I2cCtrl_Log("StopDevice: completing XferCtx IRP %p as CANCELLED\n", irp);
+
         KeSetEvent(&fdoExt->TransferEvent, IO_NO_INCREMENT, FALSE);
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         irp = NULL;
@@ -4410,17 +4528,25 @@ I2cCtrl_StopDevice(
 
     /* 8a) Unmap PWRMBASE VA (if mapped) */
     if (fdoExt->PwrmBaseVa != NULL) {
-        MmUnmapIoSpace(fdoExt->PwrmBaseVa, 0x10000);
+        MmUnmapIoSpace(fdoExt->PwrmBaseVa, fdoExt->PwrmLength);
         fdoExt->PwrmBaseVa = NULL;
         I2cCtrl_Log("StopDevice: PWRMBASE VA unmapped\n");
     }
 
     /* 8) Unmap LPSS BAR2 (if mapped) */
     if (fdoExt->LpssBar2 != NULL) {
-        MmUnmapIoSpace(fdoExt->LpssBar2, fdoExt->LpssBar2Length);
+
+        __try {
+            MmUnmapIoSpace(fdoExt->LpssBar2, fdoExt->LpssBar2Length);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            I2cCtrl_Log("StopDevice: LPSS BAR2 unmap fault\n");
+        }
+
         fdoExt->LpssBar2       = NULL;
         fdoExt->LpssBar2Length = 0U;
         fdoExt->LpssBar2Phys.QuadPart = 0;
+
         I2cCtrl_Log("StopDevice: LPSS BAR2 unmapped\n");
     }
 
@@ -4444,15 +4570,27 @@ I2cCtrl_StopDevice(
         KeSetEvent(&q->WorkEvent, IO_NO_INCREMENT, FALSE);
 
         while (!IsListEmpty(&q->PendingIrps)) {
-            PLIST_ENTRY       e2;
-            PI2CCTRL_IRP_CONTEXT ctx2;
+            PLIST_ENTRY            e2;
+            PI2CCTRL_IRP_CONTEXT   ctx2;
 
             e2   = RemoveHeadList(&q->PendingIrps);
             ctx2 = CONTAINING_RECORD(e2, I2CCTRL_IRP_CONTEXT, ListEntry);
 
             if (ctx2 != NULL && ctx2->Irp != NULL) {
+
+                KIRQL cancelIrql;
+
+                IoAcquireCancelSpinLock(&cancelIrql);
+                IoSetCancelRoutine(ctx2->Irp, NULL);
+                ctx2->Irp->Cancel = FALSE;
+                IoReleaseCancelSpinLock(cancelIrql);
+
                 ctx2->Irp->IoStatus.Status      = STATUS_CANCELLED;
                 ctx2->Irp->IoStatus.Information = 0U;
+
+                I2cCtrl_Log("StopDevice: completing IOCTL IRP %p as CANCELLED\n",
+                            ctx2->Irp);
+
                 IoCompleteRequest(ctx2->Irp, IO_NO_INCREMENT);
                 ctx2->Completed = TRUE;
             }
@@ -4465,74 +4603,137 @@ I2cCtrl_StopDevice(
     for (;;) {
         PLIST_ENTRY le2;
         PIRP        qIrp;
+        KIRQL       pIrql;
 
-        KeAcquireSpinLock(&fdoExt->PendingIrpLock, &oldIrql);
+        KeAcquireSpinLock(&fdoExt->PendingIrpLock, &pIrql);
 
         if (IsListEmpty(&fdoExt->PendingIrpList)) {
-            KeReleaseSpinLock(&fdoExt->PendingIrpLock, oldIrql);
+            KeReleaseSpinLock(&fdoExt->PendingIrpLock, pIrql);
             break;
         }
 
         le2 = RemoveHeadList(&fdoExt->PendingIrpList);
-        KeReleaseSpinLock(&fdoExt->PendingIrpLock, oldIrql);
+        KeReleaseSpinLock(&fdoExt->PendingIrpLock, pIrql);
 
         qIrp = CONTAINING_RECORD(le2, IRP, Tail.Overlay.ListEntry);
 
-        IoSetCancelRoutine(qIrp, NULL);
-        qIrp->IoStatus.Status      = STATUS_CANCELLED;
-        qIrp->IoStatus.Information = 0U;
-        IoCompleteRequest(qIrp, IO_NO_INCREMENT);
+        if (qIrp != NULL) {
+
+            KIRQL cancelIrql;
+
+            IoAcquireCancelSpinLock(&cancelIrql);
+            IoSetCancelRoutine(qIrp, NULL);
+            qIrp->Cancel = FALSE;
+            IoReleaseCancelSpinLock(cancelIrql);
+
+            qIrp->IoStatus.Status      = STATUS_CANCELLED;
+            qIrp->IoStatus.Information = 0U;
+
+            I2cCtrl_Log("StopDevice: completing pending IRP %p as CANCELLED\n", qIrp);
+
+            IoCompleteRequest(qIrp, IO_NO_INCREMENT);
+        }
     }
 
-    /* 12) Free leftover request wrappers */
-    KeAcquireSpinLock(&fdoExt->QueueLock, &oldIrql);
+/* 12) Free leftover request wrappers */
+{
+    KIRQL qIrql;
+
+    KeAcquireSpinLock(&fdoExt->QueueLock, &qIrql);
+
     while (!IsListEmpty(&fdoExt->RequestQueue)) {
+
         le = RemoveHeadList(&fdoExt->RequestQueue);
-        KeReleaseSpinLock(&fdoExt->QueueLock, oldIrql);
+        KeReleaseSpinLock(&fdoExt->QueueLock, qIrql);
 
         req = CONTAINING_RECORD(le, SMBUS_REQUEST, ListEntry);
         if (req != NULL) {
+
             if (req->Irp != NULL) {
-                IoSetCancelRoutine(req->Irp, NULL);
+
+                /* Cancel IRP safely */
+                {
+                    KIRQL cancelIrql;
+                    IoAcquireCancelSpinLock(&cancelIrql);
+
+                    IoSetCancelRoutine(req->Irp, NULL);
+                    req->Irp->Cancel = FALSE;
+
+                    IoReleaseCancelSpinLock(cancelIrql);
+                }
+
                 req->Irp->IoStatus.Status      = STATUS_CANCELLED;
                 req->Irp->IoStatus.Information = 0U;
+
+                I2cCtrl_Log("StopDevice: completing leftover IRP %p as CANCELLED\n",
+                            req->Irp);
+
                 IoCompleteRequest(req->Irp, IO_NO_INCREMENT);
                 req->Irp = NULL;
             }
+
+            I2cCtrl_Log("StopDevice: freeing leftover SMBUS_REQUEST %p\n", req);
             ExFreePool(req);
         }
 
-        KeAcquireSpinLock(&fdoExt->QueueLock, &oldIrql);
+        KeAcquireSpinLock(&fdoExt->QueueLock, &qIrql);
     }
+
     fdoExt->ActiveBusy = FALSE;
     RtlZeroMemory(&fdoExt->ActiveRequest, sizeof(fdoExt->ActiveRequest));
-    KeReleaseSpinLock(&fdoExt->QueueLock, oldIrql);
 
-    /* 13) Reset runtime flags and transfer context */
+    KeReleaseSpinLock(&fdoExt->QueueLock, qIrql);
+}
+
+/* 13) Reset runtime flags and transfer context */
+{
+    I2cCtrl_Log("StopDevice: resetting runtime flags and transfer context\n");
+
+    /* Clear runtime state */
     fdoExt->Started        = FALSE;
     fdoExt->ChildrenStale  = FALSE;
     fdoExt->HotplugPending = FALSE;
+    fdoExt->ActiveBusy     = FALSE;
 
+    /* Reset transfer context */
     RtlZeroMemory(&fdoExt->XferCtx, sizeof(fdoExt->XferCtx));
     KeResetEvent(&fdoExt->TransferEvent);
 
-    I2cCtrl_Log("StopDevice: complete\n");
+    /* Clear active request snapshot */
+    RtlZeroMemory(&fdoExt->ActiveRequest, sizeof(fdoExt->ActiveRequest));
 
-    return STATUS_SUCCESS;
+    I2cCtrl_Log("StopDevice: runtime flags cleared, XferCtx reset\n");
 }
+
+I2cCtrl_Log("StopDevice: complete\n");
+return STATUS_SUCCESS;
+
+}
+
 
 /* -----------------------------------------------------------------------
  * I2cCtrl_RestartDevice - XP/2003-safe controller reinitialization.
  *
  * XP/2003 cannot restart a bus controller without receiving a new
- * IRP_MN_START_DEVICE from PnP. Therefore this routine performs only:
+ * IRP_MN_START_DEVICE from PnP. Therefore this routine performs a full
+ * StopDevice teardown, including:
  *
- *   - a full StopDevice teardown (BAR0 + optional LPSS BAR2 unmap)
- *   - clears runtime flags
- *   - returns success
+ *   - masking and acknowledging interrupts
+ *   - cancelling timers and flushing DPCs
+ *   - disconnecting the ISR
+ *   - quiescing FIFOs
+ *   - fencing and completing any active transfer IRP
+ *   - draining all IRP queues (IOCTL, non-CSQ, SMBUS_REQUEST)
+ *   - freeing leftover request wrappers
+ *   - unmapping PWRMBASE, LPSS BAR2 (if present), and BAR0 MMIO
+ *   - clearing ActiveRequest and resetting XferCtx
+ *   - clearing runtime flags
  *
- * PnP will later issue a real START_DEVICE IRP with fresh resources.
+ * After teardown, the routine returns success. PnP will later issue a
+ * real IRP_MN_START_DEVICE with fresh resources to restart the controller.
  * ----------------------------------------------------------------------- */
+
+
 NTSTATUS
 I2cCtrl_RestartDevice(
     PI2CCTRL_FDO fdoExt
@@ -4557,15 +4758,17 @@ I2cCtrl_RestartDevice(
     I2cCtrl_Log("RestartDevice: begin\n");
 
     /*
-     * Perform a clean stop. This safely:
-     *   - masks interrupts
-     *   - disconnects ISR
+     * Perform a full StopDevice teardown. This safely:
+     *   - masks and acknowledges interrupts
+     *   - cancels timers and flushes DPCs
+     *   - disconnects the ISR
      *   - quiesces FIFOs
-     *   - unmaps BAR0 MMIO
-     *   - unmaps LPSS BAR2 (if present)
-     *   - drains queues
-     *   - cancels pending IRPs
-     *   - resets runtime flags
+     *   - fences and completes any active transfer IRP
+     *   - drains all IRP queues (IOCTL, non-CSQ, SMBUS_REQUEST)
+     *   - frees leftover request wrappers
+     *   - unmaps PWRMBASE, LPSS BAR2 (if present), and BAR0 MMIO
+     *   - clears ActiveRequest and resets XferCtx
+     *   - clears runtime flags
      */
     status = I2cCtrl_StopDevice(fdoExt);
     if (!NT_SUCCESS(status)) {
@@ -4598,6 +4801,7 @@ I2cCtrl_RestartDevice(
  *   - IoReleaseRemoveLockAndWait()
  *   - IoDeleteDevice(FDO)
  * ----------------------------------------------------------------------- */
+
 NTSTATUS
 I2cCtrl_RemoveDevice(
     PI2CCTRL_FDO fdoExt,
